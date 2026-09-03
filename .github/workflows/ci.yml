@@ -39,6 +39,18 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Install persistent DieselBridge Bloom signing key
+        env:
+          DIESEL_DEV_KEYSTORE_B64: ${{ secrets.DIESEL_DEV_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$DIESEL_DEV_KEYSTORE_B64" ]; then
+            echo "::error::DIESEL_DEV_KEYSTORE_B64 is not configured"
+            exit 1
+          fi
+          mkdir -p "$HOME/.android"
+          printf '%s' "$DIESEL_DEV_KEYSTORE_B64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
@@ -51,6 +63,6 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: dieselbridge-watch-debug
+          name: dieselbridge-bloom-debug
           path: watch/build/outputs/apk/debug/watch-debug.apk
           retention-days: 14

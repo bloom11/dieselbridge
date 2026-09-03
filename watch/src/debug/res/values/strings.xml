@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DieselBridge Bloom</string>
+    <string name="notif_channel_name">DieselBridge Bloom link</string>
+    <string name="tile_label">DieselBridge Bloom</string>
+    <string name="tile_music_label">DieselBridge Bloom Music</string>
+</resources>
