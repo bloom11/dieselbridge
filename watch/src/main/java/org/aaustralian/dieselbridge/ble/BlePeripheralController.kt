@@ -13,6 +13,7 @@ import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
+import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
@@ -27,12 +28,15 @@ import org.aaustralian.dieselbridge.protocol.GbProtocol
  * BLUETOOTH_CONNECT is requested at runtime in MainActivity, hence @SuppressLint (matches NusGattServer).
  */
 @SuppressLint("MissingPermission")
-class BlePeripheralController(private val context: Context) {
+class BlePeripheralController(
+    private val context: Context,
+    private val capabilities: CapabilityRegistry = CapabilityRegistry(),
+) {
     private var advertiser: NusAdvertiser? = null
     private var gattServer: NusGattServer? = null
     private var running = false
     private val notifier = WatchNotifier(context)
-    private val router = NotificationRouter(context, notifier)
+    private val router = NotificationRouter(context, notifier, capabilities)
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.
     @Volatile

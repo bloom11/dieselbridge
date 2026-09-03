@@ -7,6 +7,8 @@ import org.aaustralian.dieselbridge.data.CannedResponsesStore
 import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.data.WatchNotification
+import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.platform.capability.VibrationCapability
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
@@ -15,7 +17,11 @@ import org.aaustralian.dieselbridge.protocol.GbProtocol
  * the BLE controller (real notifications from Gadgetbridge) and the debug inject receiver (simulated
  * ones), so both drive the exact same pipeline. Returns the parsed message so callers can log.
  */
-class NotificationRouter(private val context: Context, private val notifier: WatchNotifier) {
+class NotificationRouter(
+    private val context: Context,
+    private val notifier: WatchNotifier,
+    private val capabilities: CapabilityRegistry? = null,
+) {
 
     fun handle(line: String): GbMessage? {
         val msg = GbProtocol.parseLine(line)
@@ -38,7 +44,18 @@ class NotificationRouter(private val context: Context, private val notifier: Wat
                 notifier.cancel(msg.id)
             }
             is GbMessage.Find -> if (msg.active) FindAlertController.start(context) else FindAlertController.stop(context)
-            is GbMessage.Vibrate -> FindAlertController.buzzOnce(context)
+            is GbMessage.Vibrate -> {
+                val vibration = capabilities
+                    ?.resolveAs<VibrationCapability>(VibrationCapability.ID)
+
+                if (vibration != null) {
+                    vibration.vibrate()
+                } else {
+                    // Transitional fallback: preserve legacy behaviour if the
+                    // platform registry has not been supplied.
+                    FindAlertController.buzzOnce(context)
+                }
+            }
             is GbMessage.Call -> CallController.onCall(context, msg.cmd, msg.name, msg.number)
             is GbMessage.MusicInfo -> MusicStore.onInfo(msg.artist, msg.album, msg.track, msg.durMs)
             is GbMessage.MusicState -> MusicStore.onState(msg.state, msg.position)
