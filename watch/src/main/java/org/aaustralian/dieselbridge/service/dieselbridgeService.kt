@@ -32,7 +32,7 @@ import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
-import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 
@@ -45,7 +45,7 @@ import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 class DieselBridgeService : Service() {
 
     private var controller: BlePeripheralController? = null
-    private val capabilityRegistry = CapabilityRegistry()
+    private val platform = DieselPlatform()
 
     /** Coarse-signal watcher that pokes the tile to redraw when connection/battery/latest-notif change. */
     private val tileScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -83,12 +83,18 @@ class DieselBridgeService : Service() {
             IntentFilter(Intent.ACTION_BATTERY_CHANGED),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        capabilityRegistry.register(
-            LegacyVibrationProvider(applicationContext),
+        val vibrationProvider =
+            LegacyVibrationProvider(applicationContext)
+
+        platform.capabilities.register(
+            capability = vibrationProvider,
+            provider = vibrationProvider,
+            priority = LegacyVibrationProvider.PRIORITY,
         )
+
         controller = BlePeripheralController(
             applicationContext,
-            capabilityRegistry,
+            platform.capabilities,
         ).also { it.start() }
         // Route UI action taps (dismiss / reply / open) to the controller's BLE back-channel.
         NotificationActions.handler = { id, action, reply -> controller?.sendAction(id, action, reply) }

@@ -2,63 +2,414 @@
 
 package org.aaustralian.dieselbridge.platform.capability
 
-import java.util.concurrent.ConcurrentHashMap
+import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
+import org.aaustralian.dieselbridge.platform.provider.DieselProvider
+import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
+import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
+import org.aaustralian.dieselbridge.platform.provider.ProviderStatus
 
 /**
- * Registry of currently available Diesel capabilities.
+ * Registry of Diesel capabilities and their providers.
  *
- * Version 1 deliberately supports one active implementation per capability.
- * Provider priorities/fallback can be added later without changing capability
- * consumers.
+ * Multiple providers may implement the same capability. The highest-priority
+ * AVAILABLE provider is selected automatically. If it becomes unavailable or
+ * enters ERROR state, the next usable provider becomes active.
+ *
+ * Consumers resolve capabilities by capability id and never need to know
+ * which provider is currently supplying them.
  */
-class CapabilityRegistry {
+class CapabilityRegistry(
+    private val diagnostics: PlatformDiagnostics? = null,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+) {
 
-    private val capabilities = ConcurrentHashMap<String, DieselCapability>()
+    private data class Entry(
+        val capability: DieselCapability,
+        val provider: DieselProvider,
+        val priority: Int,
+        val registrationOrder: Long,
+        val registeredAtMs: Long,
+        var availability: ProviderAvailability,
+        var reason: String?,
+    )
+
+    private val lock = Any()
+
+    private val entries =
+        mutableMapOf<String, MutableList<Entry>>()
+
+    private var nextRegistrationOrder = 0L
 
     /**
-     * Registers a capability.
+     * Registers one provider implementation for one capability.
      *
-     * Duplicate registration is rejected rather than silently replacing an
-     * existing provider. This makes configuration errors obvious during the
-     * early platform-development phase.
+     * The same provider id may expose multiple different capabilities, but the
+     * same provider-capability binding cannot be registered twice.
      */
-    fun register(capability: DieselCapability) {
-        require(capability.id.isNotBlank()) {
-            "Capability id must not be blank"
+    fun register(
+        capability: DieselCapability,
+        provider: DieselProvider,
+        priority: Int = DEFAULT_PRIORITY,
+        initialAvailability: ProviderAvailability =
+            ProviderAvailability.AVAILABLE,
+    ): ProviderBindingInfo =
+        synchronized(lock) {
+            require(capability.id.isNotBlank()) {
+                "Capability id must not be blank"
+            }
+
+            require(provider.providerId.isNotBlank()) {
+                "Provider id must not be blank"
+            }
+
+            val previousSelection =
+                activeProviderIdLocked(capability.id)
+
+            val capabilityEntries =
+                entries.getOrPut(capability.id) { mutableListOf() }
+
+            require(
+                capabilityEntries.none {
+                    it.provider.providerId == provider.providerId
+                },
+            ) {
+                "Provider '${provider.providerId}' is already registered " +
+                    "for capability '${capability.id}'"
+            }
+
+            val entry = Entry(
+                capability = capability,
+                provider = provider,
+                priority = priority,
+                registrationOrder = nextRegistrationOrder++,
+                registeredAtMs = clock(),
+                availability = initialAvailability,
+                reason = null,
+            )
+
+            capabilityEntries += entry
+
+            publishDiagnosticsLocked(
+                type = "capability.register",
+                message =
+                    "${capability.id} -> ${provider.providerId} " +
+                        "(priority=$priority)",
+                previousSelections =
+                    mapOf(capability.id to previousSelection),
+            )
+
+            infoForLocked(
+                entry,
+                activeEntryLocked(capability.id),
+            )
         }
 
-        val previous = capabilities.putIfAbsent(capability.id, capability)
-
-        require(previous == null) {
-            "Capability '${capability.id}' is already registered"
+    /**
+     * Returns the currently selected implementation or null when no usable
+     * provider exists.
+     */
+    fun resolve(id: String): DieselCapability? =
+        synchronized(lock) {
+            activeEntryLocked(id)?.capability
         }
-    }
 
-    /**
-     * Returns the currently registered capability or null when unavailable.
-     */
-    fun resolve(id: String): DieselCapability? = capabilities[id]
-
-    /**
-     * Typed convenience resolver.
-     */
     inline fun <reified T : DieselCapability> resolveAs(id: String): T? =
         resolve(id) as? T
 
     /**
-     * Removes a capability.
+     * Changes the health/availability of one provider-capability binding.
      *
-     * Primarily useful for runtime modules/plugins that are unloaded.
+     * Selection is recalculated immediately. Marking the active provider
+     * ERROR or UNAVAILABLE therefore automatically activates the next
+     * available provider.
      */
-    fun unregister(id: String): DieselCapability? =
-        capabilities.remove(id)
+    fun setAvailability(
+        capabilityId: String,
+        providerId: String,
+        availability: ProviderAvailability,
+        reason: String? = null,
+    ): Boolean =
+        synchronized(lock) {
+            val entry =
+                entries[capabilityId]
+                    ?.firstOrNull {
+                        it.provider.providerId == providerId
+                    }
+                    ?: return@synchronized false
+
+            val previousSelection =
+                activeProviderIdLocked(capabilityId)
+
+            entry.availability = availability
+            entry.reason =
+                if (availability == ProviderAvailability.AVAILABLE) {
+                    null
+                } else {
+                    reason
+                }
+
+            publishDiagnosticsLocked(
+                type = "provider.status",
+                message =
+                    "$capabilityId / $providerId -> $availability" +
+                        if (reason.isNullOrBlank()) {
+                            ""
+                        } else {
+                            " ($reason)"
+                        },
+                previousSelections =
+                    mapOf(capabilityId to previousSelection),
+            )
+
+            true
+        }
 
     /**
-     * Snapshot of available capability identifiers.
+     * Removes one provider from one capability.
      */
+    fun unregister(
+        capabilityId: String,
+        providerId: String,
+    ): DieselCapability? =
+        synchronized(lock) {
+            val capabilityEntries =
+                entries[capabilityId]
+                    ?: return@synchronized null
+
+            val previousSelection =
+                activeProviderIdLocked(capabilityId)
+
+            val index =
+                capabilityEntries.indexOfFirst {
+                    it.provider.providerId == providerId
+                }
+
+            if (index < 0) {
+                return@synchronized null
+            }
+
+            val removed = capabilityEntries.removeAt(index)
+
+            if (capabilityEntries.isEmpty()) {
+                entries.remove(capabilityId)
+            }
+
+            publishDiagnosticsLocked(
+                type = "capability.unregister",
+                message = "$capabilityId -> $providerId",
+                previousSelections =
+                    mapOf(capabilityId to previousSelection),
+            )
+
+            removed.capability
+        }
+
+    /**
+     * Removes every capability binding supplied by one provider.
+     *
+     * This will be useful when external plugin providers disconnect.
+     */
+    fun unregisterProvider(
+        providerId: String,
+    ): List<DieselCapability> =
+        synchronized(lock) {
+            val removed = mutableListOf<DieselCapability>()
+
+            val affectedCapabilityIds =
+                entries
+                    .filterValues { capabilityEntries ->
+                        capabilityEntries.any {
+                            it.provider.providerId == providerId
+                        }
+                    }
+                    .keys
+                    .toSet()
+
+            val previousSelections =
+                affectedCapabilityIds.associateWith {
+                    activeProviderIdLocked(it)
+                }
+
+            entries.keys.toList().forEach { capabilityId ->
+                val capabilityEntries = entries[capabilityId] ?: return@forEach
+
+                val iterator = capabilityEntries.iterator()
+
+                while (iterator.hasNext()) {
+                    val entry = iterator.next()
+
+                    if (entry.provider.providerId == providerId) {
+                        removed += entry.capability
+                        iterator.remove()
+                    }
+                }
+
+                if (capabilityEntries.isEmpty()) {
+                    entries.remove(capabilityId)
+                }
+            }
+
+            if (removed.isNotEmpty()) {
+                publishDiagnosticsLocked(
+                    type = "provider.unregister",
+                    message =
+                        "$providerId removed ${removed.size} capability binding(s)",
+                    previousSelections = previousSelections,
+                )
+            }
+
+            removed
+        }
+
+    /**
+     * Snapshot of all providers registered for one capability.
+     */
+    fun providers(
+        capabilityId: String,
+    ): List<ProviderBindingInfo> =
+        synchronized(lock) {
+            providerInfosLocked(capabilityId)
+        }
+
+    /**
+     * Metadata for the currently selected provider.
+     */
+    fun activeProvider(
+        capabilityId: String,
+    ): ProviderBindingInfo? =
+        synchronized(lock) {
+            val active =
+                activeEntryLocked(capabilityId)
+                    ?: return@synchronized null
+
+            infoForLocked(active, active)
+        }
+
+    /**
+     * Snapshot of every provider-capability binding.
+     */
+    fun allProviders(): List<ProviderBindingInfo> =
+        synchronized(lock) {
+            allProviderInfosLocked()
+        }
+
     fun ids(): Set<String> =
-        capabilities.keys.toSet()
+        synchronized(lock) {
+            entries.keys.toSet()
+        }
 
     fun contains(id: String): Boolean =
-        capabilities.containsKey(id)
+        synchronized(lock) {
+            entries[id]?.isNotEmpty() == true
+        }
+
+    private fun activeProviderIdLocked(
+        capabilityId: String,
+    ): String? =
+        activeEntryLocked(capabilityId)
+            ?.provider
+            ?.providerId
+
+    private fun activeEntryLocked(
+        capabilityId: String,
+    ): Entry? =
+        entries[capabilityId]
+            ?.asSequence()
+            ?.filter {
+                it.availability == ProviderAvailability.AVAILABLE
+            }
+            ?.sortedWith(
+                compareByDescending<Entry> { it.priority }
+                    .thenBy { it.registrationOrder },
+            )
+            ?.firstOrNull()
+
+    private fun providerInfosLocked(
+        capabilityId: String,
+    ): List<ProviderBindingInfo> {
+        val active = activeEntryLocked(capabilityId)
+
+        return entries[capabilityId]
+            .orEmpty()
+            .sortedWith(
+                compareByDescending<Entry> { it.priority }
+                    .thenBy { it.registrationOrder },
+            )
+            .map {
+                infoForLocked(it, active)
+            }
+    }
+
+    private fun allProviderInfosLocked(): List<ProviderBindingInfo> =
+        entries.keys
+            .sorted()
+            .flatMap {
+                providerInfosLocked(it)
+            }
+
+    private fun infoForLocked(
+        entry: Entry,
+        active: Entry?,
+    ): ProviderBindingInfo {
+        val status =
+            when (entry.availability) {
+                ProviderAvailability.AVAILABLE ->
+                    if (entry === active) {
+                        ProviderStatus.ACTIVE
+                    } else {
+                        ProviderStatus.STANDBY
+                    }
+
+                ProviderAvailability.UNAVAILABLE ->
+                    ProviderStatus.UNAVAILABLE
+
+                ProviderAvailability.ERROR ->
+                    ProviderStatus.ERROR
+            }
+
+        return ProviderBindingInfo(
+            capabilityId = entry.capability.id,
+            providerId = entry.provider.providerId,
+            priority = entry.priority,
+            status = status,
+            providerClass = entry.provider.javaClass.name,
+            registrationOrder = entry.registrationOrder,
+            registeredAtMs = entry.registeredAtMs,
+            reason = entry.reason,
+        )
+    }
+
+    private fun publishDiagnosticsLocked(
+        type: String,
+        message: String,
+        previousSelections: Map<String, String?> = emptyMap(),
+    ) {
+        diagnostics?.replaceProviders(
+            allProviderInfosLocked(),
+        )
+
+        diagnostics?.record(
+            type = type,
+            message = message,
+        )
+
+        previousSelections.forEach { (capabilityId, previousProviderId) ->
+            val currentProviderId =
+                activeProviderIdLocked(capabilityId)
+
+            if (previousProviderId != currentProviderId) {
+                diagnostics?.record(
+                    type = "capability.select",
+                    message =
+                        "$capabilityId: " +
+                            "${previousProviderId ?: "<none>"} -> " +
+                            "${currentProviderId ?: "<none>"}",
+                )
+            }
+        }
+    }
+
+    companion object {
+        const val DEFAULT_PRIORITY = 0
+    }
 }
