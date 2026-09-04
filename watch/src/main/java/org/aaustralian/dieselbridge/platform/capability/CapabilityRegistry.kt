@@ -4,6 +4,7 @@ package org.aaustralian.dieselbridge.platform.capability
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
 import org.aaustralian.dieselbridge.platform.provider.DieselProvider
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
@@ -35,7 +36,29 @@ class CapabilityRegistry(
         var reason: String?,
     )
 
+    private data class ActiveSelectionFlow(
+        val mutable: MutableStateFlow<ActiveCapabilitySelection?>,
+        val state: StateFlow<ActiveCapabilitySelection?>,
+        var nextRevision: Long = 0L,
+        var lastPublishedRevision: Long = 0L,
+    )
+
+    private data class SelectionUpdate(
+        val flow: ActiveSelectionFlow,
+        val revision: Long,
+        val selection: ActiveCapabilitySelection?,
+    )
+
     private val lock = Any()
+    private val publicationLock = Any()
+
+    /*
+     * Selection snapshots are created while the registry lock is held.
+     * They are published afterwards so reactive collectors never execute
+     * inside a registry mutation.
+     */
+    private val pendingSelectionUpdates =
+        mutableListOf<SelectionUpdate>()
 
     private val entries =
         mutableMapOf<String, MutableList<Entry>>()
@@ -47,7 +70,7 @@ class CapabilityRegistry(
      * consumer can observe ACTIVE -> null -> ACTIVE without resubscribing.
      */
     private val activeSelections =
-        mutableMapOf<String, MutableStateFlow<ActiveCapabilitySelection?>>()
+        mutableMapOf<String, ActiveSelectionFlow>()
 
     private var nextRegistrationOrder = 0L
 
@@ -63,8 +86,9 @@ class CapabilityRegistry(
         priority: Int = DEFAULT_PRIORITY,
         initialAvailability: ProviderAvailability =
             ProviderAvailability.AVAILABLE,
-    ): ProviderBindingInfo =
-        synchronized(lock) {
+    ): ProviderBindingInfo {
+        val result =
+            synchronized(lock) {
             require(capability.id.isNotBlank()) {
                 "Capability id must not be blank"
             }
@@ -109,11 +133,15 @@ class CapabilityRegistry(
                     mapOf(capability.id to previousSelection),
             )
 
-            infoForLocked(
-                entry,
-                activeEntryLocked(capability.id),
-            )
-        }
+                infoForLocked(
+                    entry,
+                    activeEntryLocked(capability.id),
+                )
+            }
+
+        publishPendingSelections()
+        return result
+    }
 
     /**
      * Returns the currently selected implementation or null when no usable
@@ -140,10 +168,17 @@ class CapabilityRegistry(
         synchronized(lock) {
             activeSelections
                 .getOrPut(capabilityId) {
-                    MutableStateFlow(
-                        activeSelectionLocked(capabilityId),
+                    val mutable =
+                        MutableStateFlow(
+                            activeSelectionLocked(capabilityId),
+                        )
+
+                    ActiveSelectionFlow(
+                        mutable = mutable,
+                        state = mutable.asStateFlow(),
                     )
                 }
+                .state
         }
 
     /**
@@ -158,8 +193,9 @@ class CapabilityRegistry(
         providerId: String,
         availability: ProviderAvailability,
         reason: String? = null,
-    ): Boolean =
-        synchronized(lock) {
+    ): Boolean {
+        val changed =
+            synchronized(lock) {
             val entry =
                 entries[capabilityId]
                     ?.firstOrNull {
@@ -191,8 +227,15 @@ class CapabilityRegistry(
                     mapOf(capabilityId to previousSelection),
             )
 
-            true
+                true
+            }
+
+        if (changed) {
+            publishPendingSelections()
         }
+
+        return changed
+    }
 
     /**
      * Removes one provider from one capability.
@@ -200,8 +243,9 @@ class CapabilityRegistry(
     fun unregister(
         capabilityId: String,
         providerId: String,
-    ): DieselCapability? =
-        synchronized(lock) {
+    ): DieselCapability? {
+        val removed =
+            synchronized(lock) {
             val capabilityEntries =
                 entries[capabilityId]
                     ?: return@synchronized null
@@ -231,8 +275,15 @@ class CapabilityRegistry(
                     mapOf(capabilityId to previousSelection),
             )
 
-            removed.capability
+                removed.capability
+            }
+
+        if (removed != null) {
+            publishPendingSelections()
         }
+
+        return removed
+    }
 
     /**
      * Removes every capability binding supplied by one provider.
@@ -241,8 +292,9 @@ class CapabilityRegistry(
      */
     fun unregisterProvider(
         providerId: String,
-    ): List<DieselCapability> =
-        synchronized(lock) {
+    ): List<DieselCapability> {
+        val removed =
+            synchronized(lock) {
             val removed = mutableListOf<DieselCapability>()
 
             val affectedCapabilityIds =
@@ -288,8 +340,15 @@ class CapabilityRegistry(
                 )
             }
 
-            removed
+                removed
+            }
+
+        if (removed.isNotEmpty()) {
+            publishPendingSelections()
         }
+
+        return removed
+    }
 
     /**
      * Snapshot of all providers registered for one capability.
@@ -354,11 +413,58 @@ class CapabilityRegistry(
         )
     }
 
-    private fun publishActiveSelectionLocked(
+    private fun enqueueActiveSelectionLocked(
         capabilityId: String,
     ) {
-        activeSelections[capabilityId]?.value =
-            activeSelectionLocked(capabilityId)
+        val flow =
+            activeSelections[capabilityId]
+                ?: return
+
+        val revision = ++flow.nextRevision
+
+        pendingSelectionUpdates +=
+            SelectionUpdate(
+                flow = flow,
+                revision = revision,
+                selection = activeSelectionLocked(capabilityId),
+            )
+    }
+
+    private fun publishPendingSelections() {
+        val updates =
+            synchronized(lock) {
+                if (pendingSelectionUpdates.isEmpty()) {
+                    emptyList()
+                } else {
+                    pendingSelectionUpdates
+                        .toList()
+                        .also {
+                            pendingSelectionUpdates.clear()
+                        }
+                }
+            }
+
+        updates.forEach(::publishSelectionUpdate)
+    }
+
+    private fun publishSelectionUpdate(
+        update: SelectionUpdate,
+    ) {
+        synchronized(publicationLock) {
+            /*
+             * Concurrent registry mutations may reach publication out of
+             * order. Never allow an older snapshot to overwrite a newer one.
+             */
+            if (update.revision <= update.flow.lastPublishedRevision) {
+                return
+            }
+
+            update.flow.lastPublishedRevision =
+                update.revision
+
+            update.flow.mutable.value =
+                update.selection
+        }
     }
 
     private fun activeEntryLocked(
@@ -445,12 +551,7 @@ class CapabilityRegistry(
         )
 
         previousSelections.forEach { (capabilityId, previousProviderId) ->
-            /*
-             * Update reactive consumers for every affected capability, not
-             * only when the provider id changed. This also handles a provider
-             * being removed and later re-registered with a new implementation.
-             */
-            publishActiveSelectionLocked(capabilityId)
+            enqueueActiveSelectionLocked(capabilityId)
 
             val currentProviderId =
                 activeProviderIdLocked(capabilityId)
