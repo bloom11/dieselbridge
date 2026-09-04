@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.platform.capability
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
 import org.aaustralian.dieselbridge.platform.provider.DieselProvider
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
@@ -37,6 +39,15 @@ class CapabilityRegistry(
 
     private val entries =
         mutableMapOf<String, MutableList<Entry>>()
+
+    /*
+     * Created lazily for capabilities that have reactive observers.
+     *
+     * These flows deliberately survive provider removal so a long-lived
+     * consumer can observe ACTIVE -> null -> ACTIVE without resubscribing.
+     */
+    private val activeSelections =
+        mutableMapOf<String, MutableStateFlow<ActiveCapabilitySelection?>>()
 
     private var nextRegistrationOrder = 0L
 
@@ -115,6 +126,25 @@ class CapabilityRegistry(
 
     inline fun <reified T : DieselCapability> resolveAs(id: String): T? =
         resolve(id) as? T
+
+    /**
+     * Observes the currently selected provider implementation.
+     *
+     * The returned StateFlow is stable for the lifetime of this registry.
+     * It emits null when no usable provider exists and automatically changes
+     * when priority, availability, registration or removal changes selection.
+     */
+    fun observeActive(
+        capabilityId: String,
+    ): StateFlow<ActiveCapabilitySelection?> =
+        synchronized(lock) {
+            activeSelections
+                .getOrPut(capabilityId) {
+                    MutableStateFlow(
+                        activeSelectionLocked(capabilityId),
+                    )
+                }
+        }
 
     /**
      * Changes the health/availability of one provider-capability binding.
@@ -310,6 +340,27 @@ class CapabilityRegistry(
             ?.provider
             ?.providerId
 
+    private fun activeSelectionLocked(
+        capabilityId: String,
+    ): ActiveCapabilitySelection? {
+        val active =
+            activeEntryLocked(capabilityId)
+                ?: return null
+
+        return ActiveCapabilitySelection(
+            capabilityId = capabilityId,
+            providerId = active.provider.providerId,
+            capability = active.capability,
+        )
+    }
+
+    private fun publishActiveSelectionLocked(
+        capabilityId: String,
+    ) {
+        activeSelections[capabilityId]?.value =
+            activeSelectionLocked(capabilityId)
+    }
+
     private fun activeEntryLocked(
         capabilityId: String,
     ): Entry? =
@@ -394,6 +445,13 @@ class CapabilityRegistry(
         )
 
         previousSelections.forEach { (capabilityId, previousProviderId) ->
+            /*
+             * Update reactive consumers for every affected capability, not
+             * only when the provider id changed. This also handles a provider
+             * being removed and later re-registered with a new implementation.
+             */
+            publishActiveSelectionLocked(capabilityId)
+
             val currentProviderId =
                 activeProviderIdLocked(capabilityId)
 
