@@ -21,6 +21,8 @@ class NotificationRouter(
     private val context: Context,
     private val notifier: WatchNotifier,
     private val capabilities: CapabilityRegistry? = null,
+    private val onDieselCommand:
+        (GbMessage.DieselCommand) -> Unit = {},
 ) {
 
     fun handle(line: String): GbMessage? {
@@ -60,6 +62,7 @@ class NotificationRouter(
             is GbMessage.MusicInfo -> MusicStore.onInfo(msg.artist, msg.album, msg.track, msg.durMs)
             is GbMessage.MusicState -> MusicStore.onState(msg.state, msg.position)
             is GbMessage.CannedResponses -> CannedResponsesStore.set(msg.list)
+            is GbMessage.DieselCommand -> onDieselCommand(msg)
             else -> {}
         }
         return msg

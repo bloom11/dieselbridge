@@ -9,6 +9,7 @@ import android.util.Log
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
+import org.aaustralian.dieselbridge.debug.DeveloperCommandHandler
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
@@ -35,8 +36,20 @@ class BlePeripheralController(
     private var advertiser: NusAdvertiser? = null
     private var gattServer: NusGattServer? = null
     private var running = false
-    private val notifier = WatchNotifier(context)
-    private val router = NotificationRouter(context, notifier, capabilities)
+    private val notifier =
+        WatchNotifier(context)
+
+    private val developerCommandHandler =
+        DeveloperCommandHandler(context)
+
+    private val router =
+        NotificationRouter(
+            context = context,
+            notifier = notifier,
+            capabilities = capabilities,
+            onDieselCommand =
+                developerCommandHandler::handle,
+        )
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.
     @Volatile

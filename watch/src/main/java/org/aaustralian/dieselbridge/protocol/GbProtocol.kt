@@ -45,7 +45,17 @@ sealed interface GbMessage {
     /** `{"t":"canned_responses_sync","d":[{"text":…}]}` — reply suggestions from the phone. */
     data class CannedResponses(val list: List<String>) : GbMessage
 
-    /** Any other `t` we don't handle yet (call, musicinfo, …). */
+    /**
+     * DieselBridge extension namespace.
+     *
+     * These commands are deliberately separated from the standard
+     * Gadgetbridge/Bangle.js message set.
+     */
+    data class DieselCommand(
+        val command: String,
+    ) : GbMessage
+
+    /** Any other `t` we don't handle yet. */
     data class Other(val type: String) : GbMessage
 }
 
@@ -91,6 +101,10 @@ object GbProtocol {
                     o.optInt("repeat"),
                 )
                 "canned_responses_sync" -> GbMessage.CannedResponses(parseCanned(o))
+                "diesel" ->
+                    o.stringOrNull("cmd")
+                        ?.let { GbMessage.DieselCommand(it) }
+                        ?: GbMessage.Other("diesel")
                 else -> GbMessage.Other(o.optString("t"))
             }
         }.getOrNull()

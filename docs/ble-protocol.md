@@ -58,6 +58,9 @@ won't both fit in one 31-byte advertisement).
 - ✅ `{"t":"musicinfo","artist":…,"album":…,"track":…,"dur":<ms>,"c":<count>,"n":<nr>}` — now-playing metadata.
 - ✅ `{"t":"musicstate","state":"play|pause|stop|","position":…,"shuffle":…,"repeat":…}` — transport (empty/`stop` clears).
 - ✅ `{"t":"canned_responses_sync","d":[{"text":…,"disp":…?}]}` — synced quick-reply choices.
+- ✅ `{"t":"diesel","cmd":"diagnostics"}` — **DieselBridge extension**, not part of the
+  standard Bangle.js protocol. Posts one developer notification on the watch; tapping it opens the
+  internal developer console. Unknown Diesel commands are ignored and logged.
 - later: `{"t":"alarm",…}`, `{"t":"weather",…}`
 
 ### Outbound (watch → phone) — the action back-channel — ✅ = implemented
