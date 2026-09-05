@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val dieselDevKeystorePath =
+    providers.environmentVariable("DIESEL_DEV_KEYSTORE_PATH").orNull
+
 android {
     namespace = "org.aaustralian.dieselbridge"
     compileSdk = 36
@@ -15,8 +18,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge"
         minSdk = 28          // Wear OS 3 — covers every Pixel Watch Gen-1 firmware
         targetSdk = 28         // Wear OS 5.1 (Android 15) — the Gen-1 terminal OS. 36 is also valid.
-        versionCode = 12
-        versionName = "1.0.0-dev.7"
+        versionCode = 13
+        versionName = "1.0.0-dev.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -25,9 +28,24 @@ android {
         // an arm64-ONLY native lib — Wear may reject it. See docs/platform-target.md.
     }
 
+    signingConfigs {
+        if (dieselDevKeystorePath != null) {
+            create("dieselDev") {
+                storeFile = file(dieselDevKeystorePath)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+
+            if (dieselDevKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("dieselDev")
+            }
         }
         release {
             isMinifyEnabled = false

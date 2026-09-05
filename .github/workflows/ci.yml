@@ -47,9 +47,24 @@ jobs:
             echo "::error::DIESEL_DEV_KEYSTORE_B64 is not configured"
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$DIESEL_DEV_KEYSTORE_B64" | base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
+
+          KEYSTORE_PATH="$RUNNER_TEMP/diesel-dev-debug.keystore"
+
+          printf '%s' "$DIESEL_DEV_KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+          EXPECTED_SHA256="62781110de7cdd6815210365399e90f9a1446837a9fa084be70bfedc90e6f7f5"
+
+          ACTUAL_SHA256="$(keytool -list -v -keystore "$KEYSTORE_PATH" -storepass android -alias androiddebugkey | sed -n 's/.*SHA256: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+          echo "Bloom signing certificate: $ACTUAL_SHA256"
+
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Unexpected Bloom signing certificate"
+            exit 1
+          fi
+
+          echo "DIESEL_DEV_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -59,6 +74,26 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew :watch:assembleDebug --stacktrace
+
+      - name: Verify debug APK signing certificate
+        run: |
+          EXPECTED_SHA256="62781110de7cdd6815210365399e90f9a1446837a9fa084be70bfedc90e6f7f5"
+
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found"
+            exit 1
+          fi
+
+          ACTUAL_SHA256="$("$APKSIGNER" verify --print-certs watch/build/outputs/apk/debug/watch-debug.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]')"
+
+          echo "Built APK certificate: $ACTUAL_SHA256"
+
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Built APK has unexpected signing certificate"
+            exit 1
+          fi
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
