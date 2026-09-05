@@ -243,6 +243,7 @@ class BlePeripheralController(
             is GbMessage.MusicInfo -> ProbeStateHolder.log("musicinfo " + (msg.track ?: ""))
             is GbMessage.MusicState -> ProbeStateHolder.log("musicstate " + msg.state)
             is GbMessage.CannedResponses -> ProbeStateHolder.log("canned x" + msg.list.size)
+            is GbMessage.DieselCommand -> ProbeStateHolder.log("diesel cmd " + msg.command)
             is GbMessage.Other -> ProbeStateHolder.log("msg t=${msg.type}")
             null -> ProbeStateHolder.log("unparsed: ${line.take(40)}")
         }
