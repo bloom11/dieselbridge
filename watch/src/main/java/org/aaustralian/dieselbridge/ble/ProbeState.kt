@@ -22,6 +22,15 @@ data class ProbeReport(
     val ignoringBatteryOptimizations: Boolean = true,
     val batteryPct: Int? = null,
     val charging: Boolean = false,
+
+    // Watch -> phone battery-status telemetry. These fields describe actual
+    // STATUS transmission attempts, not merely battery-state changes.
+    val batteryTxAttempts: Long = 0,
+    val lastBatteryTxPercent: Int? = null,
+    val lastBatteryTxAtMs: Long? = null,
+    val lastBatteryTxReason: String? = null,
+    val lastBatteryTxSucceeded: Boolean? = null,
+
     val log: List<String> = emptyList(),
 ) {
     /** True once we can advertise AND a central actually connects to our GATT server. */

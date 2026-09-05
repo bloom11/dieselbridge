@@ -156,8 +156,7 @@ class BlePeripheralController(
      */
     fun onBatteryStateChanged(state: BatteryState?) {
         if (state == null) {
-            lastSentPct = -1
-            lastSentChg = -1
+            clearBatteryState()
             return
         }
 
@@ -185,10 +184,17 @@ class BlePeripheralController(
         lastSentPct = state.percent
         lastSentChg = charging
 
-        sendStatus(
-            state.percent,
-            state.voltageVolts,
-            charging,
+        val sent =
+            sendStatus(
+                state.percent,
+                state.voltageVolts,
+                charging,
+            )
+
+        recordBatteryTx(
+            percent = state.percent,
+            reason = BATTERY_TX_REASON_REACTIVE,
+            sent = sent,
         )
     }
 
@@ -246,8 +252,7 @@ class BlePeripheralController(
         val state = batterySnapshot()
 
         if (state == null) {
-            lastSentPct = -1
-            lastSentChg = -1
+            clearBatteryState()
             return false
         }
 
@@ -268,10 +273,53 @@ class BlePeripheralController(
         lastSentPct = state.percent
         lastSentChg = charging
 
-        return sendStatus(
-            state.percent,
-            state.voltageVolts,
-            charging,
+        val sent =
+            sendStatus(
+                state.percent,
+                state.voltageVolts,
+                charging,
+            )
+
+        recordBatteryTx(
+            percent = state.percent,
+            reason = BATTERY_TX_REASON_SUBSCRIPTION,
+            sent = sent,
+        )
+
+        return sent
+    }
+
+    private fun clearBatteryState() {
+        lastSentPct = -1
+        lastSentChg = -1
+
+        ProbeStateHolder.update {
+            it.copy(
+                batteryPct = null,
+                charging = false,
+            )
+        }
+    }
+
+    private fun recordBatteryTx(
+        percent: Int,
+        reason: String,
+        sent: Boolean,
+    ) {
+        val now = System.currentTimeMillis()
+
+        ProbeStateHolder.update {
+            it.copy(
+                batteryTxAttempts = it.batteryTxAttempts + 1,
+                lastBatteryTxPercent = percent,
+                lastBatteryTxAtMs = now,
+                lastBatteryTxReason = reason,
+                lastBatteryTxSucceeded = sent,
+            )
+        }
+
+        ProbeStateHolder.log(
+            "battery TX $percent% reason=$reason sent=$sent",
         )
     }
 
@@ -289,5 +337,11 @@ class BlePeripheralController(
 
     private companion object {
         const val TAG = "BleController"
+
+        const val BATTERY_TX_REASON_REACTIVE =
+            "reactive"
+
+        const val BATTERY_TX_REASON_SUBSCRIPTION =
+            "subscription"
     }
 }
