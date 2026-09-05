@@ -11,8 +11,8 @@ import org.aaustralian.dieselbridge.protocol.GbMessage
 /**
  * Handles the Diesel-specific development command namespace.
  *
- * Keep commands narrow and explicit. This is not a general remote shell or
- * arbitrary Android-intent bridge.
+ * Commands are registered explicitly. This is not a general remote shell,
+ * arbitrary Android-intent bridge, reflection dispatcher or method bridge.
  */
 class DeveloperCommandHandler(
     context: Context,
@@ -21,17 +21,38 @@ class DeveloperCommandHandler(
     private val notifier =
         DiagnosticsNotifier(context)
 
+    private val registry =
+        DeveloperCommandRegistry()
+
+    init {
+        registry.register(
+            DeveloperCommandSpec(
+                name = COMMAND_DIAGNOSTICS,
+                summary = "Show runtime diagnostics notification",
+                effect = DeveloperCommandEffect.READ_ONLY,
+            ),
+        ) { _ ->
+            showDiagnostics()
+        }
+
+        registry.register(
+            DeveloperCommandSpec(
+                name = COMMAND_COMMANDS,
+                summary = "List supported Diesel developer commands",
+                effect = DeveloperCommandEffect.READ_ONLY,
+            ),
+        ) { _ ->
+            showCommands()
+        }
+    }
+
     fun handle(
         message: GbMessage.DieselCommand,
     ) {
-        when (message.command) {
-            COMMAND_DIAGNOSTICS ->
-                showDiagnostics()
-
-            else ->
-                recordUnknownCommand(
-                    message.command,
-                )
+        if (!registry.dispatch(message)) {
+            recordUnknownCommand(
+                message.command,
+            )
         }
     }
 
@@ -81,6 +102,35 @@ class DeveloperCommandHandler(
         )
     }
 
+    /**
+     * Discovery is generated directly from the same registrations used for
+     * dispatch, so it cannot silently drift away from supported commands.
+     *
+     * D4.2 will expose the same metadata in a dedicated watch UI/notification.
+     */
+    private fun showCommands() {
+        val commandNames =
+            registry
+                .specs()
+                .joinToString(", ") {
+                    it.name
+                }
+
+        DeveloperRuntimeAccess
+            .platform
+            .value
+            ?.diagnostics
+            ?.record(
+                type = "developer-command",
+                message =
+                    "supported commands: $commandNames",
+            )
+
+        ProbeStateHolder.log(
+            "diesel commands: $commandNames",
+        )
+    }
+
     private fun recordUnknownCommand(
         command: String,
     ) {
@@ -102,5 +152,8 @@ class DeveloperCommandHandler(
     private companion object {
         const val COMMAND_DIAGNOSTICS =
             "diagnostics"
+
+        const val COMMAND_COMMANDS =
+            "commands"
     }
 }

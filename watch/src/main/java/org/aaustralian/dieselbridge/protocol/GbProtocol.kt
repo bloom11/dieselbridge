@@ -53,6 +53,7 @@ sealed interface GbMessage {
      */
     data class DieselCommand(
         val command: String,
+        val name: String? = null,
     ) : GbMessage
 
     /** Any other `t` we don't handle yet. */
@@ -103,7 +104,12 @@ object GbProtocol {
                 "canned_responses_sync" -> GbMessage.CannedResponses(parseCanned(o))
                 "diesel" ->
                     o.stringOrNull("cmd")
-                        ?.let { GbMessage.DieselCommand(it) }
+                        ?.let { command ->
+                            GbMessage.DieselCommand(
+                                command = command,
+                                name = o.stringOrNull("name"),
+                            )
+                        }
                         ?: GbMessage.Other("diesel")
                 else -> GbMessage.Other(o.optString("t"))
             }

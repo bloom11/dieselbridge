@@ -60,7 +60,15 @@ won't both fit in one 31-byte advertisement).
 - ✅ `{"t":"canned_responses_sync","d":[{"text":…,"disp":…?}]}` — synced quick-reply choices.
 - ✅ `{"t":"diesel","cmd":"diagnostics"}` — **DieselBridge extension**, not part of the
   standard Bangle.js protocol. Posts one developer notification on the watch; tapping it opens the
-  internal developer console. Unknown Diesel commands are ignored and logged.
+  internal developer console.
+- ✅ `{"t":"diesel","cmd":"commands"}` — discovers the commands registered by the developer command
+  dispatcher. The catalog is generated from the same registrations used for execution, so discovery
+  cannot silently drift away from the actual allow-list.
+- Diesel command families may use an optional `name` target. For example the planned safe-test
+  envelope is `{"t":"diesel","cmd":"test","name":"vibration"}`. `cmd` selects an explicitly
+  registered command family and `name` selects a target inside that family's own allow-list.
+  Unknown commands or targets must never fall through to shell, reflection, arbitrary Intent or
+  arbitrary method execution.
 - later: `{"t":"alarm",…}`, `{"t":"weather",…}`
 
 ### Outbound (watch → phone) — the action back-channel — ✅ = implemented
