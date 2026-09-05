@@ -63,6 +63,8 @@
         <activity
             android:name=".ui.debug.DiagnosticsActivity"
             android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
             android:taskAffinity=""
             android:label="Diesel Developer" />
 
