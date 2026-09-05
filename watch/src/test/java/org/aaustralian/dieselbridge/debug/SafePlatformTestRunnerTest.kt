@@ -4,12 +4,32 @@ package org.aaustralian.dieselbridge.debug
 
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.capability.VibrationCapability
+import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
 import org.aaustralian.dieselbridge.platform.provider.DieselProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SafePlatformTestRunnerTest {
+
+    @Test
+    fun specsExposeRegisteredSafeTests() {
+        val runner =
+            SafePlatformTestRunner(
+                capabilities = CapabilityRegistry(),
+            )
+
+        assertEquals(
+            listOf(
+                SafePlatformTestSpec(
+                    name = "vibration",
+                    summary =
+                        "Run a bounded 250 ms platform vibration test",
+                ),
+            ),
+            runner.specs(),
+        )
+    }
 
     @Test
     fun vibrationUsesSelectedPlatformProviderWithFixedDuration() {
@@ -158,6 +178,39 @@ class SafePlatformTestRunnerTest {
                 message = "provider failed",
             ),
             runner.run("vibration"),
+        )
+    }
+
+    @Test
+    fun resultsAreRecordedInPlatformDiagnostics() {
+        val diagnostics =
+            PlatformDiagnostics(
+                clock = { 42L },
+            )
+
+        val runner =
+            SafePlatformTestRunner(
+                capabilities = CapabilityRegistry(),
+                diagnostics = diagnostics,
+            )
+
+        runner.run("vibration")
+
+        val record =
+            diagnostics
+                .state
+                .value
+                .recentRecords
+                .single()
+
+        assertEquals(
+            "developer-test",
+            record.type,
+        )
+
+        assertEquals(
+            "vibration unavailable",
+            record.message,
         )
     }
 

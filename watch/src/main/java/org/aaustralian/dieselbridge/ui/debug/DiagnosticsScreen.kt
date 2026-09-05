@@ -40,6 +40,9 @@ import org.aaustralian.dieselbridge.ble.ProbeReport
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
 import org.aaustralian.dieselbridge.debug.DeveloperCommandSpec
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
+import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
+import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
+import org.aaustralian.dieselbridge.debug.SafePlatformTestSpec
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.capability.BatteryCapability
 import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
@@ -59,6 +62,7 @@ private enum class DiagnosticsPage {
     PLATFORM,
     BLUETOOTH,
     COMMANDS,
+    TOOLS,
     LOGS,
 }
 
@@ -71,6 +75,9 @@ fun DiagnosticsScreen(
 
     val commandCatalog by
         DeveloperRuntimeAccess.commandCatalog.collectAsStateWithLifecycle()
+
+    val safeTestRunner by
+        DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
 
     val probe by
         ProbeStateHolder.state.collectAsStateWithLifecycle()
@@ -103,6 +110,10 @@ fun DiagnosticsScreen(
                         platform = currentPlatform,
                         probe = probe,
                         commandCatalog = commandCatalog,
+                        safeTests =
+                            safeTestRunner
+                                ?.specs()
+                                .orEmpty(),
                         onPlatform = {
                             page = DiagnosticsPage.PLATFORM
                         },
@@ -111,6 +122,9 @@ fun DiagnosticsScreen(
                         },
                         onCommands = {
                             page = DiagnosticsPage.COMMANDS
+                        },
+                        onTools = {
+                            page = DiagnosticsPage.TOOLS
                         },
                         onLogs = {
                             page = DiagnosticsPage.LOGS
@@ -141,6 +155,14 @@ fun DiagnosticsScreen(
                         },
                     )
 
+                DiagnosticsPage.TOOLS ->
+                    ToolsScreen(
+                        runner = safeTestRunner,
+                        onBack = {
+                            page = DiagnosticsPage.OVERVIEW
+                        },
+                    )
+
                 DiagnosticsPage.LOGS ->
                     LogsScreen(
                         platform = currentPlatform,
@@ -159,9 +181,11 @@ private fun OverviewScreen(
     platform: DieselPlatform,
     probe: ProbeReport,
     commandCatalog: List<DeveloperCommandSpec>,
+    safeTests: List<SafePlatformTestSpec>,
     onPlatform: () -> Unit,
     onBluetooth: () -> Unit,
     onCommands: () -> Unit,
+    onTools: () -> Unit,
     onLogs: () -> Unit,
 ) {
     val diagnostics by
@@ -313,6 +337,22 @@ private fun OverviewScreen(
         )
 
         DiagnosticCard(
+            title = "TOOLS",
+            primary =
+                "${safeTests.size} bounded tests",
+            secondary =
+                safeTests
+                    .joinToString(", ") {
+                        it.name
+                    }
+                    .ifBlank {
+                        "No safe tests registered"
+                    },
+            healthy = safeTests.isNotEmpty(),
+            onClick = onTools,
+        )
+
+        DiagnosticCard(
             title = "BUILD",
             primary = BuildConfig.VERSION_NAME,
             secondary =
@@ -355,6 +395,106 @@ private fun CommandsScreen(
                     healthy = true,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ToolsScreen(
+    runner: SafePlatformTestRunner?,
+    onBack: () -> Unit,
+) {
+    val tests =
+        runner
+            ?.specs()
+            .orEmpty()
+
+    var lastResult by remember(runner) {
+        mutableStateOf<SafePlatformTestResult?>(null)
+    }
+
+    DeveloperPage(
+        title = "Tools",
+        subtitle = "${tests.size} bounded safe tests",
+        onBack = onBack,
+    ) {
+        lastResult?.let { result ->
+            DiagnosticCard(
+                title = "LAST RESULT",
+                primary =
+                    when (result) {
+                        is SafePlatformTestResult.Success ->
+                            "SUCCESS"
+
+                        is SafePlatformTestResult.Unavailable ->
+                            "UNAVAILABLE"
+
+                        is SafePlatformTestResult.RateLimited ->
+                            "RATE LIMITED"
+
+                        is SafePlatformTestResult.Failed ->
+                            "FAILED"
+
+                        is SafePlatformTestResult.UnknownTarget ->
+                            "UNKNOWN TARGET"
+                    },
+                secondary =
+                    when (result) {
+                        is SafePlatformTestResult.Success ->
+                            "${result.target} · ${result.providerId}"
+
+                        is SafePlatformTestResult.Unavailable ->
+                            "${result.target} · no active provider"
+
+                        is SafePlatformTestResult.RateLimited ->
+                            "${result.target} · retry in ${result.retryAfterMs} ms"
+
+                        is SafePlatformTestResult.Failed ->
+                            "${result.target} · ${result.message}"
+
+                        is SafePlatformTestResult.UnknownTarget ->
+                            result.target
+                                ?: "<missing>"
+                    },
+                healthy =
+                    result is SafePlatformTestResult.Success,
+            )
+        }
+
+        when {
+            runner == null ->
+                DiagnosticCard(
+                    title = "SAFE TESTS",
+                    primary = "Runner unavailable",
+                    secondary =
+                        "Diesel service runtime is not attached",
+                    healthy = false,
+                )
+
+            tests.isEmpty() ->
+                DiagnosticCard(
+                    title = "SAFE TESTS",
+                    primary = "None registered",
+                    secondary = null,
+                    healthy = false,
+                )
+
+            else ->
+                tests.forEach { test ->
+                    DiagnosticCard(
+                        title = test.name.uppercase(),
+                        primary = test.summary,
+                        secondary =
+                            "Platform routed · fixed safety bounds",
+                        healthy = true,
+                        onClick = {
+                            lastResult =
+                                runner.run(
+                                    test.name,
+                                )
+                        },
+                    )
+                }
         }
     }
 }

@@ -4,6 +4,12 @@ package org.aaustralian.dieselbridge.debug
 
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.capability.VibrationCapability
+import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
+
+data class SafePlatformTestSpec(
+    val name: String,
+    val summary: String,
+)
 
 sealed interface SafePlatformTestResult {
 
@@ -35,34 +41,96 @@ sealed interface SafePlatformTestResult {
  * Explicit allow-list of bounded developer tests that exercise the Diesel
  * platform API rather than Android or legacy implementations directly.
  *
- * This is deliberately not a reflection/method dispatcher.
+ * Registration is the single source of truth for both test discovery and
+ * execution. This is deliberately not a reflection/method dispatcher.
  */
 class SafePlatformTestRunner(
     private val capabilities: CapabilityRegistry,
+    private val diagnostics: PlatformDiagnostics? = null,
     private val clock: () -> Long = {
-        System.currentTimeMillis()
+        System.nanoTime() / 1_000_000L
     },
 ) {
 
-    private val lock = Any()
+    private data class Entry(
+        val spec: SafePlatformTestSpec,
+        val action: () -> SafePlatformTestResult,
+    )
+
+    private val entries =
+        linkedMapOf<String, Entry>()
+
+    private val vibrationLock = Any()
 
     private var lastVibrationAtMs: Long? = null
 
+    init {
+        register(
+            spec =
+                SafePlatformTestSpec(
+                    name = TARGET_VIBRATION,
+                    summary =
+                        "Run a bounded 250 ms platform vibration test",
+                ),
+            action = ::runVibration,
+        )
+    }
+
+    fun specs(): List<SafePlatformTestSpec> =
+        entries.values.map {
+            it.spec
+        }
+
     fun run(
         target: String?,
-    ): SafePlatformTestResult =
-        when (target) {
-            TARGET_VIBRATION ->
-                runVibration()
+    ): SafePlatformTestResult {
+        val entry =
+            target?.let {
+                entries[it]
+            }
 
-            else ->
+        val result =
+            if (entry == null) {
                 SafePlatformTestResult.UnknownTarget(
                     target = target,
                 )
+            } else {
+                entry.action()
+            }
+
+        diagnostics?.record(
+            type = "developer-test",
+            message = result.toDiagnosticMessage(),
+        )
+
+        return result
+    }
+
+    private fun register(
+        spec: SafePlatformTestSpec,
+        action: () -> SafePlatformTestResult,
+    ) {
+        require(TEST_NAME.matches(spec.name)) {
+            "Invalid safe platform test name '${spec.name}'"
         }
 
+        require(spec.summary.isNotBlank()) {
+            "Safe platform test summary must not be blank"
+        }
+
+        require(spec.name !in entries) {
+            "Safe platform test '${spec.name}' is already registered"
+        }
+
+        entries[spec.name] =
+            Entry(
+                spec = spec,
+                action = action,
+            )
+    }
+
     private fun runVibration(): SafePlatformTestResult {
-        synchronized(lock) {
+        synchronized(vibrationLock) {
             val now = clock()
 
             lastVibrationAtMs?.let { previous ->
@@ -119,6 +187,25 @@ class SafePlatformTestRunner(
         }
     }
 
+    private fun SafePlatformTestResult.toDiagnosticMessage(): String =
+        when (this) {
+            is SafePlatformTestResult.Success ->
+                "$target success provider=$providerId"
+
+            is SafePlatformTestResult.Unavailable ->
+                "$target unavailable"
+
+            is SafePlatformTestResult.RateLimited ->
+                "$target rate-limited retryAfterMs=$retryAfterMs"
+
+            is SafePlatformTestResult.Failed ->
+                "$target failed: $message"
+
+            is SafePlatformTestResult.UnknownTarget ->
+                "ignored unknown safe-test target: " +
+                    (target ?: "<missing>")
+        }
+
     companion object {
         const val TARGET_VIBRATION =
             "vibration"
@@ -128,5 +215,8 @@ class SafePlatformTestRunner(
 
         const val MIN_VIBRATION_INTERVAL_MS =
             2_000L
+
+        private val TEST_NAME =
+            Regex("[a-z][a-z0-9_.-]*")
     }
 }

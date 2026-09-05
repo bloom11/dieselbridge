@@ -11,7 +11,8 @@ import org.aaustralian.dieselbridge.platform.DieselPlatform
  * Process-local access to the live Diesel runtime for developer tooling.
  *
  * This deliberately does not persist or duplicate platform state. Diagnostic
- * UIs observe the same DieselPlatform instance owned by DieselBridgeService.
+ * UIs observe the same DieselPlatform and safe-test runner instances owned by
+ * DieselBridgeService.
  */
 object DeveloperRuntimeAccess {
 
@@ -20,6 +21,13 @@ object DeveloperRuntimeAccess {
 
     val platform: StateFlow<DieselPlatform?> =
         mutablePlatform.asStateFlow()
+
+    private val mutableSafeTestRunner =
+        MutableStateFlow<SafePlatformTestRunner?>(null)
+
+    val safeTestRunner:
+        StateFlow<SafePlatformTestRunner?> =
+        mutableSafeTestRunner.asStateFlow()
 
     private val mutableCommandCatalog =
         MutableStateFlow<List<DeveloperCommandSpec>>(
@@ -37,12 +45,26 @@ object DeveloperRuntimeAccess {
             commands.toList()
     }
 
-    fun attach(platform: DieselPlatform) {
-        mutablePlatform.value = platform
+    fun attach(
+        platform: DieselPlatform,
+        safePlatformTestRunner: SafePlatformTestRunner,
+    ) {
+        /*
+         * Publish the runner first so any UI observing a newly-active platform
+         * can immediately resolve its matching service-owned tooling.
+         */
+        mutableSafeTestRunner.value =
+            safePlatformTestRunner
+
+        mutablePlatform.value =
+            platform
     }
 
-    fun detach(platform: DieselPlatform) {
+    fun detach(
+        platform: DieselPlatform,
+    ) {
         if (mutablePlatform.value === platform) {
+            mutableSafeTestRunner.value = null
             mutablePlatform.value = null
         }
     }

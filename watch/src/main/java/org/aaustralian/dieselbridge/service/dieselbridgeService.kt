@@ -32,6 +32,7 @@ import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
+import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
@@ -60,6 +61,12 @@ class DieselBridgeService : Service() {
     private val platform =
         DieselPlatform(
             scope = platformScope,
+        )
+
+    private val safePlatformTestRunner =
+        SafePlatformTestRunner(
+            capabilities = platform.capabilities,
+            diagnostics = platform.diagnostics,
         )
 
     private val legacyBatteryProvider =
@@ -107,7 +114,10 @@ class DieselBridgeService : Service() {
             priority = LegacyBatteryProvider.PRIORITY,
         )
 
-        DeveloperRuntimeAccess.attach(platform)
+        DeveloperRuntimeAccess.attach(
+            platform = platform,
+            safePlatformTestRunner = safePlatformTestRunner,
+        )
 
         val bleController =
             BlePeripheralController(
