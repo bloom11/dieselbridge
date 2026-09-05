@@ -61,6 +61,12 @@
         </activity>
 
         <activity
+            android:name=".ui.debug.DiagnosticsActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:label="Diesel Developer" />
+
+        <activity
             android:name=".ui.FindAlertActivity"
             android:exported="false"
             android:launchMode="singleTop"

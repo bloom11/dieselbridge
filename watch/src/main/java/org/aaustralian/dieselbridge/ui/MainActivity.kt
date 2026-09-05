@@ -3,6 +3,7 @@
 package org.aaustralian.dieselbridge.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.core.content.ContextCompat
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
 import org.aaustralian.dieselbridge.service.DieselBridgeService
 import org.aaustralian.dieselbridge.system.PowerHelper
+import org.aaustralian.dieselbridge.ui.debug.DiagnosticsActivity
 
 /**
  * Launcher activity: requests the BLE runtime permissions, starts the foreground BLE service,
@@ -32,7 +34,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { NotificationsScreen() }
+        setContent {
+            NotificationsScreen(
+                onOpenDeveloper = {
+                    startActivity(
+                        Intent(
+                            this,
+                            DiagnosticsActivity::class.java,
+                        ),
+                    )
+                },
+            )
+        }
         ensurePermissionsThenStart()
     }
 

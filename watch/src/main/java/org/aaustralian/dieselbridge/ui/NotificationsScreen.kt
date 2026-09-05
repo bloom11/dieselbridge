@@ -61,7 +61,9 @@ private val BannerBg = Color(0xFF2A2B2E)
 
 /** Notification list with per-card Dismiss / Reply actions (watch -> phone back-channel). */
 @Composable
-fun NotificationsScreen() {
+fun NotificationsScreen(
+    onOpenDeveloper: () -> Unit = {},
+) {
     val notifications by NotificationStore.items.collectAsStateWithLifecycle()
     val status by ProbeStateHolder.state.collectAsStateWithLifecycle()
     val nowPlaying by MusicStore.state.collectAsStateWithLifecycle()
@@ -148,6 +150,14 @@ fun NotificationsScreen() {
                     ActionChip("Clear all", { NotificationActions.dismissAll() }, Modifier.weight(1f))
                 }
             }
+
+            ActionChip(
+                label = "Developer",
+                onClick = onOpenDeveloper,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+            )
         }
     }
 }

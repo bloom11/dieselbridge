@@ -31,6 +31,7 @@ import org.aaustralian.dieselbridge.ble.BlePeripheralController
 import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
+import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
@@ -105,6 +106,8 @@ class DieselBridgeService : Service() {
             provider = legacyBatteryProvider,
             priority = LegacyBatteryProvider.PRIORITY,
         )
+
+        DeveloperRuntimeAccess.attach(platform)
 
         val bleController =
             BlePeripheralController(
@@ -188,6 +191,7 @@ class DieselBridgeService : Service() {
         NotificationActions.callHandler = null
         NotificationActions.musicHandler = null
         tileScope.cancel()
+        DeveloperRuntimeAccess.detach(platform)
         platformScope.cancel()
         runCatching { unregisterReceiver(bluetoothReceiver) }
         runCatching { unregisterReceiver(batteryReceiver) }
