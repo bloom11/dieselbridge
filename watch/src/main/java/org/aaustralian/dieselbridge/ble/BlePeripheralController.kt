@@ -4,8 +4,6 @@ package org.aaustralian.dieselbridge.ble
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import org.aaustralian.dieselbridge.BuildConfig
@@ -13,6 +11,7 @@ import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
+import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
@@ -31,6 +30,7 @@ import org.aaustralian.dieselbridge.protocol.GbProtocol
 class BlePeripheralController(
     private val context: Context,
     private val capabilities: CapabilityRegistry = CapabilityRegistry(),
+    private val batterySnapshot: () -> BatteryState? = { null },
 ) {
     private var advertiser: NusAdvertiser? = null
     private var gattServer: NusGattServer? = null
@@ -147,16 +147,49 @@ class BlePeripheralController(
     }
 
     /**
-     * Battery broadcast callback from the service. Mirrors the level/charging into [ProbeStateHolder]
-     * and pushes a `status` line when the value changed (dedup against [lastSentPct]/[lastSentChg]);
-     * the BLE send no-ops if no central is connected.
+     * Canonical platform battery-state callback.
+     *
+     * null means no usable battery provider is currently available. In that
+     * case the wire protocol has no unknown-state representation, so nothing
+     * is transmitted and the dedup state is reset. If battery state later
+     * returns with the same value, it will therefore be sent again.
      */
-    fun onBatteryUpdate(s: BatteryStatus) {
-        ProbeStateHolder.update { it.copy(batteryPct = s.percent, charging = s.charging == 1) }
-        if (s.percent == lastSentPct && s.charging == lastSentChg) return
-        lastSentPct = s.percent
-        lastSentChg = s.charging
-        sendStatus(s.percent, s.volts, s.charging)
+    fun onBatteryStateChanged(state: BatteryState?) {
+        if (state == null) {
+            lastSentPct = -1
+            lastSentChg = -1
+            return
+        }
+
+        val charging =
+            if (state.charging) {
+                1
+            } else {
+                0
+            }
+
+        ProbeStateHolder.update {
+            it.copy(
+                batteryPct = state.percent,
+                charging = state.charging,
+            )
+        }
+
+        if (
+            state.percent == lastSentPct &&
+            charging == lastSentChg
+        ) {
+            return
+        }
+
+        lastSentPct = state.percent
+        lastSentChg = charging
+
+        sendStatus(
+            state.percent,
+            state.voltageVolts,
+            charging,
+        )
     }
 
     fun onBluetoothStateOn() {
@@ -208,14 +241,38 @@ class BlePeripheralController(
     private fun sendStatus(bat: Int, volt: Double, chg: Int): Boolean =
         gattServer?.sendLine(GbProtocol.encodeStatus(bat, volt, chg)) ?: false
 
-    /** Reads the sticky battery intent and pushes it as a `status` line. */
+    /** Pushes a synchronous snapshot from the currently selected battery provider. */
     private fun pushBatteryStatus(): Boolean {
-        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return false
-        val s = BatteryReader.read(intent)
-        ProbeStateHolder.update { it.copy(batteryPct = s.percent, charging = s.charging == 1) }
-        lastSentPct = s.percent
-        lastSentChg = s.charging
-        return sendStatus(s.percent, s.volts, s.charging)
+        val state = batterySnapshot()
+
+        if (state == null) {
+            lastSentPct = -1
+            lastSentChg = -1
+            return false
+        }
+
+        val charging =
+            if (state.charging) {
+                1
+            } else {
+                0
+            }
+
+        ProbeStateHolder.update {
+            it.copy(
+                batteryPct = state.percent,
+                charging = state.charging,
+            )
+        }
+
+        lastSentPct = state.percent
+        lastSentChg = charging
+
+        return sendStatus(
+            state.percent,
+            state.voltageVolts,
+            charging,
+        )
     }
 
     private fun publishServerState() {

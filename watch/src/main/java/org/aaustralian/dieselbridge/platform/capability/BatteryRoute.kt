@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
  * collection continues from the newly selected provider.
  */
 class BatteryRoute(
-    registry: CapabilityRegistry,
+    private val registry: CapabilityRegistry,
     scope: CoroutineScope,
 ) {
 
@@ -26,6 +26,17 @@ class BatteryRoute(
 
     val state: StateFlow<BatteryState?> =
         mutableState.asStateFlow()
+
+    /**
+     * Returns the current state directly from the provider selected by the
+     * registry. Unlike [state], this does not wait for coroutine propagation
+     * after a provider-selection change.
+     */
+    fun current(): BatteryState? =
+        registry
+            .resolveAs<BatteryCapability>(BatteryCapability.ID)
+            ?.state
+            ?.value
 
     init {
         scope.launch {

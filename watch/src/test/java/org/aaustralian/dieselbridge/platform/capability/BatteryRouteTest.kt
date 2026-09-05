@@ -222,6 +222,64 @@ class BatteryRouteTest {
             }
         }
 
+    @Test
+    fun currentReadsSelectedProviderSynchronously() =
+        runBlocking {
+            val registry = CapabilityRegistry()
+            val scope =
+                CoroutineScope(
+                    SupervisorJob() + Dispatchers.Unconfined,
+                )
+
+            try {
+                val low =
+                    FakeBatteryProvider(
+                        providerId = "battery.low",
+                        initialPercent = 20,
+                    )
+
+                val high =
+                    FakeBatteryProvider(
+                        providerId = "battery.high",
+                        initialPercent = 80,
+                    )
+
+                val route =
+                    BatteryRoute(
+                        registry = registry,
+                        scope = scope,
+                    )
+
+                assertNull(route.current())
+
+                registry.register(
+                    capability = low,
+                    provider = low,
+                    priority = 10,
+                )
+
+                assertEquals(20, route.current()?.percent)
+
+                registry.register(
+                    capability = high,
+                    provider = high,
+                    priority = 100,
+                )
+
+                assertEquals(80, route.current()?.percent)
+
+                registry.setAvailability(
+                    capabilityId = BatteryCapability.ID,
+                    providerId = high.providerId,
+                    availability = ProviderAvailability.ERROR,
+                )
+
+                assertEquals(20, route.current()?.percent)
+            } finally {
+                scope.cancel()
+            }
+        }
+
     private suspend fun awaitPercent(
         state: StateFlow<BatteryState?>,
         expected: Int,

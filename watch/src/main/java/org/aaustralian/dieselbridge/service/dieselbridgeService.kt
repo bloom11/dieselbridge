@@ -31,6 +31,7 @@ import org.aaustralian.dieselbridge.ble.BlePeripheralController
 import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
+import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.tile.MusicTileService
@@ -45,7 +46,23 @@ import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 class DieselBridgeService : Service() {
 
     private var controller: BlePeripheralController? = null
-    private val platform = DieselPlatform()
+
+    /*
+     * Lifecycle scope for Diesel platform routes/modules.
+     * This service owns and cancels it.
+     */
+    private val platformScope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Main.immediate,
+        )
+
+    private val platform =
+        DieselPlatform(
+            scope = platformScope,
+        )
+
+    private val legacyBatteryProvider =
+        LegacyBatteryProvider()
 
     /** Coarse-signal watcher that pokes the tile to redraw when connection/battery/latest-notif change. */
     private val tileScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -63,7 +80,10 @@ class DieselBridgeService : Service() {
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != Intent.ACTION_BATTERY_CHANGED) return
-            controller?.onBatteryUpdate(BatteryReader.read(intent))
+
+            legacyBatteryProvider.update(
+                BatteryReader.read(intent),
+            )
         }
     }
 
@@ -71,18 +91,6 @@ class DieselBridgeService : Service() {
         super.onCreate()
         createChannel()
         startAsForeground()
-        ContextCompat.registerReceiver(
-            this,
-            bluetoothReceiver,
-            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-        ContextCompat.registerReceiver(
-            this,
-            batteryReceiver,
-            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
         val vibrationProvider =
             LegacyVibrationProvider(applicationContext)
 
@@ -92,10 +100,59 @@ class DieselBridgeService : Service() {
             priority = LegacyVibrationProvider.PRIORITY,
         )
 
-        controller = BlePeripheralController(
-            applicationContext,
-            platform.capabilities,
-        ).also { it.start() }
+        platform.capabilities.register(
+            capability = legacyBatteryProvider,
+            provider = legacyBatteryProvider,
+            priority = LegacyBatteryProvider.PRIORITY,
+        )
+
+        val bleController =
+            BlePeripheralController(
+                context = applicationContext,
+                capabilities = platform.capabilities,
+                batterySnapshot = {
+                    platform.battery.current()
+                },
+            )
+
+        controller = bleController
+
+        /*
+         * Reactive path for ordinary battery changes.
+         * BLE subscription/reconnect uses batterySnapshot instead.
+         */
+        platformScope.launch {
+            platform.battery.state.collect { state ->
+                bleController.onBatteryStateChanged(state)
+            }
+        }
+
+        ContextCompat.registerReceiver(
+            this,
+            bluetoothReceiver,
+            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+
+        /*
+         * ACTION_BATTERY_CHANGED is sticky. Bootstrap the provider from the
+         * returned snapshot while also registering for subsequent changes.
+         */
+        val stickyBattery =
+            ContextCompat.registerReceiver(
+                this,
+                batteryReceiver,
+                IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+
+        stickyBattery?.let {
+            legacyBatteryProvider.update(
+                BatteryReader.read(it),
+            )
+        }
+
+        bleController.start()
         // Route UI action taps (dismiss / reply / open) to the controller's BLE back-channel.
         NotificationActions.handler = { id, action, reply -> controller?.sendAction(id, action, reply) }
         // Route find-phone taps to the controller so the watch can buzz the phone over BLE.
@@ -131,6 +188,7 @@ class DieselBridgeService : Service() {
         NotificationActions.callHandler = null
         NotificationActions.musicHandler = null
         tileScope.cancel()
+        platformScope.cancel()
         runCatching { unregisterReceiver(bluetoothReceiver) }
         runCatching { unregisterReceiver(batteryReceiver) }
         controller?.stop()
