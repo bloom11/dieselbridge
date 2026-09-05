@@ -32,7 +32,10 @@ data class DeveloperCommandSpec(
  *
  * Registration is the single source of truth for both dispatch and discovery.
  */
-class DeveloperCommandRegistry {
+class DeveloperCommandRegistry(
+    private val onCatalogChanged:
+        (List<DeveloperCommandSpec>) -> Unit = {},
+) {
 
     private data class Entry(
         val spec: DeveloperCommandSpec,
@@ -59,6 +62,8 @@ class DeveloperCommandRegistry {
                 spec = spec,
                 handler = handler,
             )
+
+        onCatalogChanged(specs())
     }
 
     /**

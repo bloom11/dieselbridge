@@ -21,6 +21,22 @@ object DeveloperRuntimeAccess {
     val platform: StateFlow<DieselPlatform?> =
         mutablePlatform.asStateFlow()
 
+    private val mutableCommandCatalog =
+        MutableStateFlow<List<DeveloperCommandSpec>>(
+            emptyList(),
+        )
+
+    val commandCatalog:
+        StateFlow<List<DeveloperCommandSpec>> =
+        mutableCommandCatalog.asStateFlow()
+
+    fun publishCommandCatalog(
+        commands: List<DeveloperCommandSpec>,
+    ) {
+        mutableCommandCatalog.value =
+            commands.toList()
+    }
+
     fun attach(platform: DieselPlatform) {
         mutablePlatform.value = platform
     }

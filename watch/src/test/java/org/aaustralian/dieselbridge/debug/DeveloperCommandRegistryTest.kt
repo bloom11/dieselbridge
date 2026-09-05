@@ -51,6 +51,42 @@ class DeveloperCommandRegistryTest {
     }
 
     @Test
+    fun registrationPublishesCompleteCatalog() {
+        val published =
+            mutableListOf<List<DeveloperCommandSpec>>()
+
+        val registry =
+            DeveloperCommandRegistry(
+                onCatalogChanged = published::add,
+            )
+
+        val diagnostics =
+            DeveloperCommandSpec(
+                name = "diagnostics",
+                summary = "Show diagnostics",
+                effect = DeveloperCommandEffect.READ_ONLY,
+            )
+
+        val commands =
+            DeveloperCommandSpec(
+                name = "commands",
+                summary = "List commands",
+                effect = DeveloperCommandEffect.READ_ONLY,
+            )
+
+        registry.register(diagnostics) { }
+        registry.register(commands) { }
+
+        assertEquals(
+            listOf(
+                listOf(diagnostics),
+                listOf(diagnostics, commands),
+            ),
+            published,
+        )
+    }
+
+    @Test
     fun unknownCommandDoesNotDispatch() {
         val registry =
             DeveloperCommandRegistry()

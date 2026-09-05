@@ -38,6 +38,7 @@ import java.util.Date
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.ble.ProbeReport
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
+import org.aaustralian.dieselbridge.debug.DeveloperCommandSpec
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.capability.BatteryCapability
@@ -57,19 +58,31 @@ private enum class DiagnosticsPage {
     OVERVIEW,
     PLATFORM,
     BLUETOOTH,
+    COMMANDS,
     LOGS,
 }
 
 @Composable
-fun DiagnosticsScreen() {
+fun DiagnosticsScreen(
+    openCommandsInitially: Boolean = false,
+) {
     val platform by
         DeveloperRuntimeAccess.platform.collectAsStateWithLifecycle()
+
+    val commandCatalog by
+        DeveloperRuntimeAccess.commandCatalog.collectAsStateWithLifecycle()
 
     val probe by
         ProbeStateHolder.state.collectAsStateWithLifecycle()
 
     var page by remember {
-        mutableStateOf(DiagnosticsPage.OVERVIEW)
+        mutableStateOf(
+            if (openCommandsInitially) {
+                DiagnosticsPage.COMMANDS
+            } else {
+                DiagnosticsPage.OVERVIEW
+            },
+        )
     }
 
     BackHandler(
@@ -89,11 +102,15 @@ fun DiagnosticsScreen() {
                     OverviewScreen(
                         platform = currentPlatform,
                         probe = probe,
+                        commandCatalog = commandCatalog,
                         onPlatform = {
                             page = DiagnosticsPage.PLATFORM
                         },
                         onBluetooth = {
                             page = DiagnosticsPage.BLUETOOTH
+                        },
+                        onCommands = {
+                            page = DiagnosticsPage.COMMANDS
                         },
                         onLogs = {
                             page = DiagnosticsPage.LOGS
@@ -116,6 +133,14 @@ fun DiagnosticsScreen() {
                         },
                     )
 
+                DiagnosticsPage.COMMANDS ->
+                    CommandsScreen(
+                        commands = commandCatalog,
+                        onBack = {
+                            page = DiagnosticsPage.OVERVIEW
+                        },
+                    )
+
                 DiagnosticsPage.LOGS ->
                     LogsScreen(
                         platform = currentPlatform,
@@ -133,8 +158,10 @@ fun DiagnosticsScreen() {
 private fun OverviewScreen(
     platform: DieselPlatform,
     probe: ProbeReport,
+    commandCatalog: List<DeveloperCommandSpec>,
     onPlatform: () -> Unit,
     onBluetooth: () -> Unit,
+    onCommands: () -> Unit,
     onLogs: () -> Unit,
 ) {
     val diagnostics by
@@ -270,6 +297,22 @@ private fun OverviewScreen(
         )
 
         DiagnosticCard(
+            title = "COMMANDS",
+            primary =
+                "${commandCatalog.size} supported",
+            secondary =
+                commandCatalog
+                    .joinToString(", ") {
+                        it.name
+                    }
+                    .ifBlank {
+                        "No commands registered"
+                    },
+            healthy = commandCatalog.isNotEmpty(),
+            onClick = onCommands,
+        )
+
+        DiagnosticCard(
             title = "BUILD",
             primary = BuildConfig.VERSION_NAME,
             secondary =
@@ -280,6 +323,39 @@ private fun OverviewScreen(
                 },
             healthy = true,
         )
+    }
+}
+
+@Composable
+private fun CommandsScreen(
+    commands: List<DeveloperCommandSpec>,
+    onBack: () -> Unit,
+) {
+    DeveloperPage(
+        title = "Commands",
+        subtitle = "${commands.size} registered",
+        onBack = onBack,
+    ) {
+        if (commands.isEmpty()) {
+            DiagnosticCard(
+                title = "COMMANDS",
+                primary = "None registered",
+                secondary = null,
+                healthy = false,
+            )
+        } else {
+            commands.forEach { command ->
+                DiagnosticCard(
+                    title = command.name.uppercase(),
+                    primary = command.summary,
+                    secondary =
+                        command.effect.name
+                            .lowercase()
+                            .replace('_', ' '),
+                    healthy = true,
+                )
+            }
+        }
     }
 }
 

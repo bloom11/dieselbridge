@@ -22,7 +22,10 @@ class DeveloperCommandHandler(
         DiagnosticsNotifier(context)
 
     private val registry =
-        DeveloperCommandRegistry()
+        DeveloperCommandRegistry(
+            onCatalogChanged =
+                DeveloperRuntimeAccess::publishCommandCatalog,
+        )
 
     init {
         registry.register(
@@ -128,6 +131,10 @@ class DeveloperCommandHandler(
 
         ProbeStateHolder.log(
             "diesel commands: $commandNames",
+        )
+
+        notifier.showCommands(
+            commands = registry.specs(),
         )
     }
 

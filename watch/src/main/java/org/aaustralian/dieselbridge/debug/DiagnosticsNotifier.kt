@@ -38,24 +38,9 @@ class DiagnosticsNotifier(
         charging: Boolean?,
         batteryProviderId: String?,
     ) {
-        val openIntent =
-            Intent(
-                context,
-                DiagnosticsActivity::class.java,
-            ).apply {
-                flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-
         val pendingIntent =
-            PendingIntent.getActivity(
-                context,
-                OPEN_REQUEST_CODE,
-                openIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                    PendingIntent.FLAG_IMMUTABLE,
+            openPendingIntent(
+                openCommands = false,
             )
 
         val bleText =
@@ -162,6 +147,102 @@ class DiagnosticsNotifier(
                     notification,
                 )
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun showCommands(
+        commands: List<DeveloperCommandSpec>,
+    ) {
+        val pendingIntent =
+            openPendingIntent(
+                openCommands = true,
+            )
+
+        val detail =
+            if (commands.isEmpty()) {
+                "No commands registered"
+            } else {
+                commands.joinToString(
+                    separator = "\n\n",
+                ) { command ->
+                    buildString {
+                        append(command.name)
+                        append(" · ")
+                        append(command.effect)
+                        append("\n")
+                        append(command.summary)
+                    }
+                }
+            }
+
+        val notification =
+            NotificationCompat.Builder(
+                context,
+                CHANNEL_ID,
+            )
+                .setSmallIcon(
+                    R.drawable.ic_launcher_foreground,
+                )
+                .setContentTitle("Diesel Commands")
+                .setContentText(
+                    "${commands.size} supported commands",
+                )
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText(detail),
+                )
+                .setCategory(
+                    NotificationCompat.CATEGORY_STATUS,
+                )
+                .setPriority(
+                    NotificationCompat.PRIORITY_DEFAULT,
+                )
+                .setContentIntent(pendingIntent)
+                .addAction(
+                    R.drawable.ic_launcher_foreground,
+                    "Open commands",
+                    pendingIntent,
+                )
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .build()
+
+        runCatching {
+            NotificationManagerCompat
+                .from(context)
+                .notify(
+                    NOTIFICATION_ID,
+                    notification,
+                )
+        }
+    }
+
+    private fun openPendingIntent(
+        openCommands: Boolean,
+    ): PendingIntent {
+        val openIntent =
+            Intent(
+                context,
+                DiagnosticsActivity::class.java,
+            ).apply {
+                flags =
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+
+                putExtra(
+                    DiagnosticsActivity.EXTRA_OPEN_COMMANDS,
+                    openCommands,
+                )
+            }
+
+        return PendingIntent.getActivity(
+            context,
+            OPEN_REQUEST_CODE,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private fun createChannel() {
