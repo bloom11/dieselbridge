@@ -17,6 +17,7 @@ import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
+import org.aaustralian.dieselbridge.protocol.DieselInvalidRequest
 import org.aaustralian.dieselbridge.protocol.DieselProtocolDispatch
 import org.aaustralian.dieselbridge.protocol.DieselProtocolEngine
 import org.aaustralian.dieselbridge.protocol.DieselRequest
@@ -94,8 +95,10 @@ class BlePeripheralController(
             context = context,
             notifier = notifier,
             capabilities = capabilities,
-            onDieselCommand =
-                ::handleDieselCommand,
+            onDieselRequest =
+                ::handleDieselRequest,
+            onInvalidDieselRequest =
+                ::handleInvalidDieselRequest,
         )
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.
@@ -321,53 +324,84 @@ class BlePeripheralController(
         ProbeStateHolder.log("Bluetooth OFF — advertising stopped")
     }
 
-    private fun handleDieselCommand(
-        message: GbMessage.DieselCommand,
+    private fun handleDieselRequest(
+        request: DieselRequest,
     ) {
-        val request =
-            try {
-                DieselRequest(
-                    requestId =
-                        message.requestId,
-                    command =
-                        message.command,
-                    name =
-                        message.name,
-                )
-            } catch (error: IllegalArgumentException) {
-                val detail =
-                    "invalid Diesel request cmd=" +
-                        message.command +
-                        " reason=" +
-                        (
-                            error.message
-                                ?: "validation"
-                        )
-
-                Log.w(
-                    TAG,
-                    detail,
-                )
-
-                ProbeStateHolder.log(
-                    detail,
-                )
-
-                DeveloperRuntimeAccess
-                    .platform
-                    .value
-                    ?.diagnostics
-                    ?.record(
-                        type = "protocol-command",
-                        message = detail,
-                    )
-
-                return
-            }
-
         dieselProtocolEngine.handle(
             request,
         )
+    }
+
+    /**
+     * D5.5b keeps rejected requests local.
+     *
+     * The failure object contains only sanitized correlation fields plus a
+     * local diagnostic detail. D5.5c will make the protocol engine generate
+     * the corresponding invalid_request response.
+     */
+    private fun handleInvalidDieselRequest(
+        failure: DieselInvalidRequest,
+    ) {
+        val detail =
+            buildString {
+                append(
+                    "invalid Diesel request reason=",
+                )
+                append(
+                    failure.reason.wireName,
+                )
+
+                failure.command
+                    ?.let { command ->
+                        append(
+                            " cmd=",
+                        )
+                        append(
+                            command,
+                        )
+                    }
+
+                failure.name
+                    ?.let { name ->
+                        append(
+                            " name=",
+                        )
+                        append(
+                            name,
+                        )
+                    }
+
+                failure.requestId
+                    ?.let { requestId ->
+                        append(
+                            " id=",
+                        )
+                        append(
+                            requestId,
+                        )
+                    }
+
+                append(
+                    " detail=",
+                )
+                append(
+                    failure.detail,
+                )
+            }
+
+        Log.w(
+            TAG,
+            detail,
+        )
+
+        DeveloperRuntimeAccess
+            .platform
+            .value
+            ?.diagnostics
+            ?.record(
+                type = "protocol-command",
+                message = detail,
+            )
     }
 
     private fun recordDieselDispatch(
@@ -433,21 +467,47 @@ class BlePeripheralController(
             is GbMessage.MusicInfo -> ProbeStateHolder.log("musicinfo " + (msg.track ?: ""))
             is GbMessage.MusicState -> ProbeStateHolder.log("musicstate " + msg.state)
             is GbMessage.CannedResponses -> ProbeStateHolder.log("canned x" + msg.list.size)
-            is GbMessage.DieselCommand ->
+            is GbMessage.DieselRequestMessage ->
                 ProbeStateHolder.log(
                     buildString {
                         append("diesel cmd ")
-                        append(msg.command)
+                        append(
+                            msg.request.command,
+                        )
 
-                        msg.name?.let { name ->
-                            append(" name=")
-                            append(name)
-                        }
+                        msg.request.name
+                            ?.let { name ->
+                                append(" name=")
+                                append(name)
+                            }
 
-                        msg.requestId?.let { requestId ->
-                            append(" id=")
-                            append(requestId)
-                        }
+                        msg.request.requestId
+                            ?.let { requestId ->
+                                append(" id=")
+                                append(requestId)
+                            }
+
+                        append(" args=")
+                        append(
+                            msg.request.args.size,
+                        )
+                    },
+                )
+            is GbMessage.InvalidDieselRequestMessage ->
+                ProbeStateHolder.log(
+                    buildString {
+                        append(
+                            "diesel invalid reason=",
+                        )
+                        append(
+                            msg.failure.reason.wireName,
+                        )
+
+                        msg.failure.requestId
+                            ?.let { requestId ->
+                                append(" id=")
+                                append(requestId)
+                            }
                     },
                 )
             is GbMessage.Other -> ProbeStateHolder.log("msg t=${msg.type}")

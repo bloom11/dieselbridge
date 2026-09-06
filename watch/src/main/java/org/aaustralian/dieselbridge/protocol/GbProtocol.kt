@@ -46,15 +46,23 @@ sealed interface GbMessage {
     data class CannedResponses(val list: List<String>) : GbMessage
 
     /**
-     * DieselBridge extension namespace.
+     * Successfully decoded Diesel protocol request.
      *
-     * These commands are deliberately separated from the standard
-     * Gadgetbridge/Bangle.js message set.
+     * The Gadgetbridge adapter carries the transport-independent request
+     * object directly. Command-specific fields never belong in GbMessage.
      */
-    data class DieselCommand(
-        val command: String,
-        val name: String? = null,
-        val requestId: String? = null,
+    data class DieselRequestMessage(
+        val request: DieselRequest,
+    ) : GbMessage
+
+    /**
+     * Diesel envelope was recognized, but the protocol decoder rejected it.
+     *
+     * D5.5b preserves this result for observability. D5.5c will route it
+     * through the generic invalid_request response path.
+     */
+    data class InvalidDieselRequestMessage(
+        val failure: DieselInvalidRequest,
     ) : GbMessage
 
     /** Any other `t` we don't handle yet. */
@@ -104,15 +112,23 @@ object GbProtocol {
                 )
                 "canned_responses_sync" -> GbMessage.CannedResponses(parseCanned(o))
                 "diesel" ->
-                    o.stringOrNull("cmd")
-                        ?.let { command ->
-                            GbMessage.DieselCommand(
-                                command = command,
-                                name = o.stringOrNull("name"),
-                                requestId = o.stringOrNull("id"),
+                    when (
+                        val result =
+                            DieselJsonRequestDecoder
+                                .decode(
+                                    json,
+                                )
+                    ) {
+                        is DieselRequestDecodeResult.Success ->
+                            GbMessage.DieselRequestMessage(
+                                request = result.request,
                             )
-                        }
-                        ?: GbMessage.Other("diesel")
+
+                        is DieselRequestDecodeResult.Invalid ->
+                            GbMessage.InvalidDieselRequestMessage(
+                                failure = result.failure,
+                            )
+                    }
                 else -> GbMessage.Other(o.optString("t"))
             }
         }.getOrNull()

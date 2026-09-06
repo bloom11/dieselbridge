@@ -9,6 +9,8 @@ import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.data.WatchNotification
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.capability.VibrationCapability
+import org.aaustralian.dieselbridge.protocol.DieselInvalidRequest
+import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
@@ -21,8 +23,10 @@ class NotificationRouter(
     private val context: Context,
     private val notifier: WatchNotifier,
     private val capabilities: CapabilityRegistry? = null,
-    private val onDieselCommand:
-        (GbMessage.DieselCommand) -> Unit = {},
+    private val onDieselRequest:
+        (DieselRequest) -> Unit = {},
+    private val onInvalidDieselRequest:
+        (DieselInvalidRequest) -> Unit = {},
 ) {
 
     fun handle(line: String): GbMessage? {
@@ -62,7 +66,14 @@ class NotificationRouter(
             is GbMessage.MusicInfo -> MusicStore.onInfo(msg.artist, msg.album, msg.track, msg.durMs)
             is GbMessage.MusicState -> MusicStore.onState(msg.state, msg.position)
             is GbMessage.CannedResponses -> CannedResponsesStore.set(msg.list)
-            is GbMessage.DieselCommand -> onDieselCommand(msg)
+            is GbMessage.DieselRequestMessage ->
+                onDieselRequest(
+                    msg.request,
+                )
+            is GbMessage.InvalidDieselRequestMessage ->
+                onInvalidDieselRequest(
+                    msg.failure,
+                )
             else -> {}
         }
         return msg
