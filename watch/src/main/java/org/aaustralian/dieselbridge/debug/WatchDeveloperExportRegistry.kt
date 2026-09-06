@@ -602,11 +602,13 @@ object WatchDeveloperExportRegistry {
 
                     permission to
                         (
-                            permissionFlags and
-                                PackageInfo
-                                    .REQUESTED_PERMISSION_GRANTED
+                            (
+                                permissionFlags and
+                                    PackageInfo
+                                        .REQUESTED_PERMISSION_GRANTED
                             ) !=
-                        0
+                                0
+                        )
                 }
                 .sortedBy {
                     it.first
