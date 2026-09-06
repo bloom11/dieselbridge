@@ -71,6 +71,10 @@ won't both fit in one 31-byte advertisement).
   command family and `name` selects a target inside that family's own allow-list. Missing or unknown
   test targets perform no action. Unknown commands or targets never fall through to shell,
   reflection, arbitrary Intent or arbitrary method execution.
+- D5 request correlation: Diesel commands may also include an optional string `id`, for example
+  `{"t":"diesel","id":"req-42","cmd":"test","name":"vibration"}`. The parser preserves this value as
+  the request correlation id. Existing commands without `id` remain valid. D5.1 defines the
+  transport-neutral response model; D5.2 will implement the watch→phone response transport.
 - later: `{"t":"alarm",…}`, `{"t":"weather",…}`
 
 ### Outbound (watch → phone) — the action back-channel — ✅ = implemented

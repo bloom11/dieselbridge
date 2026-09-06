@@ -54,6 +54,7 @@ sealed interface GbMessage {
     data class DieselCommand(
         val command: String,
         val name: String? = null,
+        val requestId: String? = null,
     ) : GbMessage
 
     /** Any other `t` we don't handle yet. */
@@ -108,6 +109,7 @@ object GbProtocol {
                             GbMessage.DieselCommand(
                                 command = command,
                                 name = o.stringOrNull("name"),
+                                requestId = o.stringOrNull("id"),
                             )
                         }
                         ?: GbMessage.Other("diesel")

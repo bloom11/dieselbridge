@@ -33,6 +33,32 @@ class DieselCommandProtocolTest {
     }
 
     @Test
+    fun parsesCorrelatedDieselCommand() {
+        assertEquals(
+            GbMessage.DieselCommand(
+                command = "test",
+                name = "vibration",
+                requestId = "req-42",
+            ),
+            GbProtocol.parseLine(
+                """GB({"t":"diesel","id":"req-42","cmd":"test","name":"vibration"})""",
+            ),
+        )
+    }
+
+    @Test
+    fun emptyRequestIdIsTreatedAsAbsent() {
+        assertEquals(
+            GbMessage.DieselCommand(
+                command = "commands",
+            ),
+            GbProtocol.parseLine(
+                """GB({"t":"diesel","id":"","cmd":"commands"})""",
+            ),
+        )
+    }
+
+    @Test
     fun dieselWithoutCmdRemainsNonExecutable() {
         assertEquals(
             GbMessage.Other("diesel"),
