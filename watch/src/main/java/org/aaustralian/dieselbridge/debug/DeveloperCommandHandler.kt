@@ -47,6 +47,18 @@ class DeveloperCommandHandler(
         ) { _ ->
             showCommands()
         }
+
+        registry.register(
+            DeveloperCommandSpec(
+                name = COMMAND_TEST,
+                summary = "Run a bounded safe platform test",
+                effect = DeveloperCommandEffect.SAFE_ACTION,
+            ),
+        ) { message ->
+            runSafeTest(
+                target = message.name,
+            )
+        }
     }
 
     fun handle(
@@ -138,6 +150,65 @@ class DeveloperCommandHandler(
         )
     }
 
+    private fun runSafeTest(
+        target: String?,
+    ) {
+        val runner =
+            DeveloperRuntimeAccess
+                .safeTestRunner
+                .value
+
+        if (runner == null) {
+            DeveloperRuntimeAccess
+                .platform
+                .value
+                ?.diagnostics
+                ?.record(
+                    type = "developer-test",
+                    message =
+                        "safe-test runner unavailable for " +
+                            (target ?: "<missing>"),
+                )
+
+            ProbeStateHolder.log(
+                "diesel test " +
+                    (target ?: "<missing>") +
+                    " unavailable: runner",
+            )
+
+            return
+        }
+
+        val result =
+            runner.run(
+                target = target,
+            )
+
+        ProbeStateHolder.log(
+            when (result) {
+                is SafePlatformTestResult.Success ->
+                    "diesel test ${result.target} " +
+                        "success provider=${result.providerId}"
+
+                is SafePlatformTestResult.Unavailable ->
+                    "diesel test ${result.target} unavailable"
+
+                is SafePlatformTestResult.RateLimited ->
+                    "diesel test ${result.target} " +
+                        "rate-limited retryAfterMs=" +
+                        result.retryAfterMs
+
+                is SafePlatformTestResult.Failed ->
+                    "diesel test ${result.target} " +
+                        "failed: ${result.message}"
+
+                is SafePlatformTestResult.UnknownTarget ->
+                    "diesel test ignored target=" +
+                        (result.target ?: "<missing>")
+            },
+        )
+    }
+
     private fun recordUnknownCommand(
         command: String,
     ) {
@@ -162,5 +233,8 @@ class DeveloperCommandHandler(
 
         const val COMMAND_COMMANDS =
             "commands"
+
+        const val COMMAND_TEST =
+            "test"
     }
 }

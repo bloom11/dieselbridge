@@ -64,11 +64,13 @@ won't both fit in one 31-byte advertisement).
 - ✅ `{"t":"diesel","cmd":"commands"}` — discovers the commands registered by the developer command
   dispatcher. The catalog is generated from the same registrations used for execution, so discovery
   cannot silently drift away from the actual allow-list.
-- Diesel command families may use an optional `name` target. For example the planned safe-test
-  envelope is `{"t":"diesel","cmd":"test","name":"vibration"}`. `cmd` selects an explicitly
-  registered command family and `name` selects a target inside that family's own allow-list.
-  Unknown commands or targets must never fall through to shell, reflection, arbitrary Intent or
-  arbitrary method execution.
+- ✅ `{"t":"diesel","cmd":"test","name":"vibration"}` — runs the same bounded safe-test runner
+  exposed by the internal TOOLS page. The current vibration target is fixed at 250 ms and shares
+  the runner's rate limit with local execution.
+- Diesel command families may use an optional `name` target. `cmd` selects an explicitly registered
+  command family and `name` selects a target inside that family's own allow-list. Missing or unknown
+  test targets perform no action. Unknown commands or targets never fall through to shell,
+  reflection, arbitrary Intent or arbitrary method execution.
 - later: `{"t":"alarm",…}`, `{"t":"weather",…}`
 
 ### Outbound (watch → phone) — the action back-channel — ✅ = implemented

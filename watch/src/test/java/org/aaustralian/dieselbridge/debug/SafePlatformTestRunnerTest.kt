@@ -82,10 +82,23 @@ class SafePlatformTestRunnerTest {
     }
 
     @Test
-    fun unknownTargetDoesNothing() {
+    fun unknownTargetCannotInvokeRegisteredCapability() {
+        val registry =
+            CapabilityRegistry()
+
+        val vibration =
+            FakeVibrationProvider(
+                providerId = "test.vibration",
+            )
+
+        registry.register(
+            capability = vibration,
+            provider = vibration,
+        )
+
         val runner =
             SafePlatformTestRunner(
-                capabilities = CapabilityRegistry(),
+                capabilities = registry,
             )
 
         assertEquals(
@@ -100,6 +113,10 @@ class SafePlatformTestRunnerTest {
                 target = null,
             ),
             runner.run(null),
+        )
+
+        assertTrue(
+            vibration.durations.isEmpty(),
         )
     }
 
