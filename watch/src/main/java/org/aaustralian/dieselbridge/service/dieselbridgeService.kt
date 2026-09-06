@@ -36,6 +36,7 @@ import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 
@@ -102,6 +103,16 @@ class DieselBridgeService : Service() {
         val vibrationProvider =
             LegacyVibrationProvider(applicationContext)
 
+        /*
+         * One process-local Android sensor inventory is shared by the generic
+         * Diesel command module and developer tooling. Inventory is read-only:
+         * constructing it does not register or activate any sensor.
+         */
+        val sensorInventory =
+            AndroidSensorInventory(
+                applicationContext,
+            )
+
         platform.capabilities.register(
             capability = vibrationProvider,
             provider = vibrationProvider,
@@ -117,6 +128,7 @@ class DieselBridgeService : Service() {
         DeveloperRuntimeAccess.attach(
             platform = platform,
             safePlatformTestRunner = safePlatformTestRunner,
+            sensorInventory = sensorInventory,
         )
 
         val bleController =
@@ -126,6 +138,7 @@ class DieselBridgeService : Service() {
                 batterySnapshot = {
                     platform.battery.current()
                 },
+                sensorInventory = sensorInventory,
             )
 
         controller = bleController

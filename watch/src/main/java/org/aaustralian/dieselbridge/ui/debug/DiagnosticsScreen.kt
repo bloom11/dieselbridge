@@ -50,6 +50,8 @@ import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.capability.BatteryCapability
 import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
 import org.aaustralian.dieselbridge.platform.provider.ProviderStatus
+import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
+import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
 import org.aaustralian.dieselbridge.protocol.DieselValue
 
@@ -65,6 +67,7 @@ private val ChipBackground = Color(0xFF3C4043)
 private enum class DiagnosticsPage {
     OVERVIEW,
     PLATFORM,
+    SENSORS,
     BLUETOOTH,
     COMMANDS,
     TOOLS,
@@ -88,6 +91,9 @@ fun DiagnosticsScreen(
 
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
+
+    val sensorInventory by
+        DeveloperRuntimeAccess.sensorInventory.collectAsStateWithLifecycle()
 
     val probe by
         ProbeStateHolder.state.collectAsStateWithLifecycle()
@@ -119,6 +125,7 @@ fun DiagnosticsScreen(
                     OverviewScreen(
                         platform = currentPlatform,
                         probe = probe,
+                        sensorInventory = sensorInventory,
                         commandCatalog = commandCatalog,
                         safeTests =
                             safeTestRunner
@@ -126,6 +133,9 @@ fun DiagnosticsScreen(
                                 .orEmpty(),
                         onPlatform = {
                             page = DiagnosticsPage.PLATFORM
+                        },
+                        onSensors = {
+                            page = DiagnosticsPage.SENSORS
                         },
                         onBluetooth = {
                             page = DiagnosticsPage.BLUETOOTH
@@ -144,6 +154,14 @@ fun DiagnosticsScreen(
                 DiagnosticsPage.PLATFORM ->
                     PlatformScreen(
                         platform = currentPlatform,
+                        onBack = {
+                            page = DiagnosticsPage.OVERVIEW
+                        },
+                    )
+
+                DiagnosticsPage.SENSORS ->
+                    SensorsScreen(
+                        inventory = sensorInventory,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
@@ -190,9 +208,11 @@ fun DiagnosticsScreen(
 private fun OverviewScreen(
     platform: DieselPlatform,
     probe: ProbeReport,
+    sensorInventory: SensorInventory?,
     commandCatalog: List<DieselCommandSpec>,
     safeTests: List<SafePlatformTestSpec>,
     onPlatform: () -> Unit,
+    onSensors: () -> Unit,
     onBluetooth: () -> Unit,
     onCommands: () -> Unit,
     onTools: () -> Unit,
@@ -205,6 +225,29 @@ private fun OverviewScreen(
         platform.battery.state.collectAsStateWithLifecycle()
 
     val providers = diagnostics.providers
+
+    val sensorSnapshot =
+        remember(sensorInventory) {
+            runCatching {
+                sensorInventory
+                    ?.snapshot()
+                    .orEmpty()
+            }
+                .getOrDefault(
+                    emptyList(),
+                )
+        }
+
+    val androidStringTypeSensors =
+        sensorSnapshot.count {
+            it.stringType.startsWith(
+                "android.sensor.",
+            )
+        }
+
+    val otherStringTypeSensors =
+        sensorSnapshot.size -
+            androidStringTypeSensors
 
     val activeProviders =
         providers.count {
@@ -321,6 +364,27 @@ private fun OverviewScreen(
         )
 
         DiagnosticCard(
+            title = "SENSORS",
+            primary =
+                if (sensorInventory == null) {
+                    "Inventory unavailable"
+                } else {
+                    "${sensorSnapshot.size} process-visible"
+                },
+            secondary =
+                if (sensorInventory == null) {
+                    "Service sensor census not attached"
+                } else {
+                    "$androidStringTypeSensors android.sensor.* · " +
+                        "$otherStringTypeSensors other"
+                },
+            healthy =
+                sensorInventory != null &&
+                    sensorSnapshot.isNotEmpty(),
+            onClick = onSensors,
+        )
+
+        DiagnosticCard(
             title = "DIAGNOSTICS",
             primary =
                 "${diagnostics.recentRecords.size} platform records",
@@ -374,6 +438,210 @@ private fun OverviewScreen(
             healthy = true,
         )
     }
+}
+
+@Composable
+private fun SensorsScreen(
+    inventory: SensorInventory?,
+    onBack: () -> Unit,
+) {
+    val snapshotResult =
+        remember(inventory) {
+            runCatching {
+                inventory
+                    ?.snapshot()
+                    .orEmpty()
+            }
+        }
+
+    val sensors =
+        snapshotResult
+            .getOrDefault(
+                emptyList(),
+            )
+
+    DeveloperPage(
+        title = "Sensors",
+        subtitle =
+            if (inventory == null) {
+                "Sensor inventory unavailable"
+            } else {
+                "${sensors.size} process-visible sensors"
+            },
+        onBack = onBack,
+    ) {
+        when {
+            inventory == null ->
+                DiagnosticCard(
+                    title = "SENSOR INVENTORY",
+                    primary = "Unavailable",
+                    secondary =
+                        "Diesel service runtime did not attach an inventory",
+                    healthy = false,
+                )
+
+            snapshotResult.isFailure ->
+                DiagnosticCard(
+                    title = "SENSOR INVENTORY",
+                    primary = "Snapshot failed",
+                    secondary =
+                        snapshotResult
+                            .exceptionOrNull()
+                            ?.javaClass
+                            ?.simpleName,
+                    healthy = false,
+                )
+
+            sensors.isEmpty() ->
+                DiagnosticCard(
+                    title = "SENSOR INVENTORY",
+                    primary = "No sensors visible",
+                    secondary =
+                        "SensorManager returned an empty TYPE_ALL list",
+                    healthy = false,
+                )
+
+            else ->
+                sensors.forEachIndexed {
+                        index,
+                        sensor,
+                    ->
+                    SensorInventoryCard(
+                        index = index,
+                        sensor = sensor,
+                    )
+                }
+        }
+    }
+}
+
+@Composable
+private fun SensorInventoryCard(
+    index: Int,
+    sensor: SensorInventoryEntry,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(
+                    RoundedCornerShape(
+                        18.dp,
+                    ),
+                )
+                .background(
+                    CardBackground,
+                )
+                .padding(
+                    horizontal = 14.dp,
+                    vertical = 11.dp,
+                ),
+        verticalArrangement =
+            Arrangement.spacedBy(
+                3.dp,
+            ),
+    ) {
+        Text(
+            text =
+                "#$index · " +
+                    sensor.logicalId.uppercase(),
+            style =
+                MaterialTheme.typography
+                    .labelSmall,
+            color = AccentText,
+            maxLines = 2,
+            overflow =
+                TextOverflow.Ellipsis,
+        )
+
+        Text(
+            text =
+                sensor.name
+                    .ifBlank {
+                        "<unnamed sensor>"
+                    },
+            style =
+                MaterialTheme.typography
+                    .titleSmall,
+            color = PrimaryText,
+            maxLines = 3,
+            overflow =
+                TextOverflow.Ellipsis,
+        )
+
+        Text(
+            text =
+                sensor.stringType
+                    .ifBlank {
+                        "<no string type>"
+                    },
+            style =
+                MaterialTheme.typography
+                    .bodySmall,
+            color = SecondaryText,
+            maxLines = 3,
+            overflow =
+                TextOverflow.Ellipsis,
+        )
+
+        SensorDetailLine(
+            "Android id ${sensor.androidId} · " +
+                "type ${sensor.androidType} · " +
+                "version ${sensor.version}",
+        )
+
+        SensorDetailLine(
+            "vendor " +
+                sensor.vendor
+                    .ifBlank {
+                        "<unknown>"
+                    },
+        )
+
+        SensorDetailLine(
+            "range ${sensor.maxRange} · " +
+                "resolution ${sensor.resolution}",
+        )
+
+        SensorDetailLine(
+            "power ${sensor.powerMilliAmps} mA",
+        )
+
+        SensorDetailLine(
+            "delay ${sensor.minDelayUs}.." +
+                "${sensor.maxDelayUs} µs",
+        )
+
+        SensorDetailLine(
+            "FIFO ${sensor.fifoReservedEventCount}/" +
+                "${sensor.fifoMaxEventCount}",
+        )
+
+        SensorDetailLine(
+            "reporting mode ${sensor.reportingMode} · " +
+                if (sensor.wakeUp) {
+                    "wake-up"
+                } else {
+                    "non-wake-up"
+                },
+        )
+    }
+}
+
+@Composable
+private fun SensorDetailLine(
+    text: String,
+) {
+    Text(
+        text = text,
+        style =
+            MaterialTheme.typography
+                .labelSmall,
+        color = SecondaryText,
+        maxLines = 3,
+        overflow =
+            TextOverflow.Ellipsis,
+    )
 }
 
 @Composable

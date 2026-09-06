@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.aaustralian.dieselbridge.platform.DieselPlatform
+import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
 
 /**
@@ -30,6 +31,13 @@ object DeveloperRuntimeAccess {
         StateFlow<SafePlatformTestRunner?> =
         mutableSafeTestRunner.asStateFlow()
 
+    private val mutableSensorInventory =
+        MutableStateFlow<SensorInventory?>(null)
+
+    val sensorInventory:
+        StateFlow<SensorInventory?> =
+        mutableSensorInventory.asStateFlow()
+
     private val mutableCommandCatalog =
         MutableStateFlow<List<DieselCommandSpec>>(
             emptyList(),
@@ -49,13 +57,21 @@ object DeveloperRuntimeAccess {
     fun attach(
         platform: DieselPlatform,
         safePlatformTestRunner: SafePlatformTestRunner,
+        sensorInventory: SensorInventory,
     ) {
         /*
-         * Publish the runner first so any UI observing a newly-active platform
-         * can immediately resolve its matching service-owned tooling.
+         * Publish service-owned tooling before the platform becomes visible so
+         * a diagnostic UI observing an active runtime can immediately resolve
+         * the matching instances.
+         *
+         * SensorInventory itself is retained here only by reference. Sensor
+         * snapshots remain live and are not duplicated or persisted.
          */
         mutableSafeTestRunner.value =
             safePlatformTestRunner
+
+        mutableSensorInventory.value =
+            sensorInventory
 
         mutablePlatform.value =
             platform
@@ -65,6 +81,7 @@ object DeveloperRuntimeAccess {
         platform: DieselPlatform,
     ) {
         if (mutablePlatform.value === platform) {
+            mutableSensorInventory.value = null
             mutableSafeTestRunner.value = null
             mutablePlatform.value = null
         }
