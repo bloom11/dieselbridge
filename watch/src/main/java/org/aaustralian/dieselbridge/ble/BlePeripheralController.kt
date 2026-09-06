@@ -12,6 +12,7 @@ import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperExportAuthorization
 import org.aaustralian.dieselbridge.debug.DeveloperExportCommandModule
+import org.aaustralian.dieselbridge.debug.DeveloperExportRegistry
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.WatchDeveloperCommandRuntime
 import org.aaustralian.dieselbridge.notify.NotificationRouter
@@ -49,6 +50,8 @@ class BlePeripheralController(
     private val sensorInventory: SensorInventory,
     private val developerExportAuthorization:
         DeveloperExportAuthorization,
+    private val developerExportRegistry:
+        DeveloperExportRegistry,
 ) {
     private var advertiser: NusAdvertiser? = null
     private var gattServer: NusGattServer? = null
@@ -85,8 +88,8 @@ class BlePeripheralController(
                     DeveloperExportCommandModule(
                         authorization =
                             developerExportAuthorization,
-                        sensorInventory =
-                            sensorInventory,
+                        registry =
+                            developerExportRegistry,
                     ),
                 )
 

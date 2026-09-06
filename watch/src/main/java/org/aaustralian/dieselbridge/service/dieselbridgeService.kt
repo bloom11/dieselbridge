@@ -34,6 +34,7 @@ import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperExportPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
+import org.aaustralian.dieselbridge.debug.WatchDeveloperExportRegistry
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
@@ -138,6 +139,14 @@ class DieselBridgeService : Service() {
             developerExportPolicy = developerExportPolicy,
         )
 
+        val developerExportRegistry =
+            WatchDeveloperExportRegistry.create(
+                context = applicationContext,
+                platform = platform,
+                sensorInventory = sensorInventory,
+                safeTestRunner = safePlatformTestRunner,
+            )
+
         val bleController =
             BlePeripheralController(
                 context = applicationContext,
@@ -148,6 +157,8 @@ class DieselBridgeService : Service() {
                 sensorInventory = sensorInventory,
                 developerExportAuthorization =
                     developerExportPolicy,
+                developerExportRegistry =
+                    developerExportRegistry,
             )
 
         controller = bleController
