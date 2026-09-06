@@ -14,6 +14,8 @@ import androidx.core.content.getSystemService
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.R
 import org.aaustralian.dieselbridge.ble.ProbeReport
+import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
+import org.aaustralian.dieselbridge.protocol.DieselValue
 import org.aaustralian.dieselbridge.ui.debug.DiagnosticsActivity
 
 /**
@@ -151,7 +153,7 @@ class DiagnosticsNotifier(
 
     @SuppressLint("MissingPermission")
     fun showCommands(
-        commands: List<DeveloperCommandSpec>,
+        commands: List<DieselCommandSpec>,
     ) {
         val pendingIntent =
             openPendingIntent(
@@ -167,8 +169,17 @@ class DiagnosticsNotifier(
                 ) { command ->
                     buildString {
                         append(command.name)
-                        append(" · ")
-                        append(command.effect)
+
+                        (
+                            command.metadata["effect"]
+                                as? DieselValue.Text
+                        )
+                            ?.value
+                            ?.let { effect ->
+                                append(" · ")
+                                append(effect)
+                            }
+
                         append("\n")
                         append(command.summary)
                     }

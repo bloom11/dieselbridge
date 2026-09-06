@@ -42,7 +42,6 @@ import java.util.Date
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.ble.ProbeReport
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
-import org.aaustralian.dieselbridge.debug.DeveloperCommandSpec
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
@@ -51,6 +50,8 @@ import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.capability.BatteryCapability
 import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
 import org.aaustralian.dieselbridge.platform.provider.ProviderStatus
+import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
+import org.aaustralian.dieselbridge.protocol.DieselValue
 
 private val CardBackground = Color(0xFF202124)
 private val PrimaryText = Color(0xFFF1F3F4)
@@ -189,7 +190,7 @@ fun DiagnosticsScreen(
 private fun OverviewScreen(
     platform: DieselPlatform,
     probe: ProbeReport,
-    commandCatalog: List<DeveloperCommandSpec>,
+    commandCatalog: List<DieselCommandSpec>,
     safeTests: List<SafePlatformTestSpec>,
     onPlatform: () -> Unit,
     onBluetooth: () -> Unit,
@@ -377,7 +378,7 @@ private fun OverviewScreen(
 
 @Composable
 private fun CommandsScreen(
-    commands: List<DeveloperCommandSpec>,
+    commands: List<DieselCommandSpec>,
     onBack: () -> Unit,
 ) {
     DeveloperPage(
@@ -398,9 +399,12 @@ private fun CommandsScreen(
                     title = command.name.uppercase(),
                     primary = command.summary,
                     secondary =
-                        command.effect.name
-                            .lowercase()
-                            .replace('_', ' '),
+                        (
+                            command.metadata["effect"]
+                                as? DieselValue.Text
+                        )
+                            ?.value
+                            ?.replace('_', ' '),
                     healthy = true,
                 )
             }

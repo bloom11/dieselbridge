@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.aaustralian.dieselbridge.platform.DieselPlatform
+import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
 
 /**
  * Process-local access to the live Diesel runtime for developer tooling.
@@ -30,16 +31,16 @@ object DeveloperRuntimeAccess {
         mutableSafeTestRunner.asStateFlow()
 
     private val mutableCommandCatalog =
-        MutableStateFlow<List<DeveloperCommandSpec>>(
+        MutableStateFlow<List<DieselCommandSpec>>(
             emptyList(),
         )
 
     val commandCatalog:
-        StateFlow<List<DeveloperCommandSpec>> =
+        StateFlow<List<DieselCommandSpec>> =
         mutableCommandCatalog.asStateFlow()
 
     fun publishCommandCatalog(
-        commands: List<DeveloperCommandSpec>,
+        commands: List<DieselCommandSpec>,
     ) {
         mutableCommandCatalog.value =
             commands.toList()

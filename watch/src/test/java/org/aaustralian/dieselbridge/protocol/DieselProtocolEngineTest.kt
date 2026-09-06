@@ -17,7 +17,10 @@ class DieselProtocolEngineTest {
             DieselCommandRegistry()
 
         registry.register(
-            "sensor",
+            DieselCommandSpec(
+                name = "sensor",
+                summary = "Read sensor data",
+            ),
         ) { context ->
             DieselCommandResult.ok(
                 data =
@@ -95,7 +98,10 @@ class DieselProtocolEngineTest {
             DieselCommandRegistry()
 
         registry.register(
-            "display.write",
+            DieselCommandSpec(
+                name = "display.write",
+                summary = "Write display state",
+            ),
         ) {
             DieselCommandResult.ok(
                 data =
@@ -178,7 +184,10 @@ class DieselProtocolEngineTest {
             DieselCommandRegistry()
 
         registry.register(
-            "broken",
+            DieselCommandSpec(
+                name = "broken",
+                summary = "Synthetic failing command",
+            ),
         ) {
             error("boom")
         }
@@ -222,7 +231,10 @@ class DieselProtocolEngineTest {
             DieselCommandRegistry()
 
         registry.register(
-            "commands",
+            DieselCommandSpec(
+                name = "commands",
+                summary = "List registered commands",
+            ),
         ) {
             DieselCommandResult.ok()
         }

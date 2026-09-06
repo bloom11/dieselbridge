@@ -3,6 +3,46 @@
 package org.aaustralian.dieselbridge.protocol
 
 /**
+ * Generic discoverable metadata for one Diesel command.
+ *
+ * [metadata] deliberately remains structured and extensible rather than
+ * hard-coding developer-, sensor-, alarm- or plugin-specific properties into
+ * the registry.
+ */
+data class DieselCommandSpec(
+    val name: String,
+    val summary: String,
+    val metadata: Map<String, DieselValue> = emptyMap(),
+) {
+    init {
+        require(
+            DieselProtocolRules
+                .isValidIdentifier(name),
+        ) {
+            "Invalid Diesel command name '$name'"
+        }
+
+        require(
+            summary.isNotBlank() &&
+                summary.length <=
+                    DieselProtocolRules
+                        .MAX_COMMAND_SUMMARY_LENGTH,
+        ) {
+            "Diesel command summary must be 1.." +
+                "${DieselProtocolRules.MAX_COMMAND_SUMMARY_LENGTH} characters"
+        }
+
+        require(
+            metadata.size <=
+                DieselProtocolRules
+                    .MAX_TOP_LEVEL_FIELDS,
+        ) {
+            "Diesel command metadata contains too many fields"
+        }
+    }
+}
+
+/**
  * Context visible to a command handler.
  *
  * Correlation and transport mechanics remain in the protocol engine.
@@ -22,8 +62,6 @@ data class DieselCommandContext(
 
 /**
  * Generic result returned by every Diesel command implementation.
- *
- * No command handler writes to BLE, Gadgetbridge, Binder or JSON directly.
  */
 data class DieselCommandResult(
     val status: DieselResponseStatus,
@@ -51,13 +89,6 @@ data class DieselCommandResult(
     }
 }
 
-/**
- * Command execution contract.
- *
- * Handlers should perform bounded/non-blocking control-plane work. Long-lived
- * data flows will use the later Diesel event/subscription layer rather than
- * blocking this request path.
- */
 fun interface DieselCommandHandler {
 
     fun execute(
@@ -66,10 +97,7 @@ fun interface DieselCommandHandler {
 }
 
 /**
- * Extension point for built-in modules and, later, plugin bridges.
- *
- * A module installs commands into the generic registry without modifying the
- * protocol engine or any transport.
+ * Extension point for built-in modules and future plugin bridges.
  */
 fun interface DieselCommandModule {
 
@@ -79,34 +107,50 @@ fun interface DieselCommandModule {
 }
 
 /**
- * Generic command dispatcher.
+ * Generic command registry.
  *
- * This registry deliberately knows nothing about Gadgetbridge, Bluetooth,
- * developer tooling, sensors, alarms or any other command implementation.
+ * Registration remains the single source of truth for execution and remote
+ * discovery. The registry has no knowledge of BLE, Gadgetbridge or individual
+ * command families.
  */
-class DieselCommandRegistry {
+class DieselCommandRegistry(
+    private val onCatalogChanged:
+        (List<DieselCommandSpec>) -> Unit = {},
+) {
 
-    private val handlers =
-        linkedMapOf<String, DieselCommandHandler>()
+    private data class Entry(
+        val spec: DieselCommandSpec,
+        val handler: DieselCommandHandler,
+    )
+
+    private val entries =
+        linkedMapOf<String, Entry>()
 
     fun register(
-        command: String,
+        spec: DieselCommandSpec,
         handler: DieselCommandHandler,
     ) {
         require(
-            DieselProtocolRules
-                .isValidIdentifier(command),
+            spec.name !in entries,
         ) {
-            "Invalid Diesel command name '$command'"
+            "Diesel command '${spec.name}' is already registered"
         }
 
-        require(
-            command !in handlers,
-        ) {
-            "Diesel command '$command' is already registered"
-        }
+        val stableSpec =
+            spec.copy(
+                metadata =
+                    spec.metadata.toMap(),
+            )
 
-        handlers[command] = handler
+        entries[stableSpec.name] =
+            Entry(
+                spec = stableSpec,
+                handler = handler,
+            )
+
+        onCatalogChanged(
+            specs(),
+        )
     }
 
     fun install(
@@ -118,21 +162,26 @@ class DieselCommandRegistry {
     fun dispatch(
         request: DieselRequest,
     ): DieselCommandResult {
-        val handler =
-            handlers[request.command]
+        val entry =
+            entries[request.command]
                 ?: return DieselCommandResult(
                     status =
                         DieselResponseStatus
                             .UNKNOWN_COMMAND,
                 )
 
-        return handler.execute(
+        return entry.handler.execute(
             DieselCommandContext(
                 request = request,
             ),
         )
     }
 
+    fun specs(): List<DieselCommandSpec> =
+        entries.values.map {
+            it.spec
+        }
+
     fun commands(): List<String> =
-        handlers.keys.toList()
+        entries.keys.toList()
 }

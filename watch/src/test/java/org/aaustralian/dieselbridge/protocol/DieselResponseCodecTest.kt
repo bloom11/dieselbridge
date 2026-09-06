@@ -72,6 +72,11 @@ class DieselResponseCodecTest {
         )
 
         assertEquals(
+            "response",
+            response.getString("kind"),
+        )
+
+        assertEquals(
             "req-42",
             response.getString("id"),
         )

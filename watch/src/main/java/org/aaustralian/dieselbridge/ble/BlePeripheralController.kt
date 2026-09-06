@@ -9,13 +9,20 @@ import android.util.Log
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
-import org.aaustralian.dieselbridge.debug.DeveloperCommandHandler
+import org.aaustralian.dieselbridge.debug.DeveloperCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
+import org.aaustralian.dieselbridge.debug.WatchDeveloperCommandRuntime
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
+import org.aaustralian.dieselbridge.protocol.DieselProtocolDispatch
+import org.aaustralian.dieselbridge.protocol.DieselProtocolEngine
+import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.DieselResponse
+import org.aaustralian.dieselbridge.protocol.DieselResponseStatus
+import org.aaustralian.dieselbridge.protocol.DieselResponseTransport
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
@@ -50,8 +57,37 @@ class BlePeripheralController(
             },
         )
 
-    private val developerCommandHandler =
-        DeveloperCommandHandler(context)
+    private val dieselCommandRegistry =
+        DieselCommandRegistry(
+            onCatalogChanged =
+                DeveloperRuntimeAccess::
+                    publishCommandCatalog,
+        )
+            .apply {
+                install(
+                    DeveloperCommandModule(
+                        runtime =
+                            WatchDeveloperCommandRuntime(
+                                context,
+                            ),
+                    ),
+                )
+            }
+
+    private val dieselProtocolEngine =
+        DieselProtocolEngine(
+            commands = dieselCommandRegistry,
+            responses =
+                DieselResponseTransport {
+                        response,
+                    ->
+                    sendDieselResponse(
+                        response,
+                    )
+                },
+            onDispatch =
+                ::recordDieselDispatch,
+        )
 
     private val router =
         NotificationRouter(
@@ -59,7 +95,7 @@ class BlePeripheralController(
             notifier = notifier,
             capabilities = capabilities,
             onDieselCommand =
-                developerCommandHandler::handle,
+                ::handleDieselCommand,
         )
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.
@@ -174,36 +210,35 @@ class BlePeripheralController(
      * Watch -> phone: one structured Diesel response through Gadgetbridge's
      * Bangle.js Android Intent bridge.
      *
-     * D5.2 installs the transport. D5.3 will make developer commands emit
-     * their results through this method.
+     * The generic DieselProtocolEngine uses this transport boundary for all
+     * command responses. Command modules never write to BLE directly.
      */
     fun sendDieselResponse(
         response: DieselResponse,
     ): Boolean {
         val sent =
-            runCatching {
+            try {
                 dieselResponseTransport
                     .send(
                         response,
                     )
+            } catch (error: Exception) {
+                Log.w(
+                    TAG,
+                    "diesel response TX failed",
+                    error,
+                )
+
+                recordDieselResponseTx(
+                    response = response,
+                    sent = false,
+                    error =
+                        error.message
+                            ?: error.javaClass.simpleName,
+                )
+
+                return false
             }
-                .getOrElse { error ->
-                    Log.w(
-                        TAG,
-                        "diesel response TX failed",
-                        error,
-                    )
-
-                    recordDieselResponseTx(
-                        response = response,
-                        sent = false,
-                        error =
-                            error.message
-                                ?: error.javaClass.simpleName,
-                    )
-
-                    return false
-                }
 
         recordDieselResponseTx(
             response = response,
@@ -284,6 +319,106 @@ class BlePeripheralController(
             )
         }
         ProbeStateHolder.log("Bluetooth OFF — advertising stopped")
+    }
+
+    private fun handleDieselCommand(
+        message: GbMessage.DieselCommand,
+    ) {
+        val request =
+            try {
+                DieselRequest(
+                    requestId =
+                        message.requestId,
+                    command =
+                        message.command,
+                    name =
+                        message.name,
+                )
+            } catch (error: IllegalArgumentException) {
+                val detail =
+                    "invalid Diesel request cmd=" +
+                        message.command +
+                        " reason=" +
+                        (
+                            error.message
+                                ?: "validation"
+                        )
+
+                Log.w(
+                    TAG,
+                    detail,
+                )
+
+                ProbeStateHolder.log(
+                    detail,
+                )
+
+                DeveloperRuntimeAccess
+                    .platform
+                    .value
+                    ?.diagnostics
+                    ?.record(
+                        type = "protocol-command",
+                        message = detail,
+                    )
+
+                return
+            }
+
+        dieselProtocolEngine.handle(
+            request,
+        )
+    }
+
+    private fun recordDieselDispatch(
+        dispatch: DieselProtocolDispatch,
+    ) {
+        if (
+            dispatch.response.status ==
+                DieselResponseStatus.UNKNOWN_COMMAND
+        ) {
+            val detail =
+                "ignored unknown command: " +
+                    dispatch.request.command
+
+            DeveloperRuntimeAccess
+                .platform
+                .value
+                ?.diagnostics
+                ?.record(
+                    type = "protocol-command",
+                    message = detail,
+                )
+
+            ProbeStateHolder.log(
+                "diesel command $detail",
+            )
+        }
+
+        dispatch.handlerError
+            ?.let { error ->
+                val detail =
+                    "handler failure cmd=" +
+                        dispatch.request.command +
+                        " error=" +
+                        (
+                            error.message
+                                ?: error.javaClass.simpleName
+                        )
+
+                DeveloperRuntimeAccess
+                    .platform
+                    .value
+                    ?.diagnostics
+                    ?.record(
+                        type = "protocol-command",
+                        message = detail,
+                    )
+
+                ProbeStateHolder.log(
+                    "diesel $detail",
+                )
+            }
     }
 
     private fun onRxLine(line: String) {
@@ -456,7 +591,7 @@ class BlePeripheralController(
             .value
             ?.diagnostics
             ?.record(
-                type = "developer-response",
+                type = "protocol-response",
                 message = detail,
             )
     }

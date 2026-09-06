@@ -15,7 +15,7 @@ import org.json.JSONObject
 object DieselResponseCodec {
 
     const val ANDROID_ACTION =
-        "io.github.bloom11.dieselbridge.DEVELOPER_RESPONSE"
+        "io.github.bloom11.dieselbridge.DIESEL_MESSAGE"
 
     const val INTENT_TARGET =
         "broadcastreceiver"
@@ -88,6 +88,11 @@ object DieselResponseCodec {
                 put(
                     "v",
                     response.version,
+                )
+
+                put(
+                    "kind",
+                    "response",
                 )
 
                 response

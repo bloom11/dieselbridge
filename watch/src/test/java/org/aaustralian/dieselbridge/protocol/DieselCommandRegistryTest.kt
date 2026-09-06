@@ -14,7 +14,10 @@ class DieselCommandRegistryTest {
             DieselCommandRegistry()
 
         registry.register(
-            "sensor",
+            DieselCommandSpec(
+                name = "sensor",
+                summary = "Read sensor data",
+            ),
         ) { context ->
             DieselCommandResult.ok(
                 data =
@@ -87,7 +90,10 @@ class DieselCommandRegistryTest {
                     targetRegistry,
                 ->
                 targetRegistry.register(
-                    "alarm",
+                    DieselCommandSpec(
+                        name = "alarm",
+                        summary = "Access alarms",
+                    ),
                 ) {
                     DieselCommandResult.ok(
                         data =
@@ -117,7 +123,10 @@ class DieselCommandRegistryTest {
             DieselCommandRegistry()
 
         registry.register(
-            "sensor",
+            DieselCommandSpec(
+                name = "sensor",
+                summary = "Read sensor data",
+            ),
         ) {
             DieselCommandResult.ok()
         }
@@ -126,7 +135,10 @@ class DieselCommandRegistryTest {
 
         try {
             registry.register(
-                "sensor",
+                DieselCommandSpec(
+                    name = "sensor",
+                    summary = "Read sensor data",
+                ),
             ) {
                 DieselCommandResult.ok()
             }

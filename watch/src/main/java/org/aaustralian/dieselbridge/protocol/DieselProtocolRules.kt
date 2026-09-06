@@ -16,6 +16,8 @@ object DieselProtocolRules {
 
     const val MAX_IDENTIFIER_LENGTH = 64
 
+    const val MAX_COMMAND_SUMMARY_LENGTH = 256
+
     const val MAX_TOP_LEVEL_FIELDS = 32
 
     private val IDENTIFIER =

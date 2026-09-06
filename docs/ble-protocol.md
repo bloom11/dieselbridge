@@ -81,7 +81,7 @@ won't both fit in one 31-byte advertisement).
 
 - D5.2 response transport: structured Diesel responses are serialized inside a fixed Gadgetbridge
   Bangle.js `t:"intent"` message targeting an Android broadcast receiver. The action is fixed to
-  `io.github.bloom11.dieselbridge.DEVELOPER_RESPONSE`; remote requests cannot choose an arbitrary
+  `io.github.bloom11.dieselbridge.DIESEL_MESSAGE`; remote requests cannot choose an arbitrary
   Android Intent target or action.
 - The `json` Intent extra contains a versioned Diesel response envelope:
   `{"v":1,"id":"req-42","cmd":"test","name":"vibration","status":"ok","data":{...}}`.
@@ -132,3 +132,24 @@ dismiss/reply parity on stock Android.
 [Nordic UART Service](https://docs.nordicsemi.com/bundle/ncs-3.2.0/page/nrf/libraries/bluetooth/services/nus.html) ·
 [Android BLE transfer](https://developer.android.com/develop/connectivity/bluetooth/ble/transfer-ble-data) ·
 [Android BLE guide (Punch Through)](https://punchthrough.com/android-ble-guide/)
+
+### D5.4 generic command migration
+
+- D5.4 generic command migration: `diagnostics`, `commands`, and bounded `test`
+  are installed through `DeveloperCommandModule` into the generic
+  `DieselCommandRegistry`.
+- `BlePeripheralController` now converts inbound Diesel commands to
+  transport-independent `DieselRequest` objects and passes them to
+  `DieselProtocolEngine`.
+- Command implementations return `DieselCommandResult`; they do not serialize
+  JSON or write to BLE.
+- The `commands` response is generated from the live generic registry, so
+  commands installed later by sensor, alarm, health, display, or plugin modules
+  are discovered automatically.
+- Unknown commands return `unknown_command` without executing any action.
+- Safe-test results map to stable response statuses: `ok`, `unavailable`,
+  `rate_limited`, `failed`, and `unknown_target`.
+- Watch→phone protocol messages use the fixed Android broadcast action
+  `io.github.bloom11.dieselbridge.DIESEL_MESSAGE`. The JSON extra contains
+  `"kind":"response"` so the same Android delivery boundary can later carry
+  Diesel events without introducing command-specific Intent actions.
