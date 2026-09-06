@@ -5,8 +5,10 @@ package org.aaustralian.dieselbridge.ui.debug
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,7 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,6 +68,11 @@ private enum class DiagnosticsPage {
     COMMANDS,
     TOOLS,
     LOGS,
+}
+
+private enum class LogSource {
+    PLATFORM,
+    BLE,
 }
 
 @Composable
@@ -803,50 +812,250 @@ private fun LogsScreen(
     val diagnostics by
         platform.diagnostics.state.collectAsStateWithLifecycle()
 
+    var source by remember {
+        mutableStateOf(
+            LogSource.PLATFORM,
+        )
+    }
+
+    var horizontalDragPx by remember {
+        mutableStateOf(0f)
+    }
+
+    val swipeThresholdPx =
+        with(LocalDensity.current) {
+            48.dp.toPx()
+        }
+
+    val swipeModifier =
+        Modifier.pointerInput(
+            source,
+            swipeThresholdPx,
+        ) {
+            detectHorizontalDragGestures(
+                onDragStart = {
+                    horizontalDragPx = 0f
+                },
+                onHorizontalDrag = {
+                        _,
+                        dragAmount,
+                    ->
+                    horizontalDragPx += dragAmount
+                },
+                onDragEnd = {
+                    source =
+                        when {
+                            horizontalDragPx <=
+                                -swipeThresholdPx &&
+                                source ==
+                                LogSource.PLATFORM ->
+                                LogSource.BLE
+
+                            horizontalDragPx >=
+                                swipeThresholdPx &&
+                                source ==
+                                LogSource.BLE ->
+                                LogSource.PLATFORM
+
+                            else ->
+                                source
+                        }
+
+                    horizontalDragPx = 0f
+                },
+                onDragCancel = {
+                    horizontalDragPx = 0f
+                },
+            )
+        }
+
+    val recordCount =
+        when (source) {
+            LogSource.PLATFORM ->
+                diagnostics.recentRecords.size
+
+            LogSource.BLE ->
+                probe.log.size
+        }
+
     DeveloperPage(
         title = "Logs",
-        subtitle = "Process-local · bounded",
-        onBack = onBack,
-    ) {
-        SectionLabel("PLATFORM")
+        subtitle =
+            when (source) {
+                LogSource.PLATFORM ->
+                    "Platform · $recordCount records"
 
-        if (diagnostics.recentRecords.isEmpty()) {
-            LogCard(
-                title = "No platform records",
-                body = null,
-            )
-        } else {
-            diagnostics.recentRecords
-                .takeLast(20)
-                .asReversed()
-                .forEach { record ->
+                LogSource.BLE ->
+                    "BLE · $recordCount records"
+            },
+        onBack = onBack,
+        contentModifier = swipeModifier,
+    ) {
+        LogSourceSwitcher(
+            source = source,
+            onSourceChanged = {
+                source = it
+            },
+        )
+
+        when (source) {
+            LogSource.PLATFORM -> {
+                if (
+                    diagnostics
+                        .recentRecords
+                        .isEmpty()
+                ) {
                     LogCard(
                         title =
-                            "${formatTimestamp(record.timestampMs)} · ${record.type}",
-                        body = record.message,
-                    )
-                }
-        }
-
-        SectionLabel("BLE")
-
-        if (probe.log.isEmpty()) {
-            LogCard(
-                title = "No BLE records",
-                body = null,
-            )
-        } else {
-            probe.log
-                .takeLast(20)
-                .asReversed()
-                .forEach { line ->
-                    LogCard(
-                        title = line,
+                            "No platform records",
                         body = null,
                     )
+                } else {
+                    diagnostics
+                        .recentRecords
+                        .takeLast(20)
+                        .asReversed()
+                        .forEach { record ->
+                            LogCard(
+                                title =
+                                    "${formatTimestamp(record.timestampMs)} · ${record.type}",
+                                body =
+                                    record.message,
+                            )
+                        }
                 }
+            }
+
+            LogSource.BLE -> {
+                if (probe.log.isEmpty()) {
+                    LogCard(
+                        title =
+                            "No BLE records",
+                        body = null,
+                    )
+                } else {
+                    probe
+                        .log
+                        .takeLast(20)
+                        .asReversed()
+                        .forEach { line ->
+                            LogCard(
+                                title = line,
+                                body = null,
+                            )
+                        }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun LogSourceSwitcher(
+    source: LogSource,
+    onSourceChanged: (LogSource) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+        horizontalArrangement =
+            Arrangement.spacedBy(7.dp),
+        verticalAlignment =
+            Alignment.CenterVertically,
+    ) {
+        LogSourceChip(
+            label =
+                if (source == LogSource.BLE) {
+                    "‹ PLATFORM"
+                } else {
+                    "PLATFORM"
+                },
+            selected =
+                source == LogSource.PLATFORM,
+            onClick = {
+                onSourceChanged(
+                    LogSource.PLATFORM,
+                )
+            },
+            modifier =
+                Modifier.weight(1f),
+        )
+
+        LogSourceChip(
+            label =
+                if (source == LogSource.PLATFORM) {
+                    "BLE ›"
+                } else {
+                    "BLE"
+                },
+            selected =
+                source == LogSource.BLE,
+            onClick = {
+                onSourceChanged(
+                    LogSource.BLE,
+                )
+            },
+            modifier =
+                Modifier.weight(1f),
+        )
+    }
+
+    Text(
+        text = "Swipe sideways or tap a source",
+        style = MaterialTheme.typography.labelSmall,
+        color = SecondaryText,
+        textAlign = TextAlign.Center,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    bottom = 3.dp,
+                ),
+    )
+}
+
+@Composable
+private fun LogSourceChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        color =
+            if (selected) {
+                AccentText
+            } else {
+                SecondaryText
+            },
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        modifier =
+            modifier
+                .clip(
+                    RoundedCornerShape(
+                        15.dp,
+                    ),
+                )
+                .background(
+                    if (selected) {
+                        AccentText.copy(
+                            alpha = 0.14f,
+                        )
+                    } else {
+                        ChipBackground
+                    },
+                )
+                .clickable(
+                    onClick = onClick,
+                )
+                .padding(
+                    horizontal = 8.dp,
+                    vertical = 8.dp,
+                ),
+    )
 }
 
 @Composable
@@ -854,6 +1063,7 @@ private fun DeveloperPage(
     title: String,
     subtitle: String,
     onBack: (() -> Unit)? = null,
+    contentModifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -876,6 +1086,7 @@ private fun DeveloperPage(
         modifier =
             Modifier
                 .fillMaxSize()
+                .then(contentModifier)
                 .rotaryScrollable(
                     RotaryScrollableDefaults.behavior(
                         scrollableState = scrollState,
