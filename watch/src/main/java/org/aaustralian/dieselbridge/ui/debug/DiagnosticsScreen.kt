@@ -42,6 +42,7 @@ import java.util.Date
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.ble.ProbeReport
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
+import org.aaustralian.dieselbridge.debug.DeveloperExportPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
@@ -91,6 +92,11 @@ fun DiagnosticsScreen(
 
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
+
+    val developerExportPolicy by
+        DeveloperRuntimeAccess
+            .developerExportPolicy
+            .collectAsStateWithLifecycle()
 
     val sensorInventory by
         DeveloperRuntimeAccess.sensorInventory.collectAsStateWithLifecycle()
@@ -186,6 +192,8 @@ fun DiagnosticsScreen(
                 DiagnosticsPage.TOOLS ->
                     ToolsScreen(
                         runner = safeTestRunner,
+                        developerExportPolicy =
+                            developerExportPolicy,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
@@ -681,8 +689,52 @@ private fun CommandsScreen(
 }
 
 @Composable
+private fun RemoteExportControl(
+    policy: DeveloperExportPolicy?,
+) {
+    if (policy == null) {
+        DiagnosticCard(
+            title = "REMOTE EXPORT",
+            primary = "Unavailable",
+            secondary =
+                "Developer export policy is not attached",
+            healthy = false,
+        )
+
+        return
+    }
+
+    val enabled by
+        policy.enabled
+            .collectAsStateWithLifecycle()
+
+    DiagnosticCard(
+        title = "REMOTE EXPORT",
+        primary =
+            if (enabled) {
+                "Enabled"
+            } else {
+                "Disabled"
+            },
+        secondary =
+            if (enabled) {
+                "debug.export authorized · tap to disable"
+            } else {
+                "Local authorization required · tap to enable"
+            },
+        healthy = !enabled,
+        onClick = {
+            policy.setEnabled(
+                !enabled,
+            )
+        },
+    )
+}
+
+@Composable
 private fun ToolsScreen(
     runner: SafePlatformTestRunner?,
+    developerExportPolicy: DeveloperExportPolicy?,
     onBack: () -> Unit,
 ) {
     val tests =
@@ -699,6 +751,11 @@ private fun ToolsScreen(
         subtitle = "${tests.size} bounded safe tests",
         onBack = onBack,
     ) {
+        RemoteExportControl(
+            policy =
+                developerExportPolicy,
+        )
+
         lastResult?.let { result ->
             DiagnosticCard(
                 title = "LAST RESULT",

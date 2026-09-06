@@ -31,6 +31,13 @@ object DeveloperRuntimeAccess {
         StateFlow<SafePlatformTestRunner?> =
         mutableSafeTestRunner.asStateFlow()
 
+    private val mutableDeveloperExportPolicy =
+        MutableStateFlow<DeveloperExportPolicy?>(null)
+
+    val developerExportPolicy:
+        StateFlow<DeveloperExportPolicy?> =
+        mutableDeveloperExportPolicy.asStateFlow()
+
     private val mutableSensorInventory =
         MutableStateFlow<SensorInventory?>(null)
 
@@ -58,6 +65,7 @@ object DeveloperRuntimeAccess {
         platform: DieselPlatform,
         safePlatformTestRunner: SafePlatformTestRunner,
         sensorInventory: SensorInventory,
+        developerExportPolicy: DeveloperExportPolicy,
     ) {
         /*
          * Publish service-owned tooling before the platform becomes visible so
@@ -73,6 +81,9 @@ object DeveloperRuntimeAccess {
         mutableSensorInventory.value =
             sensorInventory
 
+        mutableDeveloperExportPolicy.value =
+            developerExportPolicy
+
         mutablePlatform.value =
             platform
     }
@@ -81,6 +92,7 @@ object DeveloperRuntimeAccess {
         platform: DieselPlatform,
     ) {
         if (mutablePlatform.value === platform) {
+            mutableDeveloperExportPolicy.value = null
             mutableSensorInventory.value = null
             mutableSafeTestRunner.value = null
             mutablePlatform.value = null

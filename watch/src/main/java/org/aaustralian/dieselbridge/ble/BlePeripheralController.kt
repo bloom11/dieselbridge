@@ -10,6 +10,8 @@ import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperCommandModule
+import org.aaustralian.dieselbridge.debug.DeveloperExportAuthorization
+import org.aaustralian.dieselbridge.debug.DeveloperExportCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.WatchDeveloperCommandRuntime
 import org.aaustralian.dieselbridge.notify.NotificationRouter
@@ -45,6 +47,8 @@ class BlePeripheralController(
     private val capabilities: CapabilityRegistry = CapabilityRegistry(),
     private val batterySnapshot: () -> BatteryState? = { null },
     private val sensorInventory: SensorInventory,
+    private val developerExportAuthorization:
+        DeveloperExportAuthorization,
 ) {
     private var advertiser: NusAdvertiser? = null
     private var gattServer: NusGattServer? = null
@@ -74,6 +78,15 @@ class BlePeripheralController(
                             WatchDeveloperCommandRuntime(
                                 context,
                             ),
+                    ),
+                )
+
+                install(
+                    DeveloperExportCommandModule(
+                        authorization =
+                            developerExportAuthorization,
+                        sensorInventory =
+                            sensorInventory,
                     ),
                 )
 

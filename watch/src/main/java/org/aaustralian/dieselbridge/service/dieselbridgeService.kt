@@ -31,6 +31,7 @@ import org.aaustralian.dieselbridge.ble.BlePeripheralController
 import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
+import org.aaustralian.dieselbridge.debug.DeveloperExportPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
@@ -103,6 +104,11 @@ class DieselBridgeService : Service() {
         val vibrationProvider =
             LegacyVibrationProvider(applicationContext)
 
+        val developerExportPolicy =
+            DeveloperExportPolicy(
+                applicationContext,
+            )
+
         /*
          * One process-local Android sensor inventory is shared by the generic
          * Diesel command module and developer tooling. Inventory is read-only:
@@ -129,6 +135,7 @@ class DieselBridgeService : Service() {
             platform = platform,
             safePlatformTestRunner = safePlatformTestRunner,
             sensorInventory = sensorInventory,
+            developerExportPolicy = developerExportPolicy,
         )
 
         val bleController =
@@ -139,6 +146,8 @@ class DieselBridgeService : Service() {
                     platform.battery.current()
                 },
                 sensorInventory = sensorInventory,
+                developerExportAuthorization =
+                    developerExportPolicy,
             )
 
         controller = bleController
