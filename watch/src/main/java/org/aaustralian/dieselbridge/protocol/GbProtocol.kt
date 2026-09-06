@@ -78,61 +78,171 @@ sealed interface GbMessage {
  */
 object GbProtocol {
 
-    fun parseLine(line: String): GbMessage? {
-        val json = extractJson(line) ?: return null
-        return runCatching {
-            val o = JSONObject(json)
-            when (o.optString("t")) {
-                "notify" -> GbMessage.Notify(
-                    id = o.optLong("id"),
-                    src = o.stringOrNull("src"),
-                    title = o.stringOrNull("title"),
-                    subject = o.stringOrNull("subject"),
-                    body = o.stringOrNull("body"),
-                    sender = o.stringOrNull("sender"),
-                    replyable = o.optBoolean("reply"),
-                )
-                "notify-" -> GbMessage.NotifyDelete(o.optLong("id"))
-                "find" -> GbMessage.Find(o.optBoolean("n"))
-                "vibrate" -> GbMessage.Vibrate(o.optInt("n"))
-                "call" -> GbMessage.Call(o.optString("cmd"), o.stringOrNull("name"), o.stringOrNull("number"))
-                "musicinfo" -> GbMessage.MusicInfo(
-                    o.stringOrNull("artist"),
-                    o.stringOrNull("album"),
-                    o.stringOrNull("track"),
-                    o.optInt("dur"),
-                    o.optInt("c"),
-                    o.optInt("n"),
-                )
-                "musicstate" -> GbMessage.MusicState(
-                    o.optString("state"),
-                    o.optInt("position"),
-                    o.optInt("shuffle"),
-                    o.optInt("repeat"),
-                )
-                "canned_responses_sync" -> GbMessage.CannedResponses(parseCanned(o))
-                "diesel" ->
-                    when (
-                        val result =
-                            DieselJsonRequestDecoder
-                                .decode(
-                                    json,
-                                )
-                    ) {
-                        is DieselRequestDecodeResult.Success ->
-                            GbMessage.DieselRequestMessage(
-                                request = result.request,
-                            )
+    /*
+     * Canonical Diesel senders place the namespace discriminator first.
+     * Recognizing that prefix before JSONObject parsing allows malformed and
+     * oversized Diesel control messages to reach the bounded Diesel decoder.
+     */
+    private val CANONICAL_DIESEL_ENVELOPE =
+        Regex(
+            """^\s*\{\s*"t"\s*:\s*"diesel"\s*(?:,|\})""",
+        )
 
-                        is DieselRequestDecodeResult.Invalid ->
-                            GbMessage.InvalidDieselRequestMessage(
-                                failure = result.failure,
-                            )
-                    }
-                else -> GbMessage.Other(o.optString("t"))
+    fun parseLine(line: String): GbMessage? {
+        val json =
+            extractJson(line)
+                ?: return null
+
+        /*
+         * Take the bounded Diesel path before the general JSON parser whenever
+         * the canonical namespace prefix is visible.
+         */
+        if (
+            CANONICAL_DIESEL_ENVELOPE
+                .containsMatchIn(
+                    json,
+                )
+        ) {
+            return decodeDiesel(
+                json,
+            )
+        }
+
+        return runCatching {
+            val o =
+                JSONObject(
+                    json,
+                )
+
+            when (
+                o.optString(
+                    "t",
+                )
+            ) {
+                "notify" ->
+                    GbMessage.Notify(
+                        id = o.optLong("id"),
+                        src = o.stringOrNull("src"),
+                        title = o.stringOrNull("title"),
+                        subject = o.stringOrNull("subject"),
+                        body = o.stringOrNull("body"),
+                        sender = o.stringOrNull("sender"),
+                        replyable = o.optBoolean("reply"),
+                    )
+
+                "notify-" ->
+                    GbMessage.NotifyDelete(
+                        o.optLong("id"),
+                    )
+
+                "find" ->
+                    GbMessage.Find(
+                        o.optBoolean("n"),
+                    )
+
+                "vibrate" ->
+                    GbMessage.Vibrate(
+                        o.optInt("n"),
+                    )
+
+                "call" ->
+                    GbMessage.Call(
+                        o.optString("cmd"),
+                        o.stringOrNull("name"),
+                        o.stringOrNull("number"),
+                    )
+
+                "musicinfo" ->
+                    GbMessage.MusicInfo(
+                        o.stringOrNull("artist"),
+                        o.stringOrNull("album"),
+                        o.stringOrNull("track"),
+                        o.optInt("dur"),
+                        o.optInt("c"),
+                        o.optInt("n"),
+                    )
+
+                "musicstate" ->
+                    GbMessage.MusicState(
+                        o.optString("state"),
+                        o.optInt("position"),
+                        o.optInt("shuffle"),
+                        o.optInt("repeat"),
+                    )
+
+                "canned_responses_sync" ->
+                    GbMessage.CannedResponses(
+                        parseCanned(
+                            o,
+                        ),
+                    )
+
+                "diesel" ->
+                    decodeParsedDiesel(
+                        json = json,
+                        root = o,
+                    )
+
+                else ->
+                    GbMessage.Other(
+                        o.optString("t"),
+                    )
             }
         }.getOrNull()
     }
+
+    private fun decodeDiesel(
+        json: String,
+    ): GbMessage =
+        toGbDieselMessage(
+            DieselJsonRequestDecoder
+                .decode(
+                    json,
+                ),
+        )
+
+    private fun decodeParsedDiesel(
+        json: String,
+        root: JSONObject,
+    ): GbMessage {
+        val payloadBytes =
+            json
+                .toByteArray(
+                    Charsets.UTF_8,
+                )
+                .size
+
+        if (
+            payloadBytes >
+            DieselProtocolRules.MAX_REQUEST_JSON_BYTES
+        ) {
+            return decodeDiesel(
+                json,
+            )
+        }
+
+        return toGbDieselMessage(
+            DieselJsonRequestDecoder
+                .decodeParsed(
+                    root,
+                ),
+        )
+    }
+
+    private fun toGbDieselMessage(
+        result: DieselRequestDecodeResult,
+    ): GbMessage =
+        when (result) {
+            is DieselRequestDecodeResult.Success ->
+                GbMessage.DieselRequestMessage(
+                    request = result.request,
+                )
+
+            is DieselRequestDecodeResult.Invalid ->
+                GbMessage.InvalidDieselRequestMessage(
+                    failure = result.failure,
+                )
+        }
 
     /**
      * Encodes a watch->phone action (Bangle.js dialect): `{"t":"notify","id":<id>,"n":"<action>"}`

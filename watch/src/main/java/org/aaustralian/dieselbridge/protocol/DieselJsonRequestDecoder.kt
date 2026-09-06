@@ -76,7 +76,21 @@ object DieselJsonRequestDecoder {
                 )
             }
 
-        return try {
+        return decodeParsed(
+            root,
+        )
+    }
+
+    /**
+     * Decode an already parsed Diesel JSON object.
+     *
+     * Transport adapters using this entry point must enforce the request byte
+     * bound before parsing.
+     */
+    internal fun decodeParsed(
+        root: JSONObject,
+    ): DieselRequestDecodeResult =
+        try {
             DieselRequestDecodeResult.Success(
                 request =
                     decodeObject(
@@ -99,11 +113,6 @@ object DieselJsonRequestDecoder {
                     "request contains an invalid JSON value",
             )
         } catch (_: IllegalArgumentException) {
-            /*
-             * The decoder validates the same invariants before construction.
-             * Keep this final model boundary as a safe fallback without
-             * exposing implementation exception text.
-             */
             invalid(
                 root = root,
                 reason =
@@ -113,7 +122,6 @@ object DieselJsonRequestDecoder {
                     "decoded request was rejected by the protocol model",
             )
         }
-    }
 
     private fun decodeObject(
         root: JSONObject,

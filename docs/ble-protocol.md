@@ -71,24 +71,38 @@ won't both fit in one 31-byte advertisement).
   command family and `name` selects a target inside that family's own allow-list. Missing or unknown
   test targets perform no action. Unknown commands or targets never fall through to shell,
   reflection, arbitrary Intent or arbitrary method execution.
-- D5 request correlation: Diesel commands may also include an optional string `id`, for example
-  `{"t":"diesel","id":"req-42","cmd":"test","name":"vibration"}`. The parser preserves this value as
-  the request correlation id. Existing commands without `id` remain valid. D5.1 defines the
-  transport-neutral response model; D5.2 will implement the watch→phone response transport.
+- Diesel requests are versioned generic protocol requests. The legacy form remains valid:
+  `{"t":"diesel","cmd":"test","name":"vibration"}`.
+- The full v1 request envelope may contain `v`, `kind`, `id`, `cmd`, `name`, and generic `args`:
+  `{"t":"diesel","v":1,"kind":"request","id":"req-42","cmd":"sensor.read","name":"accelerometer","args":{"rateHz":25,"raw":true}}`.
+  Missing `v` defaults to version 1, missing `kind` defaults to `request`, missing `id` is valid, and
+  missing `args` defaults to an empty object.
+- `cmd` and `name` use Diesel protocol identifiers. Structured argument keys have a separate rule
+  that permits camelCase names such as `rateHz`.
+- Diesel request JSON is bounded to 4096 UTF-8 bytes. Nested argument objects/lists are also bounded
+  by depth, collection size, total value-node count, field-name length, and individual text-value
+  size. Large files and streams do not belong in the request/response control plane.
 - later: `{"t":"alarm",…}`, `{"t":"weather",…}`
 
-### Diesel asynchronous response transport
+### Diesel request / response transport
 
-- D5.2 response transport: structured Diesel responses are serialized inside a fixed Gadgetbridge
-  Bangle.js `t:"intent"` message targeting an Android broadcast receiver. The action is fixed to
+- Structured Diesel responses are serialized inside a fixed Gadgetbridge Bangle.js `t:"intent"`
+  message targeting an Android broadcast receiver. The action is fixed to
   `io.github.bloom11.dieselbridge.DIESEL_MESSAGE`; remote requests cannot choose an arbitrary
   Android Intent target or action.
-- The `json` Intent extra contains a versioned Diesel response envelope:
-  `{"v":1,"id":"req-42","cmd":"test","name":"vibration","status":"ok","data":{...}}`.
+- The `json` Intent extra contains a versioned Diesel response envelope with
+  `"kind":"response"`, for example:
+  `{"v":1,"kind":"response","id":"req-42","cmd":"test","name":"vibration","status":"ok","data":{...}}`.
   `id`, `name`, and `data` are omitted when absent.
 - Diesel response JSON is bounded to 4096 UTF-8 bytes before the Gadgetbridge wrapper is added.
-- D5.2 installs and tests the transport only. D5.3 connects the existing `diagnostics`, `commands`
-  and bounded `test` command handlers to this response path.
+- Valid requests are decoded into transport-independent `DieselRequest` objects and dispatched by
+  `DieselProtocolEngine`. Generic `args` survive the Gadgetbridge adapter unchanged.
+- Invalid Diesel envelopes never enter the command registry. They produce
+  `status:"invalid_request"` through the same response transport, with a stable
+  `data.reason` such as `invalid_args`, `unsupported_version`, or `payload_too_large`.
+- Only validated correlation fields are reflected. If the inbound command is absent or invalid,
+  the response uses the reserved command `"protocol"`. Detailed parser diagnostics remain local
+  and are never copied into the remote response.
 
 ### Outbound (watch → phone) — the action back-channel — ✅ = implemented
 - ✅ `{"t":"notify","id":…,"n":"DISMISS"|"DISMISS_ALL"|"REPLY","msg":"<text>"}`
@@ -138,9 +152,9 @@ dismiss/reply parity on stock Android.
 - D5.4 generic command migration: `diagnostics`, `commands`, and bounded `test`
   are installed through `DeveloperCommandModule` into the generic
   `DieselCommandRegistry`.
-- `BlePeripheralController` now converts inbound Diesel commands to
-  transport-independent `DieselRequest` objects and passes them to
-  `DieselProtocolEngine`.
+- `GbProtocol` delegates Diesel envelopes to the bounded generic request decoder. Valid requests
+  reach `DieselProtocolEngine` as transport-independent `DieselRequest` objects; rejected requests
+  remain explicit protocol failures rather than falling through to an unrelated message type.
 - Command implementations return `DieselCommandResult`; they do not serialize
   JSON or write to BLE.
 - The `commands` response is generated from the live generic registry, so
@@ -153,3 +167,19 @@ dismiss/reply parity on stock Android.
   `io.github.bloom11.dieselbridge.DIESEL_MESSAGE`. The JSON extra contains
   `"kind":"response"` so the same Android delivery boundary can later carry
   Diesel events without introducing command-specific Intent actions.
+
+
+### D5.5 bounded generic request boundary
+
+- D5.5 adds exact wire decoding for protocol version, message kind, correlation id, command, target,
+  and recursively typed generic arguments.
+- Supported generic values are text, signed 64-bit integer, finite decimal, boolean, explicit JSON
+  null, nested objects, and lists.
+- Canonical Gadgetbridge Diesel requests place `"t":"diesel"` first. This allows the adapter to
+  recognize the Diesel namespace before general JSON dispatch so malformed or oversized canonical
+  requests reach the bounded Diesel rejection path instead of being silently dropped.
+- Valid non-canonical JSON field ordering remains supported.
+- The generic engine owns both valid-command responses and `invalid_request` responses, including
+  transport-delivery error accounting.
+- Adding a future command such as `sensor.read` does not require command-specific changes to NUS,
+  Gadgetbridge response transport, response correlation, or the Diesel protocol engine.

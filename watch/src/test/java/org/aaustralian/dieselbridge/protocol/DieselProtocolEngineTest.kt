@@ -271,4 +271,169 @@ class DieselProtocolEngineTest {
             dispatch.response.status,
         )
     }
+
+    @Test
+    fun invalidRequestUsesGenericResponseTransport() {
+        var response:
+            DieselResponse? =
+            null
+
+        val engine =
+            DieselProtocolEngine(
+                commands =
+                    DieselCommandRegistry(),
+                responses =
+                    DieselResponseTransport {
+                            value,
+                        ->
+                        response =
+                            value
+
+                        true
+                    },
+            )
+
+        val dispatch =
+            engine.handleInvalid(
+                DieselInvalidRequest(
+                    requestId = "bad-1",
+                    command = "sensor.read",
+                    name = "accelerometer",
+                    reason =
+                        DieselRequestFailureReason.INVALID_ARGS,
+                    detail =
+                        "local parser detail",
+                ),
+            )
+
+        assertTrue(
+            dispatch.sent,
+        )
+
+        assertNull(
+            dispatch.transportError,
+        )
+
+        assertEquals(
+            DieselResponseStatus.INVALID_REQUEST,
+            response?.status,
+        )
+
+        assertEquals(
+            "bad-1",
+            response?.requestId,
+        )
+
+        assertEquals(
+            "sensor.read",
+            response?.command,
+        )
+
+        assertEquals(
+            "accelerometer",
+            response?.name,
+        )
+
+        assertEquals(
+            DieselValue.Text(
+                "invalid_args",
+            ),
+            response
+                ?.data
+                ?.get("reason"),
+        )
+
+        assertFalse(
+            response
+                ?.data
+                ?.containsKey("detail")
+                ?: true,
+        )
+    }
+
+    @Test
+    fun invalidCommandUsesReservedProtocolCommand() {
+        var response:
+            DieselResponse? =
+            null
+
+        val engine =
+            DieselProtocolEngine(
+                commands =
+                    DieselCommandRegistry(),
+                responses =
+                    DieselResponseTransport {
+                            value,
+                        ->
+                        response =
+                            value
+
+                        true
+                    },
+            )
+
+        engine.handleInvalid(
+            DieselInvalidRequest(
+                requestId = "bad-2",
+                command = null,
+                name = null,
+                reason =
+                    DieselRequestFailureReason.INVALID_COMMAND,
+                detail =
+                    "must remain local",
+            ),
+        )
+
+        assertEquals(
+            DieselProtocolEngine.PROTOCOL_ERROR_COMMAND,
+            response?.command,
+        )
+
+        assertEquals(
+            DieselResponseStatus.INVALID_REQUEST,
+            response?.status,
+        )
+    }
+
+    @Test
+    fun invalidRequestTransportFailureIsReported() {
+        val engine =
+            DieselProtocolEngine(
+                commands =
+                    DieselCommandRegistry(),
+                responses =
+                    DieselResponseTransport {
+                        throw IllegalStateException(
+                            "transport offline",
+                        )
+                    },
+            )
+
+        val dispatch =
+            engine.handleInvalid(
+                DieselInvalidRequest(
+                    requestId = "bad-3",
+                    command = "commands",
+                    name = null,
+                    reason =
+                        DieselRequestFailureReason.INVALID_KIND,
+                    detail =
+                        "local only",
+                ),
+            )
+
+        assertFalse(
+            dispatch.sent,
+        )
+
+        assertNotNull(
+            dispatch.transportError,
+        )
+
+        assertEquals(
+            DieselResponseStatus.INVALID_REQUEST,
+            dispatch.response.status,
+        )
+    }
+
 }

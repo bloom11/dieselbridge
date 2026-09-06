@@ -289,4 +289,157 @@ class GadgetbridgeDieselRequestAdapterTest {
                 ?.get("seenRateHz"),
         )
     }
+
+    @Test
+    fun malformedCanonicalDieselEnvelopeIsNotDropped() {
+        val message =
+            GbProtocol.parseLine(
+                """GB({"t":"diesel","id":"broken-1","cmd":)""",
+            )
+
+        assertTrue(
+            message is
+                GbMessage.InvalidDieselRequestMessage,
+        )
+
+        val failure =
+            (
+                message as
+                    GbMessage.InvalidDieselRequestMessage
+            ).failure
+
+        assertEquals(
+            DieselRequestFailureReason.MALFORMED_JSON,
+            failure.reason,
+        )
+
+        /*
+         * The JSON was malformed, so correlation must not be guessed from
+         * partially parsed text.
+         */
+        assertNull(
+            failure.requestId,
+        )
+
+        assertNull(
+            failure.command,
+        )
+    }
+
+    @Test
+    fun oversizedCanonicalDieselEnvelopeIsRejectedByProtocolLimit() {
+        val payload =
+            "x".repeat(
+                DieselProtocolRules
+                    .MAX_REQUEST_JSON_BYTES + 256,
+            )
+
+        val message =
+            GbProtocol.parseLine(
+                """GB({"t":"diesel","cmd":"commands","padding":"$payload"})""",
+            )
+
+        assertTrue(
+            message is
+                GbMessage.InvalidDieselRequestMessage,
+        )
+
+        val failure =
+            (
+                message as
+                    GbMessage.InvalidDieselRequestMessage
+            ).failure
+
+        assertEquals(
+            DieselRequestFailureReason.PAYLOAD_TOO_LARGE,
+            failure.reason,
+        )
+
+        /*
+         * Oversized input is rejected before parsing, so nothing from it is
+         * reflected as correlation data.
+         */
+        assertNull(
+            failure.requestId,
+        )
+
+        assertNull(
+            failure.command,
+        )
+    }
+
+    @Test
+    fun nonCanonicalFieldOrderStillDecodesDieselRequest() {
+        val message =
+            GbProtocol.parseLine(
+                """
+                GB({
+                  "id":"order-1",
+                  "cmd":"commands",
+                  "t":"diesel"
+                })
+                """.trimIndent(),
+            )
+
+        assertTrue(
+            message is
+                GbMessage.DieselRequestMessage,
+        )
+
+        val request =
+            (
+                message as
+                    GbMessage.DieselRequestMessage
+            ).request
+
+        assertEquals(
+            "order-1",
+            request.requestId,
+        )
+
+        assertEquals(
+            "commands",
+            request.command,
+        )
+    }
+
+    @Test
+    fun nonCanonicalDieselStillUsesDecoderValidation() {
+        val message =
+            GbProtocol.parseLine(
+                """
+                GB({
+                  "id":"",
+                  "cmd":"commands",
+                  "t":"diesel"
+                })
+                """.trimIndent(),
+            )
+
+        assertTrue(
+            message is
+                GbMessage.InvalidDieselRequestMessage,
+        )
+
+        val failure =
+            (
+                message as
+                    GbMessage.InvalidDieselRequestMessage
+            ).failure
+
+        assertEquals(
+            DieselRequestFailureReason.INVALID_REQUEST_ID,
+            failure.reason,
+        )
+
+        assertNull(
+            failure.requestId,
+        )
+
+        assertEquals(
+            "commands",
+            failure.command,
+        )
+    }
+
 }

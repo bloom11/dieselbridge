@@ -17,13 +17,13 @@ import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
+import org.aaustralian.dieselbridge.protocol.DieselInvalidProtocolDispatch
 import org.aaustralian.dieselbridge.protocol.DieselInvalidRequest
 import org.aaustralian.dieselbridge.protocol.DieselProtocolDispatch
 import org.aaustralian.dieselbridge.protocol.DieselProtocolEngine
 import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.DieselResponse
 import org.aaustralian.dieselbridge.protocol.DieselResponseStatus
-import org.aaustralian.dieselbridge.protocol.DieselResponseTransport
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
@@ -79,15 +79,11 @@ class BlePeripheralController(
         DieselProtocolEngine(
             commands = dieselCommandRegistry,
             responses =
-                DieselResponseTransport {
-                        response,
-                    ->
-                    sendDieselResponse(
-                        response,
-                    )
-                },
+                dieselResponseTransport,
             onDispatch =
                 ::recordDieselDispatch,
+            onInvalidDispatch =
+                ::recordInvalidDieselDispatch,
         )
 
     private val router =
@@ -216,42 +212,6 @@ class BlePeripheralController(
      * The generic DieselProtocolEngine uses this transport boundary for all
      * command responses. Command modules never write to BLE directly.
      */
-    fun sendDieselResponse(
-        response: DieselResponse,
-    ): Boolean {
-        val sent =
-            try {
-                dieselResponseTransport
-                    .send(
-                        response,
-                    )
-            } catch (error: Exception) {
-                Log.w(
-                    TAG,
-                    "diesel response TX failed",
-                    error,
-                )
-
-                recordDieselResponseTx(
-                    response = response,
-                    sent = false,
-                    error =
-                        error.message
-                            ?: error.javaClass.simpleName,
-                )
-
-                return false
-            }
-
-        recordDieselResponseTx(
-            response = response,
-            sent = sent,
-            error = null,
-        )
-
-        return sent
-    }
-
     /**
      * Canonical platform battery-state callback.
      *
@@ -332,81 +292,28 @@ class BlePeripheralController(
         )
     }
 
-    /**
-     * D5.5b keeps rejected requests local.
-     *
-     * The failure object contains only sanitized correlation fields plus a
-     * local diagnostic detail. D5.5c will make the protocol engine generate
-     * the corresponding invalid_request response.
-     */
     private fun handleInvalidDieselRequest(
         failure: DieselInvalidRequest,
     ) {
-        val detail =
-            buildString {
-                append(
-                    "invalid Diesel request reason=",
-                )
-                append(
-                    failure.reason.wireName,
-                )
-
-                failure.command
-                    ?.let { command ->
-                        append(
-                            " cmd=",
-                        )
-                        append(
-                            command,
-                        )
-                    }
-
-                failure.name
-                    ?.let { name ->
-                        append(
-                            " name=",
-                        )
-                        append(
-                            name,
-                        )
-                    }
-
-                failure.requestId
-                    ?.let { requestId ->
-                        append(
-                            " id=",
-                        )
-                        append(
-                            requestId,
-                        )
-                    }
-
-                append(
-                    " detail=",
-                )
-                append(
-                    failure.detail,
-                )
-            }
-
-        Log.w(
-            TAG,
-            detail,
+        dieselProtocolEngine.handleInvalid(
+            failure,
         )
-
-        DeveloperRuntimeAccess
-            .platform
-            .value
-            ?.diagnostics
-            ?.record(
-                type = "protocol-command",
-                message = detail,
-            )
     }
 
     private fun recordDieselDispatch(
         dispatch: DieselProtocolDispatch,
     ) {
+        recordDieselResponseTx(
+            response = dispatch.response,
+            sent = dispatch.sent,
+            error =
+                dispatch.transportError
+                    ?.let { error ->
+                        error.message
+                            ?: error.javaClass.simpleName
+                    },
+        )
+
         if (
             dispatch.response.status ==
                 DieselResponseStatus.UNKNOWN_COMMAND
@@ -453,6 +360,75 @@ class BlePeripheralController(
                     "diesel $detail",
                 )
             }
+    }
+
+    private fun recordInvalidDieselDispatch(
+        dispatch: DieselInvalidProtocolDispatch,
+    ) {
+        val failure =
+            dispatch.failure
+
+        val detail =
+            buildString {
+                append(
+                    "invalid Diesel request reason=",
+                )
+                append(
+                    failure.reason.wireName,
+                )
+
+                failure.command
+                    ?.let { command ->
+                        append(" cmd=")
+                        append(command)
+                    }
+
+                failure.name
+                    ?.let { name ->
+                        append(" name=")
+                        append(name)
+                    }
+
+                failure.requestId
+                    ?.let { requestId ->
+                        append(" id=")
+                        append(requestId)
+                    }
+
+                append(" detail=")
+                append(
+                    failure.detail,
+                )
+            }
+
+        Log.w(
+            TAG,
+            detail,
+        )
+
+        ProbeStateHolder.log(
+            "diesel $detail",
+        )
+
+        DeveloperRuntimeAccess
+            .platform
+            .value
+            ?.diagnostics
+            ?.record(
+                type = "protocol-command",
+                message = detail,
+            )
+
+        recordDieselResponseTx(
+            response = dispatch.response,
+            sent = dispatch.sent,
+            error =
+                dispatch.transportError
+                    ?.let { error ->
+                        error.message
+                            ?: error.javaClass.simpleName
+                    },
+        )
     }
 
     private fun onRxLine(line: String) {

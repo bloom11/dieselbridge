@@ -17,6 +17,19 @@ data class DieselProtocolDispatch(
 )
 
 /**
+ * Result of rejecting an inbound request before command dispatch.
+ *
+ * Invalid requests use the same response transport as valid requests but
+ * never enter the command registry.
+ */
+data class DieselInvalidProtocolDispatch(
+    val failure: DieselInvalidRequest,
+    val response: DieselResponse,
+    val sent: Boolean,
+    val transportError: Exception? = null,
+)
+
+/**
  * Generic Diesel request/response engine.
  *
  * It owns correlation and response-envelope construction exactly once.
@@ -27,6 +40,8 @@ class DieselProtocolEngine(
     private val responses: DieselResponseTransport,
     private val onDispatch:
         (DieselProtocolDispatch) -> Unit = {},
+    private val onInvalidDispatch:
+        (DieselInvalidProtocolDispatch) -> Unit = {},
 ) {
 
     fun handle(
@@ -92,4 +107,80 @@ class DieselProtocolEngine(
 
         return dispatch
     }
+
+    /**
+     * Reject a request that failed before command dispatch.
+     *
+     * Only sanitized correlation fields are reflected remotely. The detailed
+     * parser diagnostic stays local in DieselInvalidRequest.detail.
+     */
+    fun handleInvalid(
+        failure: DieselInvalidRequest,
+    ): DieselInvalidProtocolDispatch {
+        val response =
+            DieselResponse(
+                requestId =
+                    failure.requestId,
+                command =
+                    failure.command
+                        ?: PROTOCOL_ERROR_COMMAND,
+                name =
+                    failure.name,
+                status =
+                    DieselResponseStatus.INVALID_REQUEST,
+                data =
+                    mapOf(
+                        "reason" to
+                            DieselValue.Text(
+                                failure.reason.wireName,
+                            ),
+                    ),
+            )
+
+        var transportError: Exception? =
+            null
+
+        val sent =
+            try {
+                responses.send(
+                    response,
+                )
+            } catch (error: Exception) {
+                transportError =
+                    error
+
+                false
+            }
+
+        val dispatch =
+            DieselInvalidProtocolDispatch(
+                failure = failure,
+                response = response,
+                sent = sent,
+                transportError =
+                    transportError,
+            )
+
+        try {
+            onInvalidDispatch(
+                dispatch,
+            )
+        } catch (_: Exception) {
+            /*
+             * Observability callbacks must never alter protocol semantics.
+             */
+        }
+
+        return dispatch
+    }
+
+    companion object {
+        /**
+         * Reserved response command used when an invalid request had no valid
+         * command identifier that can safely be echoed.
+         */
+        const val PROTOCOL_ERROR_COMMAND =
+            "protocol"
+    }
+
 }
