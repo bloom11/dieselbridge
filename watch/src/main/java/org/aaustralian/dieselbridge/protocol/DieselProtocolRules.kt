@@ -20,14 +20,39 @@ object DieselProtocolRules {
 
     const val MAX_TOP_LEVEL_FIELDS = 32
 
+    const val MAX_REQUEST_JSON_BYTES = 4096
+
+    const val MAX_VALUE_DEPTH = 6
+
+    const val MAX_COLLECTION_ENTRIES = 64
+
+    const val MAX_VALUE_NODES = 256
+
+    const val MAX_TEXT_VALUE_BYTES = 2048
+
+    const val MAX_FIELD_NAME_LENGTH = 64
+
     private val IDENTIFIER =
         Regex("[a-z][a-z0-9_.-]*")
+
+    /*
+     * Structured argument/result field names allow camelCase after the first
+     * lowercase character. Command identifiers remain lowercase-only.
+     */
+    private val FIELD_NAME =
+        Regex("[a-z][A-Za-z0-9_.-]*")
 
     fun isValidIdentifier(
         value: String,
     ): Boolean =
         value.length <= MAX_IDENTIFIER_LENGTH &&
             IDENTIFIER.matches(value)
+
+    fun isValidFieldName(
+        value: String,
+    ): Boolean =
+        value.length <= MAX_FIELD_NAME_LENGTH &&
+            FIELD_NAME.matches(value)
 
     fun isValidRequestId(
         value: String?,

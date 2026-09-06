@@ -156,6 +156,9 @@ object DieselResponseCodec {
         value: DieselValue,
     ): Any =
         when (value) {
+            DieselValue.Null ->
+                JSONObject.NULL
+
             is DieselValue.Text ->
                 value.value
 

@@ -10,6 +10,14 @@ package org.aaustralian.dieselbridge.protocol
  */
 sealed interface DieselValue {
 
+    /**
+     * Explicit JSON null.
+     *
+     * This is different from an absent map field and is useful for future
+     * alarm, health, plugin and event payloads.
+     */
+    object Null : DieselValue
+
     data class Text(
         val value: String,
     ) : DieselValue

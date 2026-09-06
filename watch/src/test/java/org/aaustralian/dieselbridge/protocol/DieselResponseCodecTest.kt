@@ -215,6 +215,33 @@ class DieselResponseCodecTest {
     }
 
     @Test
+    fun explicitNullRemainsJsonNull() {
+        val response =
+            JSONObject(
+                DieselResponseCodec
+                    .encodeResponseJson(
+                        DieselResponse(
+                            requestId = "null-1",
+                            command = "commands",
+                            status =
+                                DieselResponseStatus.OK,
+                            data =
+                                mapOf(
+                                    "optional" to
+                                        DieselValue.Null,
+                                ),
+                        ),
+                    ),
+            )
+
+        assertTrue(
+            response
+                .getJSONObject("data")
+                .isNull("optional"),
+        )
+    }
+
+    @Test
     fun oversizedPayloadIsRejected() {
         var rejected = false
 
