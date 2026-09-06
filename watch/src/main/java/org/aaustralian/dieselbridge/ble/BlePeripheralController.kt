@@ -10,10 +10,12 @@ import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperCommandHandler
+import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.protocol.DieselResponse
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
@@ -38,6 +40,15 @@ class BlePeripheralController(
     private var running = false
     private val notifier =
         WatchNotifier(context)
+
+    private val dieselResponseTransport =
+        GadgetbridgeDieselResponseTransport(
+            sendLine = { line ->
+                gattServer
+                    ?.sendLine(line)
+                    ?: false
+            },
+        )
 
     private val developerCommandHandler =
         DeveloperCommandHandler(context)
@@ -160,6 +171,50 @@ class BlePeripheralController(
     }
 
     /**
+     * Watch -> phone: one structured Diesel response through Gadgetbridge's
+     * Bangle.js Android Intent bridge.
+     *
+     * D5.2 installs the transport. D5.3 will make developer commands emit
+     * their results through this method.
+     */
+    fun sendDieselResponse(
+        response: DieselResponse,
+    ): Boolean {
+        val sent =
+            runCatching {
+                dieselResponseTransport
+                    .send(
+                        response,
+                    )
+            }
+                .getOrElse { error ->
+                    Log.w(
+                        TAG,
+                        "diesel response TX failed",
+                        error,
+                    )
+
+                    recordDieselResponseTx(
+                        response = response,
+                        sent = false,
+                        error =
+                            error.message
+                                ?: error.javaClass.simpleName,
+                    )
+
+                    return false
+                }
+
+        recordDieselResponseTx(
+            response = response,
+            sent = sent,
+            error = null,
+        )
+
+        return sent
+    }
+
+    /**
      * Canonical platform battery-state callback.
      *
      * null means no usable battery provider is currently available. In that
@@ -252,6 +307,11 @@ class BlePeripheralController(
                         msg.name?.let { name ->
                             append(" name=")
                             append(name)
+                        }
+
+                        msg.requestId?.let { requestId ->
+                            append(" id=")
+                            append(requestId)
                         }
                     },
                 )
@@ -346,6 +406,59 @@ class BlePeripheralController(
         ProbeStateHolder.log(
             "battery TX $percent% reason=$reason sent=$sent",
         )
+    }
+
+    private fun recordDieselResponseTx(
+        response: DieselResponse,
+        sent: Boolean,
+        error: String?,
+    ) {
+        val target =
+            response.name
+                ?.let {
+                    "/$it"
+                }
+                .orEmpty()
+
+        val requestId =
+            response.requestId
+                ?: "<none>"
+
+        val detail =
+            buildString {
+                append("id=")
+                append(requestId)
+                append(" ")
+                append(response.command)
+                append(target)
+                append(" ")
+                append(response.status.wireName)
+                append(" sent=")
+                append(sent)
+
+                if (error != null) {
+                    append(" error=")
+                    append(error)
+                }
+            }
+
+        Log.i(
+            TAG,
+            "diesel response TX: $detail",
+        )
+
+        ProbeStateHolder.log(
+            "diesel response $detail",
+        )
+
+        DeveloperRuntimeAccess
+            .platform
+            .value
+            ?.diagnostics
+            ?.record(
+                type = "developer-response",
+                message = detail,
+            )
     }
 
     private fun publishServerState() {

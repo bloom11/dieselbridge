@@ -77,6 +77,19 @@ won't both fit in one 31-byte advertisement).
   transport-neutral response model; D5.2 will implement the watch→phone response transport.
 - later: `{"t":"alarm",…}`, `{"t":"weather",…}`
 
+### Diesel asynchronous response transport
+
+- D5.2 response transport: structured Diesel responses are serialized inside a fixed Gadgetbridge
+  Bangle.js `t:"intent"` message targeting an Android broadcast receiver. The action is fixed to
+  `io.github.bloom11.dieselbridge.DEVELOPER_RESPONSE`; remote requests cannot choose an arbitrary
+  Android Intent target or action.
+- The `json` Intent extra contains a versioned Diesel response envelope:
+  `{"v":1,"id":"req-42","cmd":"test","name":"vibration","status":"ok","data":{...}}`.
+  `id`, `name`, and `data` are omitted when absent.
+- Diesel response JSON is bounded to 4096 UTF-8 bytes before the Gadgetbridge wrapper is added.
+- D5.2 installs and tests the transport only. D5.3 connects the existing `diagnostics`, `commands`
+  and bounded `test` command handlers to this response path.
+
 ### Outbound (watch → phone) — the action back-channel — ✅ = implemented
 - ✅ `{"t":"notify","id":…,"n":"DISMISS"|"DISMISS_ALL"|"REPLY","msg":"<text>"}`
   ⚠️ The reply text goes in **`msg`** (not `reply`) — Gadgetbridge's `handleNotificationControl`
