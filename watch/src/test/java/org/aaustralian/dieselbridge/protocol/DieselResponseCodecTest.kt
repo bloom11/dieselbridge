@@ -24,15 +24,15 @@ class DieselResponseCodecTest {
                         data =
                             mapOf(
                                 "provider" to
-                                    DieselResponseValue.Text(
+                                    DieselValue.Text(
                                         "legacy.vibration",
                                     ),
                                 "durationMs" to
-                                    DieselResponseValue.Integer(
+                                    DieselValue.Integer(
                                         250L,
                                     ),
                                 "bounded" to
-                                    DieselResponseValue.Flag(
+                                    DieselValue.Flag(
                                         true,
                                     ),
                             ),
@@ -151,25 +151,25 @@ class DieselResponseCodecTest {
                             data =
                                 mapOf(
                                     "decimal" to
-                                        DieselResponseValue.Decimal(
+                                        DieselValue.Decimal(
                                             3.5,
                                         ),
                                     "items" to
-                                        DieselResponseValue.ListValue(
+                                        DieselValue.ListValue(
                                             listOf(
-                                                DieselResponseValue.Text(
+                                                DieselValue.Text(
                                                     "one",
                                                 ),
-                                                DieselResponseValue.Integer(
+                                                DieselValue.Integer(
                                                     2L,
                                                 ),
                                             ),
                                         ),
                                     "nested" to
-                                        DieselResponseValue.ObjectValue(
+                                        DieselValue.ObjectValue(
                                             mapOf(
                                                 "enabled" to
-                                                    DieselResponseValue.Flag(
+                                                    DieselValue.Flag(
                                                         true,
                                                     ),
                                             ),
@@ -224,7 +224,7 @@ class DieselResponseCodecTest {
                         data =
                             mapOf(
                                 "payload" to
-                                    DieselResponseValue.Text(
+                                    DieselValue.Text(
                                         "x".repeat(
                                             DieselResponseCodec
                                                 .MAX_RESPONSE_JSON_BYTES +

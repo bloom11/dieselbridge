@@ -73,3 +73,36 @@ The layered mitigation (applies to whichever device is central — here, the pho
 5. **Reconnection:** bond (`createBond`, wait `BOND_BONDED`); direct `connectGatt(autoConnect=false)`
    for speed, `autoConnect=true` as passive fallback; always `close()` the old `BluetoothGatt` first
    and inspect the `status` arg in `onConnectionStateChange`.
+
+## Diesel protocol engine layering (D5.3)
+
+The Diesel platform remains the internal center of the watch. The Diesel
+protocol is an external-access layer above that platform, and Gadgetbridge is
+only one transport adapter.
+
+D5.3 introduces transport-independent `DieselRequest`, `DieselCommandRegistry`,
+`DieselCommandResult`, `DieselCommandModule`, and `DieselProtocolEngine`.
+Command implementations return generic structured results and never serialize
+JSON or write directly to BLE, Gadgetbridge, Binder, or another transport.
+
+Requests contain a generic typed `args` map so future sensor, alarm, health,
+display, automation, Espruino, companion, and plugin command modules can add
+parameters without adding command-specific fields to the central protocol
+engine.
+
+The intended flow is:
+
+    external transport
+        -> DieselRequest
+        -> DieselProtocolEngine
+        -> DieselCommandRegistry
+        -> registered module
+        -> DieselCommandResult
+        -> DieselResponse
+        -> DieselResponseTransport
+
+Local watch APIs, Espruino bindings, UI code and plugin-provided capabilities
+continue to use the Diesel platform directly rather than round-tripping through
+the wire protocol.
+
+D5.4 will adapt the existing developer command module to this generic engine.

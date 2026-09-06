@@ -19,15 +19,15 @@ class DieselResponseTest {
                 data =
                     mapOf(
                         "provider" to
-                            DieselResponseValue.Text(
+                            DieselValue.Text(
                                 "legacy.vibration",
                             ),
                         "durationMs" to
-                            DieselResponseValue.Integer(
+                            DieselValue.Integer(
                                 250L,
                             ),
                         "bounded" to
-                            DieselResponseValue.Flag(
+                            DieselValue.Flag(
                                 true,
                             ),
                     ),
@@ -59,7 +59,7 @@ class DieselResponseTest {
         )
 
         assertEquals(
-            DieselResponseValue.Text(
+            DieselValue.Text(
                 "legacy.vibration",
             ),
             response.data["provider"],
@@ -76,28 +76,28 @@ class DieselResponseTest {
                 data =
                     mapOf(
                         "commands" to
-                            DieselResponseValue.ListValue(
+                            DieselValue.ListValue(
                                 listOf(
-                                    DieselResponseValue.ObjectValue(
+                                    DieselValue.ObjectValue(
                                         mapOf(
                                             "name" to
-                                                DieselResponseValue.Text(
+                                                DieselValue.Text(
                                                     "diagnostics",
                                                 ),
                                             "effect" to
-                                                DieselResponseValue.Text(
+                                                DieselValue.Text(
                                                     "read_only",
                                                 ),
                                         ),
                                     ),
-                                    DieselResponseValue.ObjectValue(
+                                    DieselValue.ObjectValue(
                                         mapOf(
                                             "name" to
-                                                DieselResponseValue.Text(
+                                                DieselValue.Text(
                                                     "test",
                                                 ),
                                             "effect" to
-                                                DieselResponseValue.Text(
+                                                DieselValue.Text(
                                                     "safe_action",
                                                 ),
                                         ),
@@ -109,7 +109,7 @@ class DieselResponseTest {
 
         assertTrue(
             response.data["commands"]
-                is DieselResponseValue.ListValue,
+                is DieselValue.ListValue,
         )
     }
 
@@ -219,7 +219,7 @@ class DieselResponseTest {
         var rejected = false
 
         try {
-            DieselResponseValue.Decimal(
+            DieselValue.Decimal(
                 Double.NaN,
             )
         } catch (_: IllegalArgumentException) {

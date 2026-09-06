@@ -131,7 +131,7 @@ object DieselResponseCodec {
 
     private fun encodeObject(
         values:
-            Map<String, DieselResponseValue>,
+            Map<String, DieselValue>,
     ): JSONObject =
         JSONObject()
             .apply {
@@ -148,27 +148,27 @@ object DieselResponseCodec {
             }
 
     private fun encodeValue(
-        value: DieselResponseValue,
+        value: DieselValue,
     ): Any =
         when (value) {
-            is DieselResponseValue.Text ->
+            is DieselValue.Text ->
                 value.value
 
-            is DieselResponseValue.Integer ->
+            is DieselValue.Integer ->
                 value.value
 
-            is DieselResponseValue.Decimal ->
+            is DieselValue.Decimal ->
                 value.value
 
-            is DieselResponseValue.Flag ->
+            is DieselValue.Flag ->
                 value.value
 
-            is DieselResponseValue.ObjectValue ->
+            is DieselValue.ObjectValue ->
                 encodeObject(
                     value.value,
                 )
 
-            is DieselResponseValue.ListValue ->
+            is DieselValue.ListValue ->
                 JSONArray()
                     .apply {
                         value.value

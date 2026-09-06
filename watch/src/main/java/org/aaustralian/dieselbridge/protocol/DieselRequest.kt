@@ -2,38 +2,35 @@
 
 package org.aaustralian.dieselbridge.protocol
 
-enum class DieselResponseStatus(
-    val wireName: String,
-) {
-    OK("ok"),
-    UNAVAILABLE("unavailable"),
-    RATE_LIMITED("rate_limited"),
-    FAILED("failed"),
-    UNKNOWN_COMMAND("unknown_command"),
-    UNKNOWN_TARGET("unknown_target"),
-    INVALID_REQUEST("invalid_request"),
-}
-
-data class DieselResponse(
+/**
+ * Transport-independent Diesel request.
+ *
+ * Gadgetbridge/BLE is only one adapter capable of producing this object.
+ * Future Binder, Wi-Fi, companion or plugin transports can produce the same
+ * request without changing command modules.
+ *
+ * [args] is deliberately generic so new commands do not require new fields
+ * to be hard-coded into the central protocol engine.
+ */
+data class DieselRequest(
     val requestId: String?,
     val command: String,
     val name: String? = null,
-    val status: DieselResponseStatus,
-    val data: Map<String, DieselValue> = emptyMap(),
+    val args: Map<String, DieselValue> = emptyMap(),
     val version: Int = PROTOCOL_VERSION,
 ) {
     init {
         require(
             version == PROTOCOL_VERSION,
         ) {
-            "Unsupported Diesel response version: $version"
+            "Unsupported Diesel request version: $version"
         }
 
         require(
             DieselProtocolRules
                 .isValidIdentifier(command),
         ) {
-            "Invalid Diesel response command '$command'"
+            "Invalid Diesel request command '$command'"
         }
 
         require(
@@ -41,7 +38,7 @@ data class DieselResponse(
                 DieselProtocolRules
                     .isValidIdentifier(name),
         ) {
-            "Invalid Diesel response target '$name'"
+            "Invalid Diesel request target '$name'"
         }
 
         require(
@@ -53,9 +50,9 @@ data class DieselResponse(
         }
 
         require(
-            data.size <= MAX_TOP_LEVEL_DATA_FIELDS,
+            args.size <= MAX_ARGUMENT_FIELDS,
         ) {
-            "Diesel response contains too many top-level data fields"
+            "Diesel request contains too many arguments"
         }
     }
 
@@ -66,7 +63,7 @@ data class DieselResponse(
         const val MAX_REQUEST_ID_LENGTH =
             DieselProtocolRules.MAX_REQUEST_ID_LENGTH
 
-        const val MAX_TOP_LEVEL_DATA_FIELDS =
+        const val MAX_ARGUMENT_FIELDS =
             DieselProtocolRules.MAX_TOP_LEVEL_FIELDS
     }
 }
