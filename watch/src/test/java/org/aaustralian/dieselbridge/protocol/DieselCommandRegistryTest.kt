@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.protocol
 
+import kotlinx.coroutines.runBlocking
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,7 +11,7 @@ import org.junit.Test
 class DieselCommandRegistryTest {
 
     @Test
-    fun arbitraryRegisteredModuleUsesGenericArguments() {
+    fun arbitraryRegisteredModuleUsesGenericArguments(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -62,7 +64,7 @@ class DieselCommandRegistryTest {
     }
 
     @Test
-    fun unknownCommandIsHandledCentrally() {
+    fun unknownCommandIsHandledCentrally(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -81,7 +83,7 @@ class DieselCommandRegistryTest {
     }
 
     @Test
-    fun moduleCanInstallCommandsWithoutEngineChanges() {
+    fun moduleCanInstallCommandsWithoutEngineChanges(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -118,7 +120,7 @@ class DieselCommandRegistryTest {
     }
 
     @Test
-    fun duplicateRegistrationIsRejected() {
+    fun duplicateRegistrationIsRejected(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 

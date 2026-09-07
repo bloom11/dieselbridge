@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
@@ -26,6 +27,7 @@ import org.aaustralian.dieselbridge.protocol.DieselInvalidProtocolDispatch
 import org.aaustralian.dieselbridge.protocol.DieselInvalidRequest
 import org.aaustralian.dieselbridge.protocol.DieselProtocolDispatch
 import org.aaustralian.dieselbridge.protocol.DieselProtocolEngine
+import org.aaustralian.dieselbridge.protocol.DieselProtocolExecutionLane
 import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.DieselResponse
 import org.aaustralian.dieselbridge.protocol.DieselResponseStatus
@@ -45,6 +47,7 @@ import org.aaustralian.dieselbridge.protocol.GbProtocol
 @SuppressLint("MissingPermission")
 class BlePeripheralController(
     private val context: Context,
+    private val protocolScope: CoroutineScope,
     private val capabilities: CapabilityRegistry = CapabilityRegistry(),
     private val batterySnapshot: () -> BatteryState? = { null },
     private val sensorRouteCatalog: AndroidSensorRouteCatalog,
@@ -110,6 +113,12 @@ class BlePeripheralController(
                 ::recordDieselDispatch,
             onInvalidDispatch =
                 ::recordInvalidDieselDispatch,
+        )
+
+    private val dieselExecutionLane =
+        DieselProtocolExecutionLane(
+            scope = protocolScope,
+            engine = dieselProtocolEngine,
         )
 
     private val router =
@@ -313,7 +322,12 @@ class BlePeripheralController(
     private fun handleDieselRequest(
         request: DieselRequest,
     ) {
-        dieselProtocolEngine.handle(
+        /*
+         * Never execute a command inline on the BLE/GATT callback path.
+         * Submission is immediate; actual execution occurs in the serialized
+         * service-owned coroutine lane.
+         */
+        dieselExecutionLane.submit(
             request,
         )
     }
@@ -321,7 +335,7 @@ class BlePeripheralController(
     private fun handleInvalidDieselRequest(
         failure: DieselInvalidRequest,
     ) {
-        dieselProtocolEngine.handleInvalid(
+        dieselExecutionLane.submitInvalid(
             failure,
         )
     }

@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.debug
 
+import kotlinx.coroutines.runBlocking
+
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
 import org.aaustralian.dieselbridge.protocol.DieselCommandResult
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
@@ -67,7 +69,7 @@ class DeveloperCommandModuleTest {
     }
 
     @Test
-    fun moduleRegistersExistingDeveloperCommands() {
+    fun moduleRegistersExistingDeveloperCommands(): Unit = runBlocking {
         val runtime =
             FakeRuntime()
 
@@ -111,7 +113,7 @@ class DeveloperCommandModuleTest {
     }
 
     @Test
-    fun diagnosticsUsesGenericResultPath() {
+    fun diagnosticsUsesGenericResultPath(): Unit = runBlocking {
         val runtime =
             FakeRuntime()
 
@@ -149,7 +151,7 @@ class DeveloperCommandModuleTest {
     }
 
     @Test
-    fun testTargetIsPassedWithoutTransportKnowledge() {
+    fun testTargetIsPassedWithoutTransportKnowledge(): Unit = runBlocking {
         val runtime =
             FakeRuntime()
 
@@ -177,7 +179,7 @@ class DeveloperCommandModuleTest {
     }
 
     @Test
-    fun commandsDiscoveryIncludesLaterModulesAutomatically() {
+    fun commandsDiscoveryIncludesLaterModulesAutomatically(): Unit = runBlocking {
         val runtime =
             FakeRuntime()
 

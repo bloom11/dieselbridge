@@ -2,6 +2,14 @@
 
 package org.aaustralian.dieselbridge.protocol
 
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -12,7 +20,7 @@ import org.junit.Test
 class DieselProtocolEngineTest {
 
     @Test
-    fun engineAddsCorrelationWithoutCommandSpecificTransportCode() {
+    fun engineAddsCorrelationWithoutCommandSpecificTransportCode(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -93,7 +101,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun newCommandNeedsOnlyRegistration() {
+    fun newCommandNeedsOnlyRegistration(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -148,7 +156,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun unknownCommandProducesGenericResponse() {
+    fun unknownCommandProducesGenericResponse(): Unit = runBlocking {
         var response: DieselResponse? =
             null
 
@@ -179,7 +187,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun handlerFailureDoesNotCrashProtocolEngine() {
+    fun handlerFailureDoesNotCrashProtocolEngine(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -226,7 +234,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun transportFailureIsSeparateFromCommandStatus() {
+    fun transportFailureIsSeparateFromCommandStatus(): Unit = runBlocking {
         val registry =
             DieselCommandRegistry()
 
@@ -273,7 +281,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun invalidRequestUsesGenericResponseTransport() {
+    fun invalidRequestUsesGenericResponseTransport(): Unit = runBlocking {
         var response:
             DieselResponse? =
             null
@@ -352,7 +360,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun invalidCommandUsesReservedProtocolCommand() {
+    fun invalidCommandUsesReservedProtocolCommand(): Unit = runBlocking {
         var response:
             DieselResponse? =
             null
@@ -396,7 +404,7 @@ class DieselProtocolEngineTest {
     }
 
     @Test
-    fun invalidRequestTransportFailureIsReported() {
+    fun invalidRequestTransportFailureIsReported(): Unit = runBlocking {
         val engine =
             DieselProtocolEngine(
                 commands =
@@ -435,5 +443,164 @@ class DieselProtocolEngineTest {
             dispatch.response.status,
         )
     }
+
+
+    @Test
+    fun suspendHandlerDoesNotSendBeforeCompletion(): Unit =
+        runBlocking {
+            val entered =
+                CompletableDeferred<Unit>()
+
+            val release =
+                CompletableDeferred<Unit>()
+
+            val registry =
+                DieselCommandRegistry()
+
+            registry.register(
+                DieselCommandSpec(
+                    name = "slow",
+                    summary = "Synthetic suspending command",
+                ),
+            ) {
+                entered.complete(
+                    Unit,
+                )
+
+                release.await()
+
+                DieselCommandResult.ok(
+                    data =
+                        mapOf(
+                            "finished" to
+                                DieselValue.Flag(
+                                    true,
+                                ),
+                        ),
+                )
+            }
+
+            var response:
+                DieselResponse? =
+                null
+
+            val engine =
+                DieselProtocolEngine(
+                    commands = registry,
+                    responses =
+                        DieselResponseTransport {
+                                value,
+                            ->
+                            response =
+                                value
+
+                            true
+                        },
+                )
+
+            val pending =
+                async {
+                    engine.handle(
+                        DieselRequest(
+                            requestId =
+                                "slow-1",
+                            command =
+                                "slow",
+                        ),
+                    )
+                }
+
+            entered.await()
+            yield()
+
+            assertNull(
+                response,
+            )
+
+            release.complete(
+                Unit,
+            )
+
+            val dispatch =
+                pending.await()
+
+            assertTrue(
+                dispatch.sent,
+            )
+
+            assertEquals(
+                DieselResponseStatus.OK,
+                response?.status,
+            )
+
+            assertEquals(
+                DieselValue.Flag(
+                    true,
+                ),
+                response
+                    ?.data
+                    ?.get(
+                        "finished",
+                    ),
+            )
+        }
+
+    @Test
+    fun handlerCancellationDoesNotBecomeFailedResponse(): Unit =
+        runBlocking {
+            val entered =
+                CompletableDeferred<Unit>()
+
+            val registry =
+                DieselCommandRegistry()
+
+            registry.register(
+                DieselCommandSpec(
+                    name = "cancel",
+                    summary = "Synthetic cancellable command",
+                ),
+            ) {
+                entered.complete(
+                    Unit,
+                )
+
+                awaitCancellation()
+            }
+
+            var responseCount =
+                0
+
+            val engine =
+                DieselProtocolEngine(
+                    commands = registry,
+                    responses =
+                        DieselResponseTransport {
+                            responseCount += 1
+                            true
+                        },
+                )
+
+            val pending =
+                launch {
+                    engine.handle(
+                        DieselRequest(
+                            requestId =
+                                "cancel-1",
+                            command =
+                                "cancel",
+                        ),
+                    )
+                }
+
+            entered.await()
+
+            pending.cancelAndJoin()
+
+            assertEquals(
+                0,
+                responseCount,
+            )
+        }
+
 
 }

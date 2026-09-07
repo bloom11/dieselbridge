@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.protocol
 
+import kotlinx.coroutines.runBlocking
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -10,7 +12,7 @@ import org.junit.Test
 class GadgetbridgeDieselRequestAdapterTest {
 
     @Test
-    fun legacyWrappedDieselCommandBecomesGenericRequest() {
+    fun legacyWrappedDieselCommandBecomesGenericRequest(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """
@@ -55,7 +57,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun fullGenericArgumentsSurviveGadgetbridgeAdapter() {
+    fun fullGenericArgumentsSurviveGadgetbridgeAdapter(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """
@@ -116,7 +118,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun invalidVersionBecomesExplicitInvalidDieselMessage() {
+    fun invalidVersionBecomesExplicitInvalidDieselMessage(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """
@@ -157,7 +159,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun invalidCommandIsNotReflectedByGadgetbridgeAdapter() {
+    fun invalidCommandIsNotReflectedByGadgetbridgeAdapter(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """
@@ -185,7 +187,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun decodedRequestCanEnterEngineWithoutTransportTranslation() {
+    fun decodedRequestCanEnterEngineWithoutTransportTranslation(): Unit = runBlocking {
         var handlerRequest:
             DieselRequest? =
             null
@@ -291,7 +293,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun malformedCanonicalDieselEnvelopeIsNotDropped() {
+    fun malformedCanonicalDieselEnvelopeIsNotDropped(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """GB({"t":"diesel","id":"broken-1","cmd":)""",
@@ -327,7 +329,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun oversizedCanonicalDieselEnvelopeIsRejectedByProtocolLimit() {
+    fun oversizedCanonicalDieselEnvelopeIsRejectedByProtocolLimit(): Unit = runBlocking {
         val payload =
             "x".repeat(
                 DieselProtocolRules
@@ -369,7 +371,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun nonCanonicalFieldOrderStillDecodesDieselRequest() {
+    fun nonCanonicalFieldOrderStillDecodesDieselRequest(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """
@@ -404,7 +406,7 @@ class GadgetbridgeDieselRequestAdapterTest {
     }
 
     @Test
-    fun nonCanonicalDieselStillUsesDecoderValidation() {
+    fun nonCanonicalDieselStillUsesDecoderValidation(): Unit = runBlocking {
         val message =
             GbProtocol.parseLine(
                 """

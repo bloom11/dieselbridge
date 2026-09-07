@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.protocol
 
+import kotlin.coroutines.cancellation.CancellationException
+
 /**
  * Result of one protocol dispatch.
  *
@@ -44,7 +46,7 @@ class DieselProtocolEngine(
         (DieselInvalidProtocolDispatch) -> Unit = {},
 ) {
 
-    fun handle(
+    suspend fun handle(
         request: DieselRequest,
     ): DieselProtocolDispatch {
         var handlerError: Exception? = null
@@ -54,6 +56,13 @@ class DieselProtocolEngine(
                 commands.dispatch(
                     request,
                 )
+            } catch (error: CancellationException) {
+                /*
+                 * Cancellation is lifecycle/control flow, not a command
+                 * failure. Propagate it so a cancelled service or future
+                 * sensor probe cannot emit a stale FAILED response.
+                 */
+                throw error
             } catch (error: Exception) {
                 handlerError = error
 
@@ -80,6 +89,8 @@ class DieselProtocolEngine(
                 responses.send(
                     response,
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 transportError = error
                 false

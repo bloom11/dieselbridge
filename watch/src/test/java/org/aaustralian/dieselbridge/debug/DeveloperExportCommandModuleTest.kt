@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.debug
 
+import kotlinx.coroutines.runBlocking
+
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
 import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.DieselResponse
@@ -40,7 +42,7 @@ class DeveloperExportCommandModuleTest {
     }
 
     @Test
-    fun statusPublishesLiveRegistrySections() {
+    fun statusPublishesLiveRegistrySections(): Unit = runBlocking {
         val exportRegistry =
             DeveloperExportRegistry()
                 .apply {
@@ -100,7 +102,7 @@ class DeveloperExportCommandModuleTest {
     }
 
     @Test
-    fun disabledExportDoesNotTouchProvider() {
+    fun disabledExportDoesNotTouchProvider(): Unit = runBlocking {
         val snapshot =
             CountingSnapshot(
                 items =
@@ -144,7 +146,7 @@ class DeveloperExportCommandModuleTest {
     }
 
     @Test
-    fun byteBudgetCanReturnMoreThanTwoCompactItems() {
+    fun byteBudgetCanReturnMoreThanTwoCompactItems(): Unit = runBlocking {
         val items =
             List(20) {
                 smallItem(
@@ -206,7 +208,7 @@ class DeveloperExportCommandModuleTest {
     }
 
     @Test
-    fun largeItemsAreAutomaticallyPagedBeforeBoundary() {
+    fun largeItemsAreAutomaticallyPagedBeforeBoundary(): Unit = runBlocking {
         val noisyText =
             "sensor-metadata-" +
                 "x".repeat(300)
@@ -295,7 +297,7 @@ class DeveloperExportCommandModuleTest {
     }
 
     @Test
-    fun secondPageUsesGenericNextOffset() {
+    fun secondPageUsesGenericNextOffset(): Unit = runBlocking {
         val items =
             List(10) {
                 smallItem(
@@ -357,7 +359,7 @@ class DeveloperExportCommandModuleTest {
     }
 
     @Test
-    fun invalidSectionOrRequestedLimitDoesNotSnapshot() {
+    fun invalidSectionOrRequestedLimitDoesNotSnapshot(): Unit = runBlocking {
         val snapshot =
             CountingSnapshot(
                 items =

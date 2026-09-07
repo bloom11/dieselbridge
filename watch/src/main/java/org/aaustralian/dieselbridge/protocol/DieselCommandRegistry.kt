@@ -91,7 +91,14 @@ data class DieselCommandResult(
 
 fun interface DieselCommandHandler {
 
-    fun execute(
+    /**
+     * Execute one command.
+     *
+     * Handlers may complete immediately or suspend while waiting for a
+     * callback-backed provider. Transport and correlation remain outside the
+     * handler.
+     */
+    suspend fun execute(
         context: DieselCommandContext,
     ): DieselCommandResult
 }
@@ -159,7 +166,7 @@ class DieselCommandRegistry(
         module.install(this)
     }
 
-    fun dispatch(
+    suspend fun dispatch(
         request: DieselRequest,
     ): DieselCommandResult {
         val entry =

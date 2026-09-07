@@ -62,6 +62,18 @@ class DieselBridgeService : Service() {
             SupervisorJob() + Dispatchers.Main.immediate,
         )
 
+    /*
+     * Dedicated execution scope for generic Diesel protocol commands.
+     *
+     * Commands are serialized by DieselProtocolExecutionLane. Using Default
+     * keeps command work off both the GATT callback thread and the UI/main
+     * dispatcher.
+     */
+    private val protocolScope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Default,
+        )
+
     private val platform =
         DieselPlatform(
             scope = platformScope,
@@ -162,6 +174,7 @@ class DieselBridgeService : Service() {
         val bleController =
             BlePeripheralController(
                 context = applicationContext,
+                protocolScope = protocolScope,
                 capabilities = platform.capabilities,
                 batterySnapshot = {
                     platform.battery.current()
@@ -247,6 +260,15 @@ class DieselBridgeService : Service() {
         NotificationActions.callHandler = null
         NotificationActions.musicHandler = null
         tileScope.cancel()
+
+        /*
+         * Cancel queued/in-flight Diesel commands before detaching shared
+         * runtime state. Submissions into the cancelled scope cannot execute,
+         * and suspended handlers are cancelled without emitting a stale
+         * FAILED response.
+         */
+        protocolScope.cancel()
+
         DeveloperRuntimeAccess.detach(platform)
         platformScope.cancel()
         runCatching { unregisterReceiver(bluetoothReceiver) }

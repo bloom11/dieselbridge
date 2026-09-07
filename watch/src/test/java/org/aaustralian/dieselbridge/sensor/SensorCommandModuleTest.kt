@@ -2,6 +2,8 @@
 
 package org.aaustralian.dieselbridge.sensor
 
+import kotlinx.coroutines.runBlocking
+
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
@@ -19,7 +21,7 @@ import org.junit.Test
 class SensorCommandModuleTest {
 
     @Test
-    fun sensorListIsNormalDiscoverableCommand() {
+    fun sensorListIsNormalDiscoverableCommand(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -62,7 +64,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun defaultPageIsBoundedToFourSensors() {
+    fun defaultPageIsBoundedToFourSensors(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -138,7 +140,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun explicitPageUsesOffsetAndLimit() {
+    fun explicitPageUsesOffsetAndLimit(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -215,7 +217,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun oversizedPageRequestIsRejected() {
+    fun oversizedPageRequestIsRejected(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -253,7 +255,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun unknownArgumentIsRejected() {
+    fun unknownArgumentIsRejected(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -284,7 +286,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun sensorListNeverNeedsTargetName() {
+    fun sensorListNeverNeedsTargetName(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -310,7 +312,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun compactInventoryPreservesAndroidIdentity() {
+    fun compactInventoryPreservesAndroidIdentity(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -405,7 +407,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun duplicateLogicalFamiliesRemainDistinguishable() {
+    fun duplicateLogicalFamiliesRemainDistinguishable(): Unit = runBlocking {
         val registry =
             registryWith(
                 entries =
@@ -485,7 +487,7 @@ class SensorCommandModuleTest {
     }
 
     @Test
-    fun maximumCompactPageFitsDieselResponseBoundary() {
+    fun maximumCompactPageFitsDieselResponseBoundary(): Unit = runBlocking {
         val largeMetadata =
             buildString {
                 repeat(
