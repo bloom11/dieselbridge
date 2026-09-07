@@ -24,7 +24,7 @@ import org.aaustralian.dieselbridge.protocol.DieselValue
  */
 class DeveloperExportCommandModule(
     private val authorization:
-        DeveloperExportAuthorization,
+        DeveloperRemoteAccessAuthorization,
     private val registry:
         DeveloperExportRegistry,
 ) : DieselCommandModule {

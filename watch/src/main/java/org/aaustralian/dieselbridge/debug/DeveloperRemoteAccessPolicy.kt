@@ -8,20 +8,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Local authorization gate for remote developer-data export.
+ * Local authorization gate for remote developer operations.
  *
- * This preference is private to DieselBridge and defaults to disabled.
- * Protocol command modules receive only [DeveloperExportAuthorization], so a
- * remote request has no API through which it can enable this gate.
+ * This policy covers developer commands that expose runtime information or
+ * actively exercise hardware. It can only be changed from the local watch
+ * developer UI; remote protocol clients receive no API for enabling it.
+ *
+ * The gate defaults to disabled.
  */
-fun interface DeveloperExportAuthorization {
+fun interface DeveloperRemoteAccessAuthorization {
 
     fun isEnabled(): Boolean
 }
 
-class DeveloperExportPolicy(
+/**
+ * Persistent watch-local implementation of [DeveloperRemoteAccessAuthorization].
+ *
+ * The preference key intentionally keeps its historical M4.0c name so an
+ * existing user's authorization choice survives this API generalization.
+ */
+class DeveloperRemoteAccessPolicy(
     context: Context,
-) : DeveloperExportAuthorization {
+) : DeveloperRemoteAccessAuthorization {
 
     private val preferences =
         context.applicationContext
@@ -63,6 +71,10 @@ class DeveloperExportPolicy(
         const val PREFERENCES_NAME =
             "diesel_developer"
 
+        /*
+         * Historical persisted key from the original remote-export-only gate.
+         * Do not rename without an explicit SharedPreferences migration.
+         */
         const val KEY_ENABLED =
             "remote_export_enabled"
     }

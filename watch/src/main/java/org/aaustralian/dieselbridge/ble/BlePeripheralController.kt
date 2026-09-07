@@ -11,7 +11,7 @@ import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperCommandModule
-import org.aaustralian.dieselbridge.debug.DeveloperExportAuthorization
+import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessAuthorization
 import org.aaustralian.dieselbridge.debug.DeveloperExportCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperExportRegistry
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
@@ -51,8 +51,8 @@ class BlePeripheralController(
     private val capabilities: CapabilityRegistry = CapabilityRegistry(),
     private val batterySnapshot: () -> BatteryState? = { null },
     private val sensorRouteCatalog: AndroidSensorRouteCatalog,
-    private val developerExportAuthorization:
-        DeveloperExportAuthorization,
+    private val developerRemoteAccessAuthorization:
+        DeveloperRemoteAccessAuthorization,
     private val developerExportRegistry:
         DeveloperExportRegistry,
 ) {
@@ -90,7 +90,7 @@ class BlePeripheralController(
                 install(
                     DeveloperExportCommandModule(
                         authorization =
-                            developerExportAuthorization,
+                            developerRemoteAccessAuthorization,
                         registry =
                             developerExportRegistry,
                     ),

@@ -42,7 +42,7 @@ import java.util.Date
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.ble.ProbeReport
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
-import org.aaustralian.dieselbridge.debug.DeveloperExportPolicy
+import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
@@ -93,9 +93,9 @@ fun DiagnosticsScreen(
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
 
-    val developerExportPolicy by
+    val developerRemoteAccessPolicy by
         DeveloperRuntimeAccess
-            .developerExportPolicy
+            .developerRemoteAccessPolicy
             .collectAsStateWithLifecycle()
 
     val sensorInventory by
@@ -192,8 +192,8 @@ fun DiagnosticsScreen(
                 DiagnosticsPage.TOOLS ->
                     ToolsScreen(
                         runner = safeTestRunner,
-                        developerExportPolicy =
-                            developerExportPolicy,
+                        developerRemoteAccessPolicy =
+                            developerRemoteAccessPolicy,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
@@ -689,15 +689,15 @@ private fun CommandsScreen(
 }
 
 @Composable
-private fun RemoteExportControl(
-    policy: DeveloperExportPolicy?,
+private fun RemoteDeveloperAccessControl(
+    policy: DeveloperRemoteAccessPolicy?,
 ) {
     if (policy == null) {
         DiagnosticCard(
-            title = "REMOTE EXPORT",
+            title = "REMOTE DEVELOPER ACCESS",
             primary = "Unavailable",
             secondary =
-                "Developer export policy is not attached",
+                "Developer remote access policy is not attached",
             healthy = false,
         )
 
@@ -709,7 +709,7 @@ private fun RemoteExportControl(
             .collectAsStateWithLifecycle()
 
     DiagnosticCard(
-        title = "REMOTE EXPORT",
+        title = "REMOTE DEVELOPER ACCESS",
         primary =
             if (enabled) {
                 "Enabled"
@@ -718,7 +718,7 @@ private fun RemoteExportControl(
             },
         secondary =
             if (enabled) {
-                "debug.export authorized · tap to disable"
+                "Remote debug commands authorized · tap to disable"
             } else {
                 "Local authorization required · tap to enable"
             },
@@ -734,7 +734,7 @@ private fun RemoteExportControl(
 @Composable
 private fun ToolsScreen(
     runner: SafePlatformTestRunner?,
-    developerExportPolicy: DeveloperExportPolicy?,
+    developerRemoteAccessPolicy: DeveloperRemoteAccessPolicy?,
     onBack: () -> Unit,
 ) {
     val tests =
@@ -751,9 +751,9 @@ private fun ToolsScreen(
         subtitle = "${tests.size} bounded safe tests",
         onBack = onBack,
     ) {
-        RemoteExportControl(
+        RemoteDeveloperAccessControl(
             policy =
-                developerExportPolicy,
+                developerRemoteAccessPolicy,
         )
 
         lastResult?.let { result ->

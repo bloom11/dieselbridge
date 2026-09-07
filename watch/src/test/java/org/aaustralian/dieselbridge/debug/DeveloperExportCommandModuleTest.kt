@@ -18,7 +18,7 @@ class DeveloperExportCommandModuleTest {
 
     private class FakeAuthorization(
         var enabled: Boolean,
-    ) : DeveloperExportAuthorization {
+    ) : DeveloperRemoteAccessAuthorization {
 
         override fun isEnabled(): Boolean =
             enabled
