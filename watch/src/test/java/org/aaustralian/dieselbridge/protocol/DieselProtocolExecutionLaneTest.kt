@@ -2,15 +2,54 @@
 
 package org.aaustralian.dieselbridge.protocol
 
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 
 class DieselProtocolExecutionLaneTest {
+
+    private var laneJob: Job? =
+        null
+
+    @After
+    fun cancelExecutionLane() {
+        laneJob?.cancel()
+        laneJob = null
+    }
+
+    private suspend fun executionLane(
+        engine: DieselProtocolEngine,
+    ): DieselProtocolExecutionLane {
+        check(
+            laneJob == null,
+        ) {
+            "Only one execution lane is expected per test"
+        }
+
+        val job =
+            SupervisorJob()
+
+        laneJob =
+            job
+
+        return DieselProtocolExecutionLane(
+            scope =
+                CoroutineScope(
+                    coroutineContext +
+                        job,
+                ),
+            engine = engine,
+        )
+    }
 
     @Test
     fun secondCommandCannotRunWhileFirstIsSuspended(): Unit =
@@ -73,8 +112,7 @@ class DieselProtocolExecutionLaneTest {
                 )
 
             val lane =
-                DieselProtocolExecutionLane(
-                    scope = this,
+                executionLane(
                     engine = engine,
                 )
 
@@ -171,8 +209,7 @@ class DieselProtocolExecutionLaneTest {
                 )
 
             val lane =
-                DieselProtocolExecutionLane(
-                    scope = this,
+                executionLane(
                     engine = engine,
                 )
 
@@ -271,8 +308,7 @@ class DieselProtocolExecutionLaneTest {
                 )
 
             val lane =
-                DieselProtocolExecutionLane(
-                    scope = this,
+                executionLane(
                     engine = engine,
                 )
 
