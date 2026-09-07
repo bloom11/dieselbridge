@@ -39,6 +39,7 @@ import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
+import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 
@@ -120,6 +121,16 @@ class DieselBridgeService : Service() {
                 applicationContext,
             )
 
+        /*
+         * Passive concrete-route projection of the same inventory. This is
+         * diagnostic/routing metadata only; it does not choose the active
+         * provider and does not register sensor listeners.
+         */
+        val sensorRouteCatalog =
+            SensorManagerRouteCatalog(
+                sensorInventory,
+            )
+
         platform.capabilities.register(
             capability = vibrationProvider,
             provider = vibrationProvider,
@@ -143,7 +154,8 @@ class DieselBridgeService : Service() {
             WatchDeveloperExportRegistry.create(
                 context = applicationContext,
                 platform = platform,
-                sensorInventory = sensorInventory,
+                sensorRouteCatalog =
+                    sensorRouteCatalog,
                 safeTestRunner = safePlatformTestRunner,
             )
 
@@ -154,7 +166,8 @@ class DieselBridgeService : Service() {
                 batterySnapshot = {
                     platform.battery.current()
                 },
-                sensorInventory = sensorInventory,
+                sensorRouteCatalog =
+                    sensorRouteCatalog,
                 developerExportAuthorization =
                     developerExportPolicy,
                 developerExportRegistry =

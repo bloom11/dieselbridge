@@ -2,6 +2,7 @@
 
 package org.aaustralian.dieselbridge.sensor
 
+import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
@@ -362,6 +363,20 @@ class SensorCommandModuleTest {
         )
 
         assertEquals(
+            DieselValue.Text(
+                "android.sensor_manager:21:21:0",
+            ),
+            item["routeId"],
+        )
+
+        assertEquals(
+            DieselValue.Text(
+                "android.sensor_manager",
+            ),
+            item["providerId"],
+        )
+
+        assertEquals(
             DieselValue.Integer(21L),
             item["androidId"],
         )
@@ -571,10 +586,12 @@ class SensorCommandModuleTest {
 
         registry.install(
             SensorCommandModule(
-                inventory =
-                    SensorInventory {
-                        entries
-                    },
+                routes =
+                    SensorManagerRouteCatalog(
+                        SensorInventory {
+                            entries
+                        },
+                    ),
             ),
         )
 

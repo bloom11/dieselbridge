@@ -12,8 +12,8 @@ import org.aaustralian.dieselbridge.ble.ProbeStateHolder
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
 import org.aaustralian.dieselbridge.platform.provider.ProviderStatus
-import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
-import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRoute
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
 import org.aaustralian.dieselbridge.protocol.DieselValue
 
@@ -28,7 +28,7 @@ object WatchDeveloperExportRegistry {
     fun create(
         context: Context,
         platform: DieselPlatform,
-        sensorInventory: SensorInventory,
+        sensorRouteCatalog: AndroidSensorRouteCatalog,
         safeTestRunner: SafePlatformTestRunner,
     ): DeveloperExportRegistry =
         DeveloperExportRegistry()
@@ -69,7 +69,7 @@ object WatchDeveloperExportRegistry {
                     SECTION_SENSORS,
                 ) {
                     sensorsSnapshot(
-                        sensorInventory,
+                        sensorRouteCatalog,
                     )
                 }
 
@@ -416,14 +416,15 @@ object WatchDeveloperExportRegistry {
         )
 
     private fun sensorsSnapshot(
-        inventory: SensorInventory,
+        routes: AndroidSensorRouteCatalog,
     ): DeveloperExportSnapshot {
-        val sensors =
-            inventory.snapshot()
+        val sensorRoutes =
+            routes.snapshot()
 
         val androidStringTypes =
-            sensors.count {
-                it.stringType
+            sensorRoutes.count {
+                it.inventory
+                    .stringType
                     .startsWith(
                         "android.sensor.",
                     )
@@ -436,7 +437,11 @@ object WatchDeveloperExportRegistry {
                 mapOf(
                     "sensorCount" to
                         integer(
-                            sensors.size,
+                            sensorRoutes.size,
+                        ),
+                    "routeCount" to
+                        integer(
+                            sensorRoutes.size,
                         ),
                     "androidStringTypeCount" to
                         integer(
@@ -444,18 +449,18 @@ object WatchDeveloperExportRegistry {
                         ),
                     "otherStringTypeCount" to
                         integer(
-                            sensors.size -
+                            sensorRoutes.size -
                                 androidStringTypes,
                         ),
                 ),
             items =
-                sensors.mapIndexed {
+                sensorRoutes.mapIndexed {
                         index,
-                        sensor,
+                        route,
                     ->
                     sensorValue(
                         index,
-                        sensor,
+                        route,
                     )
                 },
         )
@@ -463,16 +468,30 @@ object WatchDeveloperExportRegistry {
 
     private fun sensorValue(
         index: Int,
-        sensor: SensorInventoryEntry,
-    ): DieselValue.ObjectValue =
-        objectValue(
+        route: AndroidSensorRoute,
+    ): DieselValue.ObjectValue {
+        val sensor =
+            route.inventory
+
+        val descriptor =
+            route.descriptor
+
+        return objectValue(
             "index" to
                 integer(
                     index,
                 ),
+            "routeId" to
+                text(
+                    descriptor.routeId.value,
+                ),
+            "providerId" to
+                text(
+                    descriptor.providerId,
+                ),
             "logicalId" to
                 text(
-                    sensor.logicalId,
+                    descriptor.logicalId.value,
                 ),
             "androidId" to
                 integer(
@@ -535,6 +554,7 @@ object WatchDeveloperExportRegistry {
                     sensor.wakeUp,
                 ),
         )
+    }
 
     private fun safeTestsSnapshot(
         runner: SafePlatformTestRunner,

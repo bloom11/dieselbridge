@@ -2,8 +2,8 @@
 
 package org.aaustralian.dieselbridge.sensor
 
-import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
-import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRoute
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
 import org.aaustralian.dieselbridge.protocol.DieselCommandContext
 import org.aaustralian.dieselbridge.protocol.DieselCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
@@ -19,7 +19,7 @@ import org.aaustralian.dieselbridge.protocol.DieselValue
  * no sensor is sampled by this module.
  */
 class SensorCommandModule(
-    private val inventory: SensorInventory,
+    private val routes: AndroidSensorRouteCatalog,
 ) : DieselCommandModule {
 
     override fun install(
@@ -91,11 +91,11 @@ class SensorCommandModule(
             )
                 ?: return invalidArguments()
 
-        val sensors =
-            inventory.snapshot()
+        val sensorRoutes =
+            routes.snapshot()
 
         val page =
-            sensors
+            sensorRoutes
                 .drop(
                     offset,
                 )
@@ -106,21 +106,21 @@ class SensorCommandModule(
         val encoded =
             page.mapIndexed {
                     pageIndex,
-                    sensor,
+                    route,
                 ->
                 encodeCompactSensor(
                     index =
                         offset +
                             pageIndex,
-                    sensor =
-                        sensor,
+                    route =
+                        route,
                 )
             }
 
         val hasMore =
-            offset < sensors.size &&
+            offset < sensorRoutes.size &&
                 offset + page.size <
-                sensors.size
+                sensorRoutes.size
 
         return DieselCommandResult.ok(
             data =
@@ -131,7 +131,7 @@ class SensorCommandModule(
                         ),
                     "total" to
                         DieselValue.Integer(
-                            sensors.size.toLong(),
+                            sensorRoutes.size.toLong(),
                         ),
                     "offset" to
                         DieselValue.Integer(
@@ -155,17 +155,31 @@ class SensorCommandModule(
 
     private fun encodeCompactSensor(
         index: Int,
-        sensor: SensorInventoryEntry,
-    ): DieselValue.ObjectValue =
-        DieselValue.ObjectValue(
+        route: AndroidSensorRoute,
+    ): DieselValue.ObjectValue {
+        val sensor =
+            route.inventory
+
+        val descriptor =
+            route.descriptor
+
+        return DieselValue.ObjectValue(
             linkedMapOf(
                 "index" to
                     DieselValue.Integer(
                         index.toLong(),
                     ),
+                "routeId" to
+                    DieselValue.Text(
+                        descriptor.routeId.value,
+                    ),
+                "providerId" to
+                    DieselValue.Text(
+                        descriptor.providerId,
+                    ),
                 "id" to
                     DieselValue.Text(
-                        sensor.logicalId,
+                        descriptor.logicalId.value,
                     ),
                 "androidId" to
                     DieselValue.Integer(
@@ -203,6 +217,7 @@ class SensorCommandModule(
                     ),
             ),
         )
+    }
 
     private fun integerArgument(
         context: DieselCommandContext,

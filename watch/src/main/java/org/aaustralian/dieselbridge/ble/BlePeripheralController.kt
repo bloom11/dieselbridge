@@ -19,7 +19,7 @@ import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
-import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
 import org.aaustralian.dieselbridge.sensor.SensorCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
 import org.aaustralian.dieselbridge.protocol.DieselInvalidProtocolDispatch
@@ -47,7 +47,7 @@ class BlePeripheralController(
     private val context: Context,
     private val capabilities: CapabilityRegistry = CapabilityRegistry(),
     private val batterySnapshot: () -> BatteryState? = { null },
-    private val sensorInventory: SensorInventory,
+    private val sensorRouteCatalog: AndroidSensorRouteCatalog,
     private val developerExportAuthorization:
         DeveloperExportAuthorization,
     private val developerExportRegistry:
@@ -95,8 +95,8 @@ class BlePeripheralController(
 
                 install(
                     SensorCommandModule(
-                        inventory =
-                            sensorInventory,
+                        routes =
+                            sensorRouteCatalog,
                     ),
                 )
             }
