@@ -3,32 +3,82 @@
 package org.aaustralian.dieselbridge.platform.sensor
 
 /**
- * Concrete-route projection of the process-visible Android SensorManager
- * inventory.
+ * Concrete-route projection of process-visible Android SensorManager data.
  *
- * This class remains passive. It only transforms the existing inventory and
- * does not hold Sensor objects or register SensorEventListener instances.
+ * Production uses [AndroidSensorManagerSource], where route identity and the
+ * corresponding Android Sensor object originate from the same ordered
+ * snapshot.
+ *
+ * The metadata-only constructor is retained for pure route projection and
+ * JVM tests. Neither path activates a sensor.
  */
-class SensorManagerRouteCatalog(
-    private val inventory: SensorInventory,
+class SensorManagerRouteCatalog private constructor(
+    private val snapshotRoutes:
+        () -> List<AndroidSensorRoute>,
 ) : AndroidSensorRouteCatalog {
 
+    internal constructor(
+        source: AndroidSensorManagerSource,
+    ) : this(
+        snapshotRoutes = {
+            source
+                .snapshot()
+                .map { handle ->
+                    handle.route
+                }
+        },
+    )
+
+    constructor(
+        inventory: SensorInventory,
+    ) : this(
+        snapshotRoutes = {
+            SensorManagerRouteProjector
+                .project(
+                    inventory.snapshot(),
+                )
+        },
+    )
+
     override fun snapshot():
-        List<AndroidSensorRoute> {
+        List<AndroidSensorRoute> =
+        snapshotRoutes()
+
+    companion object {
+        const val PROVIDER_ID =
+            "android.sensor_manager"
+    }
+}
+
+/**
+ * Pure deterministic route-id projection shared by the live SensorManager
+ * source and metadata-only route catalog.
+ *
+ * Keeping this function Android-object-free lets the existing JVM tests prove
+ * route identity without constructing framework Sensor instances.
+ */
+internal object SensorManagerRouteProjector {
+
+    fun project(
+        entries:
+            List<SensorInventoryEntry>,
+    ): List<AndroidSensorRoute> {
         /*
          * Sensor.getId() is normally sufficient to distinguish concrete
          * sensors of the same Android type. Keep an ordinal as an explicit
          * collision discriminator rather than assuming every vendor
          * implementation obeys that uniqueness perfectly.
          *
-         * AndroidSensorInventory supplies deterministic ordering, therefore a
-         * repeated unchanged census receives the same route ids.
+         * The live source supplies deterministic ordering, preserving the
+         * route ids already exposed by M4.1a.
          */
         val collisionOrdinals =
-            mutableMapOf<AndroidIdentity, Int>()
+            mutableMapOf<
+                AndroidIdentity,
+                Int
+            >()
 
-        return inventory
-            .snapshot()
+        return entries
             .map { entry ->
                 val identity =
                     AndroidIdentity(
@@ -54,8 +104,10 @@ class SensorManagerRouteCatalog(
                             routeId =
                                 SensorRouteId(
                                     buildRouteId(
-                                        entry = entry,
-                                        ordinal = ordinal,
+                                        entry =
+                                            entry,
+                                        ordinal =
+                                            ordinal,
                                     ),
                                 ),
                             logicalId =
@@ -63,7 +115,8 @@ class SensorManagerRouteCatalog(
                                     entry.logicalId,
                                 ),
                             providerId =
-                                PROVIDER_ID,
+                                SensorManagerRouteCatalog
+                                    .PROVIDER_ID,
                         ),
                     inventory =
                         entry,
@@ -75,7 +128,9 @@ class SensorManagerRouteCatalog(
         entry: SensorInventoryEntry,
         ordinal: Int,
     ): String =
-        "$PROVIDER_ID:" +
+        SensorManagerRouteCatalog
+            .PROVIDER_ID +
+            ":" +
             "${entry.androidType}:" +
             "${entry.androidId}:" +
             ordinal
@@ -84,9 +139,4 @@ class SensorManagerRouteCatalog(
         val androidType: Int,
         val androidId: Int,
     )
-
-    companion object {
-        const val PROVIDER_ID =
-            "android.sensor_manager"
-    }
 }

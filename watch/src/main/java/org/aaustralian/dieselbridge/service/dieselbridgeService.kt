@@ -39,6 +39,7 @@ import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
@@ -124,23 +125,31 @@ class DieselBridgeService : Service() {
             )
 
         /*
-         * One process-local Android sensor inventory is shared by the generic
-         * Diesel command module and developer tooling. Inventory is read-only:
-         * constructing it does not register or activate any sensor.
+         * One canonical SensorManager source owns the ordered process-visible
+         * snapshot, exact Android Sensor objects, passive inventory metadata
+         * and concrete route identity.
+         *
+         * It still performs census only: no listener or trigger sensor is
+         * registered here.
          */
-        val sensorInventory =
-            AndroidSensorInventory(
+        val sensorSource =
+            AndroidSensorManagerSource(
                 applicationContext,
             )
 
+        val sensorInventory =
+            AndroidSensorInventory(
+                sensorSource,
+            )
+
         /*
-         * Passive concrete-route projection of the same inventory. This is
-         * diagnostic/routing metadata only; it does not choose the active
-         * provider and does not register sensor listeners.
+         * The route catalog is another passive view of the same source.
+         * M4.2b1b can therefore resolve an exported route id back to the
+         * exact Sensor using the identical route-assignment implementation.
          */
         val sensorRouteCatalog =
             SensorManagerRouteCatalog(
-                sensorInventory,
+                sensorSource,
             )
 
         platform.capabilities.register(
