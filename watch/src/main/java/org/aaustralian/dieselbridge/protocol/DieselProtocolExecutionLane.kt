@@ -10,6 +10,25 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
+ * Synchronous result of attempting to admit protocol work.
+ */
+enum class DieselProtocolAdmission {
+    ACCEPTED,
+    FULL,
+    CLOSED,
+}
+
+/**
+ * Admission result plus completion of accepted work.
+ *
+ * Delegating Job preserves the existing join/cancel caller API.
+ */
+data class DieselProtocolSubmission(
+    val admission: DieselProtocolAdmission,
+    val completion: Job,
+) : Job by completion
+
+/**
  * FIFO asynchronous execution boundary for Diesel control-plane work.
  *
  * Transports enqueue requests and return immediately. A single service-owned
@@ -23,6 +42,7 @@ import kotlinx.coroutines.launch
 class DieselProtocolExecutionLane(
     scope: CoroutineScope,
     private val engine: DieselProtocolEngine,
+    queueCapacity: Int = DEFAULT_QUEUE_CAPACITY,
 ) {
     private sealed interface Work {
         val completion: CompletableDeferred<Unit>
@@ -40,16 +60,23 @@ class DieselProtocolExecutionLane(
         ) : Work
     }
 
+    init {
+        require(queueCapacity > 0) {
+            "Diesel protocol queue capacity must be positive"
+        }
+    }
+
     /*
-     * Submission itself must never block the GATT callback.
+     * Submission itself must never block the transport callback.
      *
-     * BLE is already bandwidth-limited and Diesel requests are bounded by the
-     * protocol decoder. Admission/back-pressure policy can be added as a
-     * separate concern if another higher-throughput transport needs it.
+     * Capacity counts waiting work, not the item currently held by the
+     * single worker. The default bound is therefore:
+     *
+     *     1 running + 4 waiting = at most 5 admitted requests.
      */
     private val queue =
         Channel<Work>(
-            capacity = Channel.UNLIMITED,
+            capacity = queueCapacity,
             onUndeliveredElement = {
                     work,
                 ->
@@ -90,11 +117,11 @@ class DieselProtocolExecutionLane(
      */
     fun submit(
         request: DieselRequest,
-    ): Job {
+    ): DieselProtocolSubmission {
         val completion =
             CompletableDeferred<Unit>()
 
-        val accepted =
+        val result =
             queue.trySend(
                 Work.Request(
                     request = request,
@@ -102,15 +129,10 @@ class DieselProtocolExecutionLane(
                 ),
             )
 
-        if (accepted.isFailure) {
-            completion.cancel(
-                CancellationException(
-                    "Diesel protocol execution lane is closed",
-                ),
-            )
-        }
-
-        return completion
+        return submissionFor(
+            result = result,
+            completion = completion,
+        )
     }
 
     /**
@@ -119,11 +141,11 @@ class DieselProtocolExecutionLane(
      */
     fun submitInvalid(
         failure: DieselInvalidRequest,
-    ): Job {
+    ): DieselProtocolSubmission {
         val completion =
             CompletableDeferred<Unit>()
 
-        val accepted =
+        val result =
             queue.trySend(
                 Work.Invalid(
                     failure = failure,
@@ -131,15 +153,49 @@ class DieselProtocolExecutionLane(
                 ),
             )
 
-        if (accepted.isFailure) {
+        return submissionFor(
+            result = result,
+            completion = completion,
+        )
+    }
+
+    private fun submissionFor(
+        result: kotlinx.coroutines.channels.ChannelResult<Unit>,
+        completion: CompletableDeferred<Unit>,
+    ): DieselProtocolSubmission {
+        val admission =
+            when {
+                result.isSuccess ->
+                    DieselProtocolAdmission.ACCEPTED
+
+                result.isClosed ->
+                    DieselProtocolAdmission.CLOSED
+
+                else ->
+                    DieselProtocolAdmission.FULL
+            }
+
+        if (admission != DieselProtocolAdmission.ACCEPTED) {
             completion.cancel(
                 CancellationException(
-                    "Diesel protocol execution lane is closed",
+                    when (admission) {
+                        DieselProtocolAdmission.FULL ->
+                            "Diesel protocol execution queue is full"
+
+                        DieselProtocolAdmission.CLOSED ->
+                            "Diesel protocol execution lane is closed"
+
+                        DieselProtocolAdmission.ACCEPTED ->
+                            error("Accepted work must not be cancelled")
+                    },
                 ),
             )
         }
 
-        return completion
+        return DieselProtocolSubmission(
+            admission = admission,
+            completion = completion,
+        )
     }
 
     private suspend fun execute(
@@ -177,6 +233,11 @@ class DieselProtocolExecutionLane(
                 error,
             )
         }
+    }
+
+    companion object {
+        const val DEFAULT_QUEUE_CAPACITY =
+            4
     }
 
     private fun cancellationException(

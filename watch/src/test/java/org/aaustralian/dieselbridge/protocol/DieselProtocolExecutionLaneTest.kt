@@ -28,6 +28,8 @@ class DieselProtocolExecutionLaneTest {
 
     private suspend fun executionLane(
         engine: DieselProtocolEngine,
+        queueCapacity: Int =
+            DieselProtocolExecutionLane.DEFAULT_QUEUE_CAPACITY,
     ): DieselProtocolExecutionLane {
         check(
             laneJob == null,
@@ -48,6 +50,7 @@ class DieselProtocolExecutionLaneTest {
                         job,
                 ),
             engine = engine,
+            queueCapacity = queueCapacity,
         )
     }
 
@@ -262,6 +265,282 @@ class DieselProtocolExecutionLaneTest {
 
 
     @Test
+    fun fullQueueRejectsWithoutBlockingAndWorkerContinues(): Unit =
+        runBlocking {
+            val firstEntered =
+                CompletableDeferred<Unit>()
+            val release =
+                CompletableDeferred<Unit>()
+
+            val registry =
+                DieselCommandRegistry()
+
+            registry.register(
+                DieselCommandSpec(
+                    name = "slow",
+                    summary = "Synthetic slow command",
+                ),
+            ) {
+                firstEntered.complete(Unit)
+                release.await()
+                DieselCommandResult.ok()
+            }
+
+            val responses =
+                mutableListOf<String>()
+
+            val engine =
+                DieselProtocolEngine(
+                    commands = registry,
+                    responses =
+                        DieselResponseTransport { response ->
+                            responses += response.requestId
+                            true
+                        },
+                )
+
+            val lane =
+                executionLane(
+                    engine = engine,
+                    queueCapacity = 2,
+                )
+
+            val running =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "running",
+                        command = "slow",
+                    ),
+                )
+
+            assertEquals(
+                DieselProtocolAdmission.ACCEPTED,
+                running.admission,
+            )
+
+            firstEntered.await()
+
+            val waitingOne =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "waiting-1",
+                        command = "slow",
+                    ),
+                )
+
+            val waitingTwo =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "waiting-2",
+                        command = "slow",
+                    ),
+                )
+
+            val overflow =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "overflow",
+                        command = "slow",
+                    ),
+                )
+
+            assertEquals(
+                DieselProtocolAdmission.ACCEPTED,
+                waitingOne.admission,
+            )
+            assertEquals(
+                DieselProtocolAdmission.ACCEPTED,
+                waitingTwo.admission,
+            )
+            assertEquals(
+                DieselProtocolAdmission.FULL,
+                overflow.admission,
+            )
+            assertTrue(
+                overflow.isCancelled,
+            )
+
+            release.complete(Unit)
+
+            running.join()
+            waitingOne.join()
+            waitingTwo.join()
+
+            assertEquals(
+                listOf(
+                    "running",
+                    "waiting-1",
+                    "waiting-2",
+                ),
+                responses,
+            )
+
+            val afterDrain =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "after-drain",
+                        command = "slow",
+                    ),
+                )
+
+            assertEquals(
+                DieselProtocolAdmission.ACCEPTED,
+                afterDrain.admission,
+            )
+
+            afterDrain.join()
+
+            assertEquals(
+                listOf(
+                    "running",
+                    "waiting-1",
+                    "waiting-2",
+                    "after-drain",
+                ),
+                responses,
+            )
+        }
+
+    @Test
+    fun invalidRequestsShareTheSameBoundedAdmissionBudget(): Unit =
+        runBlocking {
+            val firstEntered =
+                CompletableDeferred<Unit>()
+            val release =
+                CompletableDeferred<Unit>()
+
+            val registry =
+                DieselCommandRegistry()
+
+            registry.register(
+                DieselCommandSpec(
+                    name = "slow",
+                    summary = "Synthetic slow command",
+                ),
+            ) {
+                firstEntered.complete(Unit)
+                release.await()
+                DieselCommandResult.ok()
+            }
+
+            val statuses =
+                mutableListOf<DieselResponseStatus>()
+
+            val engine =
+                DieselProtocolEngine(
+                    commands = registry,
+                    responses =
+                        DieselResponseTransport { response ->
+                            statuses += response.status
+                            true
+                        },
+                )
+
+            val lane =
+                executionLane(
+                    engine = engine,
+                    queueCapacity = 1,
+                )
+
+            val running =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "running",
+                        command = "slow",
+                    ),
+                )
+
+            firstEntered.await()
+
+            val invalid =
+                lane.submitInvalid(
+                    DieselInvalidRequest(
+                        requestId = "invalid",
+                        command = "commands",
+                        name = null,
+                        reason =
+                            DieselRequestFailureReason.INVALID_KIND,
+                        detail = "local test detail",
+                    ),
+                )
+
+            val overflow =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "overflow",
+                        command = "slow",
+                    ),
+                )
+
+            assertEquals(
+                DieselProtocolAdmission.ACCEPTED,
+                running.admission,
+            )
+            assertEquals(
+                DieselProtocolAdmission.ACCEPTED,
+                invalid.admission,
+            )
+            assertEquals(
+                DieselProtocolAdmission.FULL,
+                overflow.admission,
+            )
+
+            release.complete(Unit)
+
+            running.join()
+            invalid.join()
+
+            assertEquals(
+                listOf(
+                    DieselResponseStatus.OK,
+                    DieselResponseStatus.INVALID_REQUEST,
+                ),
+                statuses,
+            )
+        }
+
+    @Test
+    fun stoppedLaneReportsClosedInsteadOfFull(): Unit =
+        runBlocking {
+            val engine =
+                DieselProtocolEngine(
+                    commands = DieselCommandRegistry(),
+                    responses =
+                        DieselResponseTransport {
+                            true
+                        },
+                )
+
+            val lane =
+                executionLane(
+                    engine = engine,
+                    queueCapacity = 1,
+                )
+
+            val job =
+                requireNotNull(laneJob)
+
+            job.cancel()
+            job.join()
+
+            val submission =
+                lane.submit(
+                    DieselRequest(
+                        requestId = "closed",
+                        command = "commands",
+                    ),
+                )
+
+            assertEquals(
+                DieselProtocolAdmission.CLOSED,
+                submission.admission,
+            )
+            assertTrue(
+                submission.isCancelled,
+            )
+        }
+
+    @Test
     fun submissionOrderIsPreserved(): Unit =
         runBlocking {
             val registry =
@@ -310,6 +589,7 @@ class DieselProtocolExecutionLaneTest {
             val lane =
                 executionLane(
                     engine = engine,
+                    queueCapacity = 32,
                 )
 
             val jobs =
