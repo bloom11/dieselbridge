@@ -183,3 +183,27 @@ dismiss/reply parity on stock Android.
   transport-delivery error accounting.
 - Adding a future command such as `sensor.read` does not require command-specific changes to NUS,
   Gadgetbridge response transport, response correlation, or the Diesel protocol engine.
+
+### M4.2b0b bounded execution and overload feedback
+
+- Diesel command execution remains FIFO: one running request plus four waiting. Valid and invalid
+  decoded requests consume the same budget; submission never waits for execution or transport.
+- A full execution queue offers a generic `status:"rate_limited"` response with
+  `data.reason:"execution_queue_full"`. The engine echoes the same validated correlation fields
+  as ordinary responses; an invalid/missing command uses `"protocol"`. Rejected commands do not run.
+- Feedback has its own single worker and four waiting slots, shared by valid and invalid requests.
+  It may overtake a slow admitted request. Clients must correlate by request ID, not arrival order.
+  When feedback is full, newest feedback is dropped. No per-rejection coroutine or unlimited retry
+  is created. `FULL` still returns an immediately cancelled submission completion; that completion
+  does not track feedback delivery.
+- Shutdown reports `CLOSED`, cancels queued work/feedback, and does not schedule rejection replies.
+  An already-started synchronous transport send cannot be recalled. Transport failures are recorded
+  through the existing dispatch callbacks and do not kill the execution worker.
+- NUS TX now accepts whole lines only while they fit its 64 KiB queued-payload budget, plus at most
+  one already-dequeued MTU chunk in flight. A rejected line contributes no partial chunks. The bound
+  applies to all outgoing NUS lines, including legacy actions; callers receive `false` on congestion.
+  Disconnect/close clears the queue. NUS does not inspect commands or response statuses.
+- An admitted request normally receives one response attempt, not guaranteed end-to-end delivery.
+  Cancellation, disconnection or TX congestion can prevent delivery. Unlimited ingress cannot have
+  both bounded buffering and guaranteed replies without ingress backpressure. Clients should use
+  bounded request rates/timeouts and avoid blindly retrying actions whose outcome is unknown.

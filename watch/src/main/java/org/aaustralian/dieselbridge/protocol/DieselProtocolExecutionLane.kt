@@ -3,11 +3,13 @@
 package org.aaustralian.dieselbridge.protocol
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 
 /**
  * Synchronous result of attempting to admit protocol work.
@@ -20,6 +22,8 @@ enum class DieselProtocolAdmission {
 
 /**
  * Admission result plus completion of accepted work.
+ * FULL/CLOSED completions are cancelled immediately. FULL feedback is best effort
+ * on a separate bounded lane and is not represented by this completion.
  */
 data class DieselProtocolSubmission(
     val admission: DieselProtocolAdmission,
@@ -41,6 +45,7 @@ class DieselProtocolExecutionLane(
     scope: CoroutineScope,
     private val engine: DieselProtocolEngine,
     queueCapacity: Int = DEFAULT_QUEUE_CAPACITY,
+    rejectionCapacity: Int = DEFAULT_REJECTION_CAPACITY,
 ) {
     private sealed interface Work {
         val completion: CompletableDeferred<Unit>
@@ -61,6 +66,9 @@ class DieselProtocolExecutionLane(
     init {
         require(queueCapacity > 0) {
             "Diesel protocol queue capacity must be positive"
+        }
+        require(rejectionCapacity > 0) {
+            "Diesel protocol rejection capacity must be positive"
         }
     }
 
@@ -86,6 +94,29 @@ class DieselProtocolExecutionLane(
             },
         )
 
+    /*
+     * One fixed worker and a finite feedback queue, never a coroutine per rejection.
+     * Overload replies may overtake admitted work. If feedback is also full, drop
+     * the newest feedback; never evict accepted command work or retry indefinitely.
+     */
+    private val rejections = Channel<Work>(capacity = rejectionCapacity)
+
+    private val rejectionWorker = scope.launch {
+        for (work in rejections) {
+            coroutineContext.ensureActive()
+            try {
+                when (work) {
+                    is Work.Request -> engine.handleOverloaded(work.request)
+                    is Work.Invalid -> engine.handleInvalidOverloaded(work.failure)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // A failed feedback attempt must not kill either worker.
+            }
+        }
+    }
+
     private val worker =
         scope.launch {
             for (work in queue) {
@@ -96,9 +127,14 @@ class DieselProtocolExecutionLane(
         }
 
     init {
+        rejectionWorker.invokeOnCompletion { cause ->
+            rejections.cancel(cancellationException(cause))
+        }
         worker.invokeOnCompletion {
                 cause,
             ->
+            rejectionWorker.cancel(cancellationException(cause))
+            rejections.cancel(cancellationException(cause))
             queue.cancel(
                 cancellationException(
                     cause,
@@ -116,90 +152,46 @@ class DieselProtocolExecutionLane(
     fun submit(
         request: DieselRequest,
     ): DieselProtocolSubmission {
-        val completion =
-            CompletableDeferred<Unit>()
-
-        val result =
-            queue.trySend(
-                Work.Request(
-                    request = request,
-                    completion = completion,
-                ),
-            )
-
-        return submissionFor(
-            result = result,
-            completion = completion,
-        )
+        return submitWork(Work.Request(request, CompletableDeferred()))
     }
 
-    /**
-     * Invalid decoded requests use the same FIFO worker. They therefore cannot
-     * overtake valid requests already accepted by the protocol lane.
-     */
+    /** Invalid requests consume exactly the same finite admission budget. */
     fun submitInvalid(
         failure: DieselInvalidRequest,
-    ): DieselProtocolSubmission {
-        val completion =
-            CompletableDeferred<Unit>()
+    ): DieselProtocolSubmission =
+        submitWork(Work.Invalid(failure, CompletableDeferred()))
 
-        val result =
-            queue.trySend(
-                Work.Invalid(
-                    failure = failure,
-                    completion = completion,
-                ),
-            )
-
-        return submissionFor(
-            result = result,
-            completion = completion,
-        )
-    }
-
-    private fun submissionFor(
-        result: kotlinx.coroutines.channels.ChannelResult<Unit>,
-        completion: CompletableDeferred<Unit>,
-    ): DieselProtocolSubmission {
-        val admission =
-            when {
-                result.isSuccess ->
-                    DieselProtocolAdmission.ACCEPTED
-
-                result.isClosed ->
-                    DieselProtocolAdmission.CLOSED
-
-                else ->
-                    DieselProtocolAdmission.FULL
-            }
+    private fun submitWork(work: Work): DieselProtocolSubmission {
+        // Scope cancellation marks the worker inactive before its cleanup callback runs.
+        val result = if (worker.isActive) queue.trySend(work) else null
+        val admission = when {
+            result == null || result.isClosed -> DieselProtocolAdmission.CLOSED
+            result.isSuccess -> DieselProtocolAdmission.ACCEPTED
+            else -> DieselProtocolAdmission.FULL
+        }
 
         if (admission != DieselProtocolAdmission.ACCEPTED) {
-            completion.cancel(
+            work.completion.cancel(
                 CancellationException(
-                    when (admission) {
-                        DieselProtocolAdmission.FULL ->
-                            "Diesel protocol execution queue is full"
-
-                        DieselProtocolAdmission.CLOSED ->
-                            "Diesel protocol execution lane is closed"
-
-                        DieselProtocolAdmission.ACCEPTED ->
-                            error("Accepted work must not be cancelled")
+                    if (admission == DieselProtocolAdmission.FULL) {
+                        "Diesel protocol execution queue is full"
+                    } else {
+                        "Diesel protocol execution lane is closed"
                     },
                 ),
             )
         }
-
-        return DieselProtocolSubmission(
-            admission = admission,
-            completion = completion,
-        )
+        if (admission == DieselProtocolAdmission.FULL && worker.isActive) {
+            rejections.trySend(work)
+        }
+        return DieselProtocolSubmission(admission, work.completion)
     }
 
     private suspend fun execute(
         work: Work,
     ) {
         try {
+            coroutineContext.ensureActive()
             when (work) {
                 is Work.Request ->
                     engine.handle(
@@ -235,6 +227,8 @@ class DieselProtocolExecutionLane(
 
     companion object {
         const val DEFAULT_QUEUE_CAPACITY =
+            4
+        const val DEFAULT_REJECTION_CAPACITY =
             4
     }
 

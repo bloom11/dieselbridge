@@ -47,7 +47,7 @@ class NusGattServer(
     private val rxBuffer = ByteArrayOutputStream()
 
     private val txLock = Any()
-    private val txQueue = ArrayDeque<ByteArray>()
+    private val txQueue = BoundedNusTxQueue()
     private var txBusy = false
 
     val connectedDevice: BluetoothDevice? get() = connected
@@ -94,6 +94,7 @@ class NusGattServer(
     /**
      * watch -> phone: enqueue one newline-terminated line, chunked to the MTU and streamed via the
      * TX notify characteristic. Returns true if a central is connected and the line was queued.
+     * Rejects complete lines when the finite TX byte budget is exhausted.
      */
     fun sendLine(line: String): Boolean {
         val device = connected ?: run { Log.w(TAG, "sendLine: no central connected"); return false }
@@ -102,11 +103,9 @@ class NusGattServer(
         val payload = (line + "\r\n").toByteArray(Charsets.UTF_8)
         val chunkSize = (mtu - 3).coerceAtLeast(MIN_CHUNK)
         synchronized(txLock) {
-            var i = 0
-            while (i < payload.size) {
-                val end = minOf(i + chunkSize, payload.size)
-                txQueue.add(payload.copyOfRange(i, end))
-                i = end
+            if (!txQueue.offer(payload, chunkSize)) {
+                Log.w(TAG, "sendLine: TX queue full; dropping complete line (${payload.size}B)")
+                return false
             }
         }
         Log.i(TAG, "sendLine queued ${payload.size}B (mtu=$mtu chunk=$chunkSize) notifySubscribed=$notifyEnabled")

@@ -360,6 +360,7 @@ class DieselProtocolExecutionLaneTest {
                 overflow.completion.isCancelled,
             )
 
+            yield() // Allow overload feedback to overtake the suspended command.
             release.complete(Unit)
 
             running.completion.join()
@@ -368,6 +369,7 @@ class DieselProtocolExecutionLaneTest {
 
             assertEquals(
                 listOf(
+                    "overflow",
                     "running",
                     "waiting-1",
                     "waiting-2",
@@ -392,6 +394,7 @@ class DieselProtocolExecutionLaneTest {
 
             assertEquals(
                 listOf(
+                    "overflow",
                     "running",
                     "waiting-1",
                     "waiting-2",
@@ -485,6 +488,7 @@ class DieselProtocolExecutionLaneTest {
                 overflow.admission,
             )
 
+            yield() // Allow overload feedback to overtake the suspended command.
             release.complete(Unit)
 
             running.completion.join()
@@ -492,6 +496,7 @@ class DieselProtocolExecutionLaneTest {
 
             assertEquals(
                 listOf(
+                    DieselResponseStatus.RATE_LIMITED,
                     DieselResponseStatus.OK,
                     DieselResponseStatus.INVALID_REQUEST,
                 ),

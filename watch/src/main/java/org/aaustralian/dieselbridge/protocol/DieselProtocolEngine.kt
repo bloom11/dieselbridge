@@ -3,6 +3,8 @@
 package org.aaustralian.dieselbridge.protocol
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Result of one protocol dispatch.
@@ -72,6 +74,25 @@ class DieselProtocolEngine(
                 )
             }
 
+        coroutineContext.ensureActive()
+        return respond(request, result, handlerError)
+    }
+
+    /** Reject without entering the command registry; correlation remains engine-owned. */
+    fun handleOverloaded(request: DieselRequest): DieselProtocolDispatch =
+        respond(
+            request,
+            DieselCommandResult(
+                status = DieselResponseStatus.RATE_LIMITED,
+                data = overloadData(),
+            ),
+        )
+
+    private fun respond(
+        request: DieselRequest,
+        result: DieselCommandResult,
+        handlerError: Exception? = null,
+    ): DieselProtocolDispatch {
         val response =
             DieselResponse(
                 requestId = request.requestId,
@@ -127,6 +148,21 @@ class DieselProtocolEngine(
      */
     fun handleInvalid(
         failure: DieselInvalidRequest,
+    ): DieselInvalidProtocolDispatch =
+        respondInvalid(
+            failure,
+            DieselResponseStatus.INVALID_REQUEST,
+            mapOf("reason" to DieselValue.Text(failure.reason.wireName)),
+        )
+
+    /** Invalid and valid ingress share the same overload semantics and admission budget. */
+    fun handleInvalidOverloaded(failure: DieselInvalidRequest): DieselInvalidProtocolDispatch =
+        respondInvalid(failure, DieselResponseStatus.RATE_LIMITED, overloadData())
+
+    private fun respondInvalid(
+        failure: DieselInvalidRequest,
+        status: DieselResponseStatus,
+        data: Map<String, DieselValue>,
     ): DieselInvalidProtocolDispatch {
         val response =
             DieselResponse(
@@ -137,15 +173,8 @@ class DieselProtocolEngine(
                         ?: PROTOCOL_ERROR_COMMAND,
                 name =
                     failure.name,
-                status =
-                    DieselResponseStatus.INVALID_REQUEST,
-                data =
-                    mapOf(
-                        "reason" to
-                            DieselValue.Text(
-                                failure.reason.wireName,
-                            ),
-                    ),
+                status = status,
+                data = data,
             )
 
         var transportError: Exception? =
@@ -156,6 +185,8 @@ class DieselProtocolEngine(
                 responses.send(
                     response,
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 transportError =
                     error
@@ -184,6 +215,9 @@ class DieselProtocolEngine(
 
         return dispatch
     }
+
+    private fun overloadData(): Map<String, DieselValue> =
+        mapOf("reason" to DieselValue.Text("execution_queue_full"))
 
     companion object {
         /**
