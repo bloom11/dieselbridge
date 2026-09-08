@@ -20,13 +20,11 @@ enum class DieselProtocolAdmission {
 
 /**
  * Admission result plus completion of accepted work.
- *
- * Delegating Job preserves the existing join/cancel caller API.
  */
 data class DieselProtocolSubmission(
     val admission: DieselProtocolAdmission,
     val completion: Job,
-) : Job by completion
+)
 
 /**
  * FIFO asynchronous execution boundary for Diesel control-plane work.

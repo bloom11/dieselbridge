@@ -151,8 +151,8 @@ class DieselProtocolExecutionLaneTest {
                 Unit,
             )
 
-            firstJob.join()
-            secondJob.join()
+            firstJob.completion.join()
+            secondJob.completion.join()
 
             assertTrue(
                 secondEntered.isCompleted,
@@ -250,8 +250,8 @@ class DieselProtocolExecutionLaneTest {
                 Unit,
             )
 
-            validJob.join()
-            invalidJob.join()
+            validJob.completion.join()
+            invalidJob.completion.join()
 
             assertEquals(
                 listOf(
@@ -294,7 +294,7 @@ class DieselProtocolExecutionLaneTest {
                     commands = registry,
                     responses =
                         DieselResponseTransport { response ->
-                            responses += response.requestId
+                            responses += requireNotNull(response.requestId)
                             true
                         },
                 )
@@ -357,14 +357,14 @@ class DieselProtocolExecutionLaneTest {
                 overflow.admission,
             )
             assertTrue(
-                overflow.isCancelled,
+                overflow.completion.isCancelled,
             )
 
             release.complete(Unit)
 
-            running.join()
-            waitingOne.join()
-            waitingTwo.join()
+            running.completion.join()
+            waitingOne.completion.join()
+            waitingTwo.completion.join()
 
             assertEquals(
                 listOf(
@@ -388,7 +388,7 @@ class DieselProtocolExecutionLaneTest {
                 afterDrain.admission,
             )
 
-            afterDrain.join()
+            afterDrain.completion.join()
 
             assertEquals(
                 listOf(
@@ -487,8 +487,8 @@ class DieselProtocolExecutionLaneTest {
 
             release.complete(Unit)
 
-            running.join()
-            invalid.join()
+            running.completion.join()
+            invalid.completion.join()
 
             assertEquals(
                 listOf(
@@ -536,7 +536,7 @@ class DieselProtocolExecutionLaneTest {
                 submission.admission,
             )
             assertTrue(
-                submission.isCancelled,
+                submission.completion.isCancelled,
             )
         }
 
@@ -613,7 +613,7 @@ class DieselProtocolExecutionLaneTest {
                     }
 
             jobs.forEach {
-                it.join()
+                it.completion.join()
             }
 
             assertEquals(
