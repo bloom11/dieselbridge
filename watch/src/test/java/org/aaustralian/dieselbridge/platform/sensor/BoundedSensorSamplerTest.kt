@@ -381,7 +381,9 @@ class BoundedSensorSamplerTest {
             BoundedSensorSampler().sample(registration, 500)
             org.junit.Assert.fail("Start failure must propagate")
         } catch (error: IllegalStateException) {
-            org.junit.Assert.assertSame(failure, error)
+            // Coroutine stack-trace recovery may copy the exception across the suspension boundary.
+            assertEquals(failure.javaClass, error.javaClass)
+            assertEquals(failure.message, error.message)
         }
         assertEquals(1, stops)
     }
