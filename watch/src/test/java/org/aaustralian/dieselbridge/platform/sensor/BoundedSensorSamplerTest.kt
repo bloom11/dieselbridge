@@ -368,6 +368,47 @@ class BoundedSensorSamplerTest {
         )
     }
 
+    @Test
+    fun unexpectedStartFailureStopsOnceAndPropagates(): Unit = runBlocking {
+        var stops = 0
+        val failure = IllegalStateException("start failure")
+        val registration = object : SensorSampleRegistration {
+            override val kind = SensorRegistrationKind.LISTENER
+            override fun start(onEvent: (SensorRawEvent) -> Unit): SensorRegistrationStart = throw failure
+            override fun stop() { stops++ }
+        }
+        try {
+            BoundedSensorSampler().sample(registration, 500)
+            org.junit.Assert.fail("Start failure must propagate")
+        } catch (error: IllegalStateException) {
+            org.junit.Assert.assertSame(failure, error)
+        }
+        assertEquals(1, stops)
+    }
+
+    @Test
+    fun synchronousEventCannotBeOverwrittenBySubsequentRejection(): Unit = runBlocking {
+        val raw = SensorRawEvent(100, null, listOf(9f))
+        val registration = FakeRegistration(
+            startResult = SensorRegistrationStart.Rejected("late rejection"),
+            synchronousEvent = raw,
+        )
+        val result = BoundedSensorSampler().sample(registration, 500)
+        assertEquals(raw, (result as BoundedSensorSampleOutcome.Event).event)
+        assertEquals(1, registration.stopCalls)
+    }
+
+    @Test
+    fun lateRejectionCannotReviveStoppedRegistration() {
+        val lifecycle = SensorRegistrationLifecycle()
+        assertTrue(lifecycle.begin())
+        lifecycle.stop()
+        lifecycle.markRejected()
+        assertTrue(!lifecycle.begin())
+        assertTrue(!lifecycle.markAccepted())
+        assertTrue(!lifecycle.stop())
+    }
+
     private class FakeRegistration(
         override val kind:
             SensorRegistrationKind =

@@ -32,6 +32,7 @@ import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessPolicy
+import org.aaustralian.dieselbridge.debug.DeveloperSensorProbeCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.debug.WatchDeveloperExportRegistry
@@ -39,6 +40,8 @@ import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteProbe
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.tile.MusicTileService
@@ -194,6 +197,15 @@ class DieselBridgeService : Service() {
                     developerRemoteAccessPolicy,
                 developerExportRegistry =
                     developerExportRegistry,
+                additionalCommandModules = listOf(
+                    DeveloperSensorProbeCommandModule(
+                        authorization = developerRemoteAccessPolicy,
+                        probe = AndroidSensorRouteProbe(
+                            source = sensorSource,
+                            sampler = AndroidSensorSampler(applicationContext),
+                        ),
+                    ),
+                ),
             )
 
         controller = bleController

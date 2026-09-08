@@ -22,6 +22,7 @@ import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
 import org.aaustralian.dieselbridge.sensor.SensorCommandModule
+import org.aaustralian.dieselbridge.protocol.DieselCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
 import org.aaustralian.dieselbridge.protocol.DieselInvalidProtocolDispatch
 import org.aaustralian.dieselbridge.protocol.DieselInvalidRequest
@@ -55,6 +56,7 @@ class BlePeripheralController(
         DeveloperRemoteAccessAuthorization,
     private val developerExportRegistry:
         DeveloperExportRegistry,
+    additionalCommandModules: List<DieselCommandModule> = emptyList(),
 ) {
     private var advertiser: NusAdvertiser? = null
     private var gattServer: NusGattServer? = null
@@ -102,6 +104,8 @@ class BlePeripheralController(
                             sensorRouteCatalog,
                     ),
                 )
+
+                additionalCommandModules.forEach { install(it) }
             }
 
     private val dieselProtocolEngine =

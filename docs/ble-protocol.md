@@ -207,3 +207,43 @@ dismiss/reply parity on stock Android.
   Cancellation, disconnection or TX congestion can prevent delivery. Unlimited ingress cannot have
   both bounded buffering and guaranteed replies without ingress backpressure. Clients should use
   bounded request rates/timeouts and avoid blindly retrying actions whose outcome is unknown.
+
+### M4.2b2 exact developer sensor probe
+
+`debug.sensor.probe` is a diagnostic first-event read, not the public `sensor.read` API.
+It is installed through the command registry and runs in the existing bounded execution lane.
+The only accepted args are required text `routeId` and optional integer `timeoutMs` (default 5000,
+range 500–15000 inclusive). `name` must be absent. Route IDs use the opaque `SensorRouteId` contract;
+clients should copy them from `sensor.list`, not manufacture provider-specific identifiers.
+
+Syntax validation precedes local remote-developer authorization, which precedes fresh exact-route
+resolution and sensor activation. Disabled access returns `unavailable` with
+`remote_developer_access_disabled`; no sensor census or registration occurs. Authorization is
+checked when queued work executes. Turning it off does not abort an already-started bounded probe;
+stopping the service cancels sampling and cleans up registrations.
+
+Successful diagnostic outcomes use `status:"ok"` with `data.outcome` equal to `event`, `timeout`,
+`permission_denied`, `registration_rejected` or `route_unavailable`. Unexpected exceptions return
+`failed / probe_failed`; cancellation propagates. A missing route returns the requested `routeId`.
+A permission exception before resolution likewise returns that ID and `requiredPermission:null`.
+
+Resolved results include:
+
+- `route`: unchanged route/provider/logical IDs, Android ID/type, string type, name, vendor,
+  reporting mode, wake-up flag, required permission (null when unknown), and `metadataTruncated`.
+- `registration`: `kind` (`listener` or `trigger`), requested `timeoutMs`, `elapsedMs`, and
+  `samplingPeriodUs` (200000 for listeners; null for one-shot triggers).
+- For an event: `accuracy` (null for triggers), raw `sensorTimestampNs` in the monotonic sensor
+  clock domain, `timeToEventMs`, `sampleCount:1`, actual `valueCount`, `returnedValueCount`,
+  `valuesTruncated`, and up to 64 raw values. No wall-clock conversion or unit inference is made.
+
+Non-finite values become JSON null, with zero-based positions recorded in `event.nonFinite.nan`,
+`positiveInfinity`, and `negativeInfinity`. Missing categories are omitted. Returned finite values
+are not clamped or rounded. Positions beyond the 64-value prefix are not annotated;
+`valueCount` and `valuesTruncated` explicitly identify that loss.
+
+Responses are measured with the actual request correlation against the 4096-byte JSON budget.
+Descriptive metadata starts at 64 code points and is shortened further if needed; control characters
+are normalized and changes are flagged. Identities, returned values and non-finite annotations are
+never shortened to make a response fit. Full descriptions remain in the passive census/export.
+No BODY_SENSORS or ACTIVITY_RECOGNITION permission was added for the first hardware campaign.
