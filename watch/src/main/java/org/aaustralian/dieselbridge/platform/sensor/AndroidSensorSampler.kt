@@ -302,13 +302,7 @@ private class SensorManagerSampleRegistration(
 
                 return SensorRegistrationStart
                     .PermissionDenied(
-                        requiredPermission =
-                            sensor
-                                .requiredPermission
-                                .orEmpty()
-                                .ifBlank {
-                                    null
-                                },
+                        requiredPermission = null,
                     )
             } catch (
                 error: IllegalArgumentException,
