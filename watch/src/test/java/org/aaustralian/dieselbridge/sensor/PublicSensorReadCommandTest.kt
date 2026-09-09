@@ -114,6 +114,23 @@ class PublicSensorReadCommandTest {
     }
 
     @Test
+    fun matrixReturnsOneBoundedEntryForEveryStandardTarget() = runBlocking {
+        val result = registry(
+            FakeSensor(
+                SensorCapabilityId("sensor.accelerometer"),
+                SensorReadResult.Event(
+                    SensorReading(SensorCapabilityId("sensor.accelerometer"), "fake", listOf(1f), 1L, 3, 2L),
+                ),
+            ),
+        ).dispatch(
+            DieselRequest(requestId = "matrix", command = "sensor.matrix"),
+        )
+        assertEquals(DieselResponseStatus.OK, result.status)
+        val entries = (result.data["results"] as DieselValue.ListValue).value
+        assertEquals(8, entries.size)
+    }
+
+    @Test
     fun validationRejectsNameMissingWrongTimeoutAndRouteSelection() = runBlocking {
         val sensor = FakeSensor(SensorCapabilityId("sensor.accelerometer"), SensorReadResult.Timeout)
         val registry = registry(sensor)

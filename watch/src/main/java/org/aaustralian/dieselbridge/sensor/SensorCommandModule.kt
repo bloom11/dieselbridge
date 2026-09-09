@@ -83,6 +83,22 @@ class SensorCommandModule(
                     ),
                 ),
             ) { context -> readSensor(context, capabilities) }
+            registry.register(
+                DieselCommandSpec(
+                    name = COMMAND_SENSOR_MATRIX,
+                    summary = "Read every standard logical sensor target",
+                    metadata = mapOf(
+                        "domain" to DieselValue.Text("sensor"),
+                        "effect" to DieselValue.Text("read_only"),
+                        "bounded" to DieselValue.Text("one sample per target"),
+                        "arguments" to DieselValue.ObjectValue(
+                            mapOf(
+                                ARG_TIMEOUT_MS to DieselValue.Text("integer ${AndroidSensorSampler.MIN_TIMEOUT_MS}..${AndroidSensorSampler.MAX_TIMEOUT_MS}, default ${AndroidSensorSampler.DEFAULT_TIMEOUT_MS}"),
+                            ),
+                        ),
+                    ),
+                ),
+            ) { context -> readMatrix(context, capabilities) }
         }
     }
 
@@ -90,7 +106,8 @@ class SensorCommandModule(
         context: DieselCommandContext,
         registry: CapabilityRegistry,
     ): DieselCommandResult {
-        if (context.name == null || context.args.keys.any { it != ARG_TIMEOUT_MS }) {
+        val target = context.name ?: return invalidReadArguments()
+        if (context.args.keys.any { it != ARG_TIMEOUT_MS }) {
             return invalidReadArguments()
         }
         val timeout = when (val value = context.args[ARG_TIMEOUT_MS]) {
@@ -103,7 +120,7 @@ class SensorCommandModule(
         }
         val capability = registry.resolveAs<SensorCapability>("sensor.${context.name}")
         if (capability == null) {
-            val known = context.name in CANONICAL_LOGICAL_IDS
+            val known = target in CANONICAL_LOGICAL_IDS
             return DieselCommandResult(
                 if (known) DieselResponseStatus.UNAVAILABLE else DieselResponseStatus.UNKNOWN_TARGET,
                 mapOf(
@@ -113,7 +130,7 @@ class SensorCommandModule(
                 ),
             )
         }
-        return when (val result = capability.read(SensorReadOptions(timeout))) {
+        return when (val result = SensorReadCoordinator.read(registry, target, SensorReadOptions(timeout))) {
             is SensorReadResult.Event -> encodeReading(result.reading)
             SensorReadResult.Unavailable -> DieselCommandResult(
                 DieselResponseStatus.UNAVAILABLE,
@@ -133,6 +150,37 @@ class SensorCommandModule(
                 ),
             )
         }
+    }
+
+    private suspend fun readMatrix(
+        context: DieselCommandContext,
+        registry: CapabilityRegistry,
+    ): DieselCommandResult {
+        if (context.name != null || context.args.keys.any { it != ARG_TIMEOUT_MS }) return invalidReadArguments()
+        val timeout = when (val value = context.args[ARG_TIMEOUT_MS]) {
+            null -> AndroidSensorSampler.DEFAULT_TIMEOUT_MS
+            is DieselValue.Integer -> value.value
+            else -> return invalidReadArguments()
+        }
+        if (timeout !in AndroidSensorSampler.MIN_TIMEOUT_MS..AndroidSensorSampler.MAX_TIMEOUT_MS) return invalidReadArguments()
+        val results = SensorReadCoordinator.matrix(registry, SensorReadOptions(timeout)).map { (target, result) ->
+            val fields = linkedMapOf<String, DieselValue>("target" to DieselValue.Text(target))
+            when (result) {
+                is SensorReadResult.Event -> {
+                    fields["status"] = DieselValue.Text("ok")
+                    fields["outcome"] = DieselValue.Text("event")
+                    fields["providerId"] = DieselValue.Text(result.reading.providerId)
+                    fields["elapsedMs"] = DieselValue.Integer(result.reading.elapsedMs)
+                    fields["values"] = DieselValue.ListValue(result.reading.values.take(MAX_READ_VALUES).map { value -> if (value.isFinite()) DieselValue.Decimal(value.toDouble()) else DieselValue.Null })
+                }
+                SensorReadResult.Unavailable -> { fields["status"] = DieselValue.Text("unavailable") }
+                is SensorReadResult.PermissionDenied -> { fields["status"] = DieselValue.Text("ok"); fields["outcome"] = DieselValue.Text("permission_denied") }
+                SensorReadResult.Timeout -> { fields["status"] = DieselValue.Text("ok"); fields["outcome"] = DieselValue.Text("timeout") }
+                is SensorReadResult.RegistrationRejected -> { fields["status"] = DieselValue.Text("ok"); fields["outcome"] = DieselValue.Text("registration_rejected"); fields["reason"] = DieselValue.Text(result.reason ?: "unknown") }
+            }
+            DieselValue.ObjectValue(fields)
+        }
+        return DieselCommandResult.ok(mapOf("results" to DieselValue.ListValue(results)))
     }
 
     private fun encodeReading(reading: org.aaustralian.dieselbridge.platform.sensor.SensorReading): DieselCommandResult {
@@ -454,6 +502,9 @@ class SensorCommandModule(
 
         const val COMMAND_SENSOR_READ =
             "sensor.read"
+
+        const val COMMAND_SENSOR_MATRIX =
+            "sensor.matrix"
 
         const val ARG_OFFSET =
             "offset"

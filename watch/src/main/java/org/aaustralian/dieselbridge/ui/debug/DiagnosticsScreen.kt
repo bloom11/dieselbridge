@@ -900,14 +900,22 @@ private fun CommandsScreen(
                     healthy = true,
                     onClick = { onCommand(command) },
                 )
-                if (command.name in setOf("diagnostics", "commands", "debug.build.info")) {
+                if (command.name in setOf("diagnostics", "commands", "debug.build.info", "sensor.matrix")) {
                     dispatcher?.let { activeDispatcher ->
                         NavigationChip(
                             label = "RUN ${command.name.uppercase()}",
                             onClick = {
                                 scope.launch {
                                     val result = activeDispatcher(
-                                        DieselRequest(requestId = "local-ui", command = command.name),
+                                        DieselRequest(
+                                            requestId = "local-ui",
+                                            command = command.name,
+                                            args = if (command.name == "sensor.matrix") {
+                                                mapOf("timeoutMs" to DieselValue.Integer(5000))
+                                            } else {
+                                                emptyMap()
+                                            },
+                                        ),
                                     )
                                     lastResult = "${command.name}: ${result.status.wireName} " +
                                         commandMetadataValue(DieselValue.ObjectValue(result.data))
