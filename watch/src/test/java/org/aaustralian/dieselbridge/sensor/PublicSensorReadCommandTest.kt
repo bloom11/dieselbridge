@@ -96,6 +96,24 @@ class PublicSensorReadCommandTest {
     }
 
     @Test
+    fun allStandardLogicalTargetsReportUnavailableWithoutAProvider() = runBlocking {
+        val targets = listOf(
+            "accelerometer",
+            "gyroscope",
+            "magnetic_field",
+            "light",
+            "pressure",
+            "ambient_temperature",
+            "heart_rate",
+            "step_counter",
+        )
+        targets.forEach { target ->
+            val result = registry().dispatch(request(target))
+            assertEquals("target=$target", DieselResponseStatus.UNAVAILABLE, result.status)
+        }
+    }
+
+    @Test
     fun validationRejectsNameMissingWrongTimeoutAndRouteSelection() = runBlocking {
         val sensor = FakeSensor(SensorCapabilityId("sensor.accelerometer"), SensorReadResult.Timeout)
         val registry = registry(sensor)
