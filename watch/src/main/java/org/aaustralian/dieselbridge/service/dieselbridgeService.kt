@@ -220,6 +220,7 @@ class DieselBridgeService : Service() {
             )
 
         controller = bleController
+        DeveloperRuntimeAccess.attachCommandDispatcher(bleController::dispatchFromDeveloperUi)
 
         /*
          * Reactive path for ordinary battery changes.

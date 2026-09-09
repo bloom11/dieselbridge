@@ -112,6 +112,9 @@ class BlePeripheralController(
                 additionalCommandModules.forEach { install(it) }
             }
 
+    suspend fun dispatchFromDeveloperUi(request: DieselRequest): DieselCommandResult =
+        dieselCommandRegistry.dispatch(request)
+
     private val dieselProtocolEngine =
         DieselProtocolEngine(
             commands = dieselCommandRegistry,

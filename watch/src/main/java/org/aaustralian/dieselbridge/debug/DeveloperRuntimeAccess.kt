@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
+import org.aaustralian.dieselbridge.protocol.DieselCommandResult
+import org.aaustralian.dieselbridge.protocol.DieselRequest
 
 /**
  * Process-local access to the live Diesel runtime for developer tooling.
@@ -44,6 +46,18 @@ object DeveloperRuntimeAccess {
     val sensorInventory:
         StateFlow<SensorInventory?> =
         mutableSensorInventory.asStateFlow()
+
+    private val mutableCommandDispatcher =
+        MutableStateFlow<(suspend (DieselRequest) -> DieselCommandResult)?>(null)
+
+    val commandDispatcher: StateFlow<suspend (DieselRequest) -> DieselCommandResult?> =
+        mutableCommandDispatcher.asStateFlow()
+
+    fun attachCommandDispatcher(
+        dispatcher: suspend (DieselRequest) -> DieselCommandResult,
+    ) {
+        mutableCommandDispatcher.value = dispatcher
+    }
 
     private val mutableCommandCatalog =
         MutableStateFlow<List<DieselCommandSpec>>(
@@ -95,6 +109,7 @@ object DeveloperRuntimeAccess {
             mutableDeveloperRemoteAccessPolicy.value = null
             mutableSensorInventory.value = null
             mutableSafeTestRunner.value = null
+            mutableCommandDispatcher.value = null
             mutablePlatform.value = null
         }
     }
