@@ -18,6 +18,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
             intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED
         ) {
+            if (PowerPolicy.isSleeping(context)) return
             runCatching { DieselBridgeService.start(context) }
                 .onFailure { Log.w(TAG, "boot start failed: ${it.message}") }
         }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Wear OS device + BLE hardware requirement -->
     <uses-feature android:name="android.hardware.type.watch" />
@@ -16,6 +16,11 @@
 
     <!-- Ask the user to exempt us from battery optimization so Doze doesn't drop the link -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Optional special access: enables foreground-time app usage ranking when Wear exposes it. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Restart the bridge after a watch reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

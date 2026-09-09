@@ -33,6 +33,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.content.Intent
+import android.provider.Settings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.aaustralian.dieselbridge.system.BatteryUsageMonitor
+import org.aaustralian.dieselbridge.system.BatteryUsageSnapshot
+import org.aaustralian.dieselbridge.system.PowerHelper
+import org.aaustralian.dieselbridge.system.PowerMode
+import org.aaustralian.dieselbridge.system.PowerPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.foundation.rotary.rotaryScrollable
@@ -76,6 +85,7 @@ private enum class DiagnosticsPage {
     TOOLS,
     LOGS,
     BUILD,
+    POWER,
 }
 
 private enum class LogSource {
@@ -161,6 +171,9 @@ fun DiagnosticsScreen(
                         onBuild = {
                             page = DiagnosticsPage.BUILD
                         },
+                        onPower = {
+                            page = DiagnosticsPage.POWER
+                        },
                     )
 
                 DiagnosticsPage.PLATFORM ->
@@ -220,6 +233,13 @@ fun DiagnosticsScreen(
                             page = DiagnosticsPage.OVERVIEW
                         },
                     )
+
+                DiagnosticsPage.POWER ->
+                    PowerScreen(
+                        onBack = {
+                            page = DiagnosticsPage.OVERVIEW
+                        },
+                    )
             }
         }
     }
@@ -239,6 +259,7 @@ private fun OverviewScreen(
     onTools: () -> Unit,
     onLogs: () -> Unit,
     onBuild: () -> Unit,
+    onPower: () -> Unit,
 ) {
     val diagnostics by
         platform.diagnostics.state.collectAsStateWithLifecycle()
@@ -369,6 +390,14 @@ private fun OverviewScreen(
                 battery != null &&
                     batteryProvider != null,
             onClick = onPlatform,
+        )
+
+        DiagnosticCard(
+            title = "POWER",
+            primary = "Usage & sleep controls",
+            secondary = "Battery readings · app policy",
+            healthy = true,
+            onClick = onPower,
         )
 
         DiagnosticCard(
@@ -1227,6 +1256,114 @@ private fun BluetoothScreen(
                 healthy = false,
             )
         }
+    }
+}
+
+
+@Composable
+private fun PowerScreen(
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    var snapshot by remember { mutableStateOf<BatteryUsageSnapshot?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    val mode = remember { mutableStateOf(PowerPolicy.mode(context)) }
+
+    LaunchedEffect(Unit) {
+        snapshot = withContext(Dispatchers.Default) { BatteryUsageMonitor.snapshot(context) }
+        loading = false
+    }
+
+    DeveloperPage(
+        title = "Power",
+        subtitle = "Battery usage · app sleep policy",
+        onBack = onBack,
+    ) {
+        val battery = snapshot
+        DiagnosticCard(
+            title = "BATTERY",
+            primary = battery?.levelPercent?.let { "$it%" } ?: if (loading) "Reading…" else "Unavailable",
+            secondary = buildString {
+                battery?.voltageVolts?.let { append("${"%.2f".format(it)} V") }
+                battery?.currentMilliAmps?.let { if (isNotEmpty()) append(" · "); append("${"%.0f".format(it)} mA") }
+                battery?.temperatureCelsius?.let { if (isNotEmpty()) append(" · "); append("${"%.1f".format(it)} °C") }
+            }.ifBlank { "No battery telemetry" },
+            healthy = battery?.levelPercent != null,
+        )
+        DiagnosticCard(
+            title = "ENERGY COUNTERS",
+            primary = battery?.chargeCounterMah?.let { "${"%.0f".format(it)} mAh" } ?: "Unavailable",
+            secondary = battery?.energyCounterMwh?.let { "${"%.0f".format(it)} mWh reported by BatteryManager" }
+                ?: "Hardware does not expose a readable counter",
+            healthy = battery?.chargeCounterMah != null,
+        )
+        DiagnosticCard(
+            title = "APP BATTERY ATTRIBUTION",
+            primary = "Unavailable",
+            secondary = battery?.batteryAttributionReason ?: "BatteryStats is a privileged API",
+            healthy = false,
+        )
+        DiagnosticCard(
+            title = "APP USAGE",
+            primary = if (battery?.usageAccessGranted == true) "Foreground time · last 24 h" else "Usage access unavailable",
+            secondary = if (battery?.usageAccessGranted == true) {
+                "${battery.totalForegroundMs / 60_000L} min observed"
+            } else {
+                "Grant Usage Access in system settings to show app shares"
+            },
+            healthy = battery?.usageAccessGranted == true,
+        )
+        battery?.appUsage?.forEach { entry ->
+            DiagnosticCard(
+                title = entry.label,
+                primary = "${"%.1f".format(entry.sharePercent)}% of foreground time",
+                secondary = "${entry.foregroundMs / 60_000L} min · ${entry.packageName}",
+                healthy = true,
+            )
+        }
+        SectionLabel("SLEEP POLICY")
+        DiagnosticCard(
+            title = "CURRENT MODE",
+            primary = mode.value.label,
+            secondary = when (mode.value) {
+                PowerMode.ACTIVE -> "Bridge starts normally and remains available"
+                PowerMode.OPTIMIZED -> "Bridge runs; Doze exemption is not changed"
+                PowerMode.SLEEPING -> "Bridge stopped; boot auto-start is suppressed"
+            },
+            healthy = mode.value != PowerMode.SLEEPING,
+        )
+        PowerMode.values().forEach { option ->
+            NavigationChip(
+                label = if (mode.value == option) "✓ ${option.label.uppercase()}" else option.label.uppercase(),
+                onClick = {
+                    PowerPolicy.setMode(context, option)
+                    mode.value = option
+                },
+            )
+        }
+        DiagnosticCard(
+            title = "DOZE EXEMPTION",
+            primary = if (PowerHelper.isIgnoringBatteryOptimizations(context)) "Granted" else "Not granted",
+            secondary = "This controls system idle policy, not per-app battery attribution",
+            healthy = PowerHelper.isIgnoringBatteryOptimizations(context),
+            onClick = {
+                PowerPolicy.openOptimizationSettings(context)
+            },
+        )
+        NavigationChip(
+            label = "OPEN USAGE ACCESS SETTINGS",
+            onClick = {
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            },
+        )
+        NavigationChip(
+            label = "REFRESH BATTERY DATA",
+            onClick = {
+                snapshot = BatteryUsageMonitor.snapshot(context)
+            },
+        )
     }
 }
 

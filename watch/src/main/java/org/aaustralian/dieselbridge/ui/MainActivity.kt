@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
 import org.aaustralian.dieselbridge.service.DieselBridgeService
 import org.aaustralian.dieselbridge.system.PowerHelper
+import org.aaustralian.dieselbridge.system.PowerPolicy
 import org.aaustralian.dieselbridge.ui.debug.DiagnosticsActivity
 
 /**
@@ -29,7 +30,7 @@ class MainActivity : ComponentActivity() {
         val blePermsGranted = result.entries
             .filter { it.key != Manifest.permission.POST_NOTIFICATIONS }
             .all { it.value }
-        if (blePermsGranted) startBridge()
+        if (blePermsGranted && !PowerPolicy.isSleeping(this)) startBridge()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,7 +77,9 @@ class MainActivity : ComponentActivity() {
         val missing = requiredPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isEmpty()) startBridge() else permissionLauncher.launch(missing.toTypedArray())
+        if (missing.isEmpty()) {
+            if (!PowerPolicy.isSleeping(this)) startBridge()
+        } else permissionLauncher.launch(missing.toTypedArray())
     }
 
     private fun startBridge() {
