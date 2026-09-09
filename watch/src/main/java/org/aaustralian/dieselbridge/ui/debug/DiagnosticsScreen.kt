@@ -37,6 +37,7 @@ import android.content.Intent
 import android.provider.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import org.aaustralian.dieselbridge.system.BatteryUsageMonitor
 import org.aaustralian.dieselbridge.system.BatteryUsageSnapshot
 import org.aaustralian.dieselbridge.system.PowerHelper
@@ -64,6 +65,9 @@ import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
 import org.aaustralian.dieselbridge.platform.provider.ProviderStatus
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
+import org.aaustralian.dieselbridge.platform.sensor.SensorCapability
+import org.aaustralian.dieselbridge.platform.sensor.SensorReadOptions
+import org.aaustralian.dieselbridge.platform.sensor.SensorReadResult
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
 import org.aaustralian.dieselbridge.protocol.DieselValue
 
@@ -186,6 +190,7 @@ fun DiagnosticsScreen(
 
                 DiagnosticsPage.SENSORS ->
                     SensorsScreen(
+                        platform = currentPlatform,
                         inventory = sensorInventory,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
@@ -577,6 +582,7 @@ private fun BuildScreen(
 
 @Composable
 private fun SensorsScreen(
+    platform: DieselPlatform,
     inventory: SensorInventory?,
     onBack: () -> Unit,
 ) {
@@ -605,6 +611,8 @@ private fun SensorsScreen(
             },
         onBack = onBack,
     ) {
+        SensorReadPanel(platform)
+
         when {
             inventory == null ->
                 DiagnosticCard(
@@ -649,6 +657,57 @@ private fun SensorsScreen(
         }
     }
 }
+
+@Composable
+private fun SensorReadPanel(platform: DieselPlatform) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var running by remember { mutableStateOf<String?>(null) }
+    var resultText by remember { mutableStateOf<String?>(null) }
+    val targets = listOf(
+        "accelerometer",
+        "gyroscope",
+        "magnetic_field",
+        "light",
+        "pressure",
+        "ambient_temperature",
+        "heart_rate",
+        "step_counter",
+    )
+
+    SectionLabel("PUBLIC SENSOR READ")
+    Text(
+        text = resultText ?: "Select a logical target; reads use the same registry path as BLE and ADB.",
+        style = MaterialTheme.typography.bodySmall,
+        color = SecondaryText,
+        maxLines = 4,
+        overflow = TextOverflow.Ellipsis,
+    )
+    targets.forEach { target ->
+        NavigationChip(
+            label = if (running == target) "READING ${target.uppercase()}…" else "READ ${target.uppercase()}",
+            onClick = {
+                if (running != null) return@NavigationChip
+                running = target
+                resultText = null
+                scope.launch {
+                    val capability = platform.capabilities.resolveAs<SensorCapability>("sensor.$target")
+                    val result = capability?.read(SensorReadOptions()) ?: SensorReadResult.Unavailable
+                    resultText = sensorReadSummary(target, result)
+                    running = null
+                }
+            },
+        )
+    }
+}
+
+private fun sensorReadSummary(target: String, result: SensorReadResult): String =
+    when (result) {
+        is SensorReadResult.Event -> "$target: event ${result.reading.values.joinToString(prefix = "[", postfix = "]")} · ${result.reading.elapsedMs} ms"
+        SensorReadResult.Unavailable -> "$target: unavailable"
+        is SensorReadResult.PermissionDenied -> "$target: permission denied${result.requiredPermission?.let { " ($it)" } ?: ""}"
+        SensorReadResult.Timeout -> "$target: timeout"
+        is SensorReadResult.RegistrationRejected -> "$target: registration rejected${result.reason?.let { " ($it)" } ?: ""}"
+    }
 
 @Composable
 private fun SensorInventoryCard(
