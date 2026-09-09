@@ -4,6 +4,13 @@ All notable changes to PixelBridge. Loosely follows [Keep a Changelog](https://k
 versions map to git tags and GitHub releases. I'll try to keep DieselBridge and PixelBridge changes seperate.
 
 ## DieselBridge
+
+### 1.0.0-dev.21
+
+- Completed the public logical sensor read and bounded sensor matrix milestone.
+- Added direct on-watch sensor diagnostics with shared platform routing.
+- Build details expose CI, commit, timestamp, and installation state for this artifact.
+
 ## [1.0.1]
 
 The first (true) release of DieselBridge! It mostly changed branding to DieselBridge, but mainly, it made it compatible with WearOS 2 (Android 9).
