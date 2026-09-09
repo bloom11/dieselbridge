@@ -51,6 +51,12 @@ class SensorCommandModule(
                             DieselValue.Text(
                                 "offset_limit",
                             ),
+                        "arguments" to DieselValue.ObjectValue(
+                            mapOf(
+                                ARG_OFFSET to DieselValue.Text("integer >= 0, default 0"),
+                                ARG_LIMIT to DieselValue.Text("integer 1..$MAX_PAGE_SIZE, default $DEFAULT_PAGE_SIZE"),
+                            ),
+                        ),
                     ),
             ),
         ) { context ->
@@ -68,6 +74,12 @@ class SensorCommandModule(
                         "domain" to DieselValue.Text("sensor"),
                         "effect" to DieselValue.Text("read_only"),
                         "routing" to DieselValue.Text("automatic_provider_selection"),
+                        "target" to DieselValue.Text("logical sensor name"),
+                        "arguments" to DieselValue.ObjectValue(
+                            mapOf(
+                                ARG_TIMEOUT_MS to DieselValue.Text("integer ${AndroidSensorSampler.MIN_TIMEOUT_MS}..${AndroidSensorSampler.MAX_TIMEOUT_MS}, default ${AndroidSensorSampler.DEFAULT_TIMEOUT_MS}"),
+                            ),
+                        ),
                     ),
                 ),
             ) { context -> readSensor(context, capabilities) }

@@ -801,19 +801,31 @@ private fun CommandsScreen(
                 DiagnosticCard(
                     title = command.name.uppercase(),
                     primary = command.summary,
-                    secondary =
-                        (
-                            command.metadata["effect"]
-                                as? DieselValue.Text
-                        )
-                            ?.value
-                            ?.replace('_', ' '),
+                    secondary = commandMetadataSummary(command.metadata),
                     healthy = true,
                 )
             }
         }
     }
 }
+
+private fun commandMetadataSummary(metadata: Map<String, DieselValue>): String =
+    metadata.entries.joinToString(" · ") { (key, value) ->
+        "$key=${commandMetadataValue(value)}"
+    }.takeIf { it.isNotBlank() } ?: "No metadata declared"
+
+private fun commandMetadataValue(value: DieselValue): String =
+    when (value) {
+        DieselValue.Null -> "null"
+        is DieselValue.Text -> value.value.replace('_', ' ')
+        is DieselValue.Integer -> value.value.toString()
+        is DieselValue.Decimal -> value.value.toString()
+        is DieselValue.Flag -> value.value.toString()
+        is DieselValue.ObjectValue -> value.value.entries.joinToString(",", "{", "}") { (key, child) ->
+            "$key:${commandMetadataValue(child)}"
+        }
+        is DieselValue.ListValue -> value.value.joinToString(",", "[", "]") { commandMetadataValue(it) }
+    }
 
 @Composable
 private fun RemoteDeveloperAccessControl(
