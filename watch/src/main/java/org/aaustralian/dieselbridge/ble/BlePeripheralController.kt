@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import java.util.Base64
 import kotlinx.coroutines.CoroutineScope
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
@@ -31,6 +32,7 @@ import org.aaustralian.dieselbridge.protocol.DieselProtocolEngine
 import org.aaustralian.dieselbridge.protocol.DieselProtocolExecutionLane
 import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.DieselResponse
+import org.aaustralian.dieselbridge.protocol.DieselResponseCodec
 import org.aaustralian.dieselbridge.protocol.DieselResponseStatus
 import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
@@ -662,6 +664,12 @@ class BlePeripheralController(
             "diesel response TX: $detail",
         )
 
+        if (BuildConfig.DEBUG) {
+            logDebugDieselResponseMirror(
+                response,
+            )
+        }
+
         ProbeStateHolder.log(
             "diesel response $detail",
         )
@@ -674,6 +682,87 @@ class BlePeripheralController(
                 type = "protocol-response",
                 message = detail,
             )
+    }
+
+    /**
+     * Debug-build observation mirror of the structured Diesel response.
+     *
+     * The real response still travels through Gadgetbridge/NUS. This mirror
+     * exists only to make development responses observable over ADB without
+     * changing command modules or the production response transport.
+     *
+     * Base64 keeps each log line ASCII-safe. Responses are split into bounded
+     * chunks so Android logcat does not truncate larger structured payloads.
+     */
+    private fun logDebugDieselResponseMirror(
+        response: DieselResponse,
+    ) {
+        val requestId =
+            response.requestId
+                ?: "<none>"
+
+        val encoded =
+            runCatching {
+                val json =
+                    DieselResponseCodec
+                        .encodeResponseJson(
+                            response,
+                        )
+
+                Base64
+                    .getEncoder()
+                    .encodeToString(
+                        json.toByteArray(
+                            Charsets.UTF_8,
+                        ),
+                    )
+            }
+                .getOrElse { error ->
+                    Log.w(
+                        DEBUG_RESPONSE_TAG,
+                        buildString {
+                            append("id=")
+                            append(requestId)
+                            append(" encode_failed error=")
+                            append(
+                                error.message
+                                    ?: error.javaClass.simpleName,
+                            )
+                        },
+                    )
+
+                    return
+                }
+
+        val parts =
+            encoded.chunked(
+                DEBUG_RESPONSE_LOG_CHARS,
+            )
+
+        parts.forEachIndexed {
+                index,
+                part,
+            ->
+            Log.i(
+                DEBUG_RESPONSE_TAG,
+                buildString {
+                    append("id=")
+                    append(requestId)
+                    append(" ")
+
+                    if (parts.size > 1) {
+                        append("part=")
+                        append(index + 1)
+                        append("/")
+                        append(parts.size)
+                        append(" ")
+                    }
+
+                    append("encoding=base64 data=")
+                    append(part)
+                },
+            )
+        }
     }
 
     private fun publishServerState() {
@@ -690,6 +779,12 @@ class BlePeripheralController(
 
     private companion object {
         const val TAG = "BleController"
+
+        const val DEBUG_RESPONSE_TAG =
+            "DieselResponse"
+
+        const val DEBUG_RESPONSE_LOG_CHARS =
+            2800
 
         const val BATTERY_TX_REASON_REACTIVE =
             "reactive"
