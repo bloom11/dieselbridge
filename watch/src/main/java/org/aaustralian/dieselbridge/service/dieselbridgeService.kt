@@ -45,6 +45,7 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
+import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 
