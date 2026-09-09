@@ -2,6 +2,7 @@
 
 package org.aaustralian.dieselbridge.sensor
 
+import kotlinx.coroutines.withTimeoutOrNull
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.sensor.SensorCapability
 import org.aaustralian.dieselbridge.platform.sensor.SensorReadOptions
@@ -31,6 +32,22 @@ object SensorReadCoordinator {
     suspend fun matrix(
         registry: CapabilityRegistry,
         options: SensorReadOptions,
-    ): List<Pair<String, SensorReadResult>> =
-        standardTargets.map { target -> target to read(registry, target, options) }
+        totalTimeoutMs: Long = DEFAULT_MATRIX_TIMEOUT_MS,
+    ): List<Pair<String, SensorReadResult>> {
+        val started = System.nanoTime()
+        return standardTargets.map { target ->
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+            val remainingMs = totalTimeoutMs - elapsedMs
+            val result = if (remainingMs <= 0L) {
+                SensorReadResult.Timeout
+            } else {
+                withTimeoutOrNull(remainingMs.coerceAtMost(options.timeoutMs)) {
+                    read(registry, target, options)
+                } ?: SensorReadResult.Timeout
+            }
+            target to result
+        }
+    }
+
+    const val DEFAULT_MATRIX_TIMEOUT_MS = 30_000L
 }
