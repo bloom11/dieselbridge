@@ -1,3 +1,6 @@
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -10,6 +13,23 @@ plugins {
 val dieselDevKeystorePath =
     providers.environmentVariable("DIESEL_DEV_KEYSTORE_PATH").orNull
 
+val buildGitSha =
+    providers.environmentVariable("DIESEL_BUILD_GIT_SHA").orNull
+        ?: providers.environmentVariable("GITHUB_SHA").orNull
+        ?: "unknown"
+
+val buildCiRunId =
+    providers.environmentVariable("DIESEL_BUILD_CI_RUN_ID").orNull
+        ?: providers.environmentVariable("GITHUB_RUN_ID").orNull
+        ?: "unknown"
+
+val buildTimestampUtc =
+    providers.environmentVariable("DIESEL_BUILD_TIMESTAMP_UTC").orNull
+        ?: DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'")
+            .withZone(ZoneOffset.UTC)
+            .format(Instant.now())
+
 android {
     namespace = "org.aaustralian.dieselbridge"
     compileSdk = 36
@@ -20,6 +40,22 @@ android {
         targetSdk = 28         // Wear OS 5.1 (Android 15) — the Gen-1 terminal OS. 36 is also valid.
         versionCode = 24
         versionName = "1.0.0-dev.19"
+
+        buildConfigField(
+            "String",
+            "BUILD_GIT_SHA",
+            "\"$buildGitSha\"",
+        )
+        buildConfigField(
+            "String",
+            "BUILD_TIMESTAMP_UTC",
+            "\"$buildTimestampUtc\"",
+        )
+        buildConfigField(
+            "String",
+            "BUILD_CI_RUN_ID",
+            "\"$buildCiRunId\"",
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

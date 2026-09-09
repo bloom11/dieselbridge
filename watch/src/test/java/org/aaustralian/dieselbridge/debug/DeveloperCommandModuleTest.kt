@@ -28,6 +28,8 @@ class DeveloperCommandModuleTest {
         var lastTestTarget: String? =
             null
 
+        var buildInfoCalls = 0
+
         override fun showDiagnostics():
             DieselCommandResult {
             diagnosticsCalls += 1
@@ -48,6 +50,25 @@ class DeveloperCommandModuleTest {
         ) {
             shownCommands =
                 commands.toList()
+        }
+
+        override fun buildInfo():
+            DieselCommandResult {
+            buildInfoCalls += 1
+
+            return DieselCommandResult.ok(
+                data =
+                    mapOf(
+                        "versionName" to
+                            DieselValue.Text(
+                                "test-version",
+                            ),
+                        "gitSha" to
+                            DieselValue.Text(
+                                "0123456789abcdef",
+                            ),
+                    ),
+            )
         }
 
         override fun runSafeTest(
@@ -94,13 +115,14 @@ class DeveloperCommandModuleTest {
             listOf(
                 "diagnostics",
                 "commands",
+                "debug.build.info",
                 "test",
             ),
             registry.commands(),
         )
 
         assertEquals(
-            3,
+            4,
             published.size,
         )
 
@@ -147,6 +169,124 @@ class DeveloperCommandModuleTest {
         assertEquals(
             DieselValue.Text("fake"),
             result.data["source"],
+        )
+    }
+
+    @Test
+    fun buildInfoUsesGenericResultPath(): Unit = runBlocking {
+        val runtime =
+            FakeRuntime()
+
+        val registry =
+            DieselCommandRegistry()
+
+        registry.install(
+            DeveloperCommandModule(
+                runtime,
+            ),
+        )
+
+        val result =
+            registry.dispatch(
+                DieselRequest(
+                    requestId = "build-info-1",
+                    command = "debug.build.info",
+                ),
+            )
+
+        assertEquals(
+            1,
+            runtime.buildInfoCalls,
+        )
+
+        assertEquals(
+            DieselResponseStatus.OK,
+            result.status,
+        )
+
+        assertEquals(
+            DieselValue.Text(
+                "test-version",
+            ),
+            result.data["versionName"],
+        )
+
+        assertEquals(
+            DieselValue.Text(
+                "0123456789abcdef",
+            ),
+            result.data["gitSha"],
+        )
+    }
+
+    @Test
+    fun buildInfoRejectsNameAndArgsBeforeRuntime(): Unit = runBlocking {
+        val runtime =
+            FakeRuntime()
+
+        val registry =
+            DieselCommandRegistry()
+
+        registry.install(
+            DeveloperCommandModule(
+                runtime,
+            ),
+        )
+
+        val result =
+            registry.dispatch(
+                DieselRequest(
+                    requestId = "build-info-invalid",
+                    command = "debug.build.info",
+                    name = "unexpected",
+                ),
+            )
+
+        assertEquals(
+            0,
+            runtime.buildInfoCalls,
+        )
+
+        assertEquals(
+            DieselResponseStatus.INVALID_REQUEST,
+            result.status,
+        )
+
+        assertEquals(
+            DieselValue.Text(
+                "invalid_args",
+            ),
+            result.data["reason"],
+        )
+
+        val argsResult =
+            registry.dispatch(
+                DieselRequest(
+                    requestId = "build-info-invalid-args",
+                    command = "debug.build.info",
+                    args =
+                        mapOf(
+                            "unexpected" to
+                                DieselValue.Flag(true),
+                        ),
+                ),
+            )
+
+        assertEquals(
+            0,
+            runtime.buildInfoCalls,
+        )
+
+        assertEquals(
+            DieselResponseStatus.INVALID_REQUEST,
+            argsResult.status,
+        )
+
+        assertEquals(
+            DieselValue.Text(
+                "invalid_args",
+            ),
+            argsResult.data["reason"],
         )
     }
 
@@ -243,6 +383,7 @@ class DeveloperCommandModuleTest {
             listOf(
                 "diagnostics",
                 "commands",
+                "debug.build.info",
                 "test",
                 "sensor",
             ),
@@ -253,6 +394,7 @@ class DeveloperCommandModuleTest {
             listOf(
                 "diagnostics",
                 "commands",
+                "debug.build.info",
                 "test",
                 "sensor",
             ),

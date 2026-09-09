@@ -22,8 +22,11 @@ class WatchDeveloperCommandRuntime(
     context: Context,
 ) : DeveloperCommandRuntime {
 
+    private val applicationContext =
+        context.applicationContext
+
     private val notifier =
-        DiagnosticsNotifier(context)
+        DiagnosticsNotifier(applicationContext)
 
     override fun showDiagnostics():
         DieselCommandResult {
@@ -117,6 +120,80 @@ class WatchDeveloperCommandRuntime(
 
         return DieselCommandResult.ok(
             data = data,
+        )
+    }
+
+    override fun buildInfo():
+        DieselCommandResult {
+        val info =
+            DeveloperBuildInfoSource.snapshot(
+                applicationContext,
+            )
+
+        return DieselCommandResult.ok(
+            data =
+                linkedMapOf(
+                    "versionName" to
+                        DieselValue.Text(
+                            info.versionName,
+                        ),
+                    "versionCode" to
+                        DieselValue.Integer(
+                            info.versionCode,
+                        ),
+                    "buildType" to
+                        DieselValue.Text(
+                            info.buildType,
+                        ),
+                    "debug" to
+                        DieselValue.Flag(
+                            info.debug,
+                        ),
+                    "gitSha" to
+                        (
+                            info.gitSha
+                                ?.let {
+                                    DieselValue.Text(it)
+                                }
+                                ?: DieselValue.Null
+                        ),
+                    "gitShaShort" to
+                        (
+                            info.gitShaShort
+                                ?.let {
+                                    DieselValue.Text(it)
+                                }
+                                ?: DieselValue.Null
+                        ),
+                    "buildTimestampUtc" to
+                        DieselValue.Text(
+                            info.buildTimestampUtc,
+                        ),
+                    "ciRunId" to
+                        (
+                            info.ciRunId
+                                ?.let {
+                                    DieselValue.Text(it)
+                                }
+                                ?: DieselValue.Null
+                        ),
+                    "firstInstallTimeMs" to
+                        (
+                            info.firstInstallTimeMs
+                                ?.let {
+                                    DieselValue.Integer(it)
+                                }
+                                ?: DieselValue.Null
+                        ),
+                    "lastUpdateTimeMs" to
+                        (
+                            info.lastUpdateTimeMs
+                                ?.let {
+                                    DieselValue.Integer(it)
+                                }
+                                ?: DieselValue.Null
+                        ),
+                ),
         )
     }
 

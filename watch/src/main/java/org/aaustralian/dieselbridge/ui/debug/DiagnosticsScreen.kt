@@ -28,6 +28,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +43,7 @@ import java.util.Date
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.ble.ProbeReport
 import org.aaustralian.dieselbridge.ble.ProbeStateHolder
+import org.aaustralian.dieselbridge.debug.DeveloperBuildInfoSource
 import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
@@ -73,6 +75,7 @@ private enum class DiagnosticsPage {
     COMMANDS,
     TOOLS,
     LOGS,
+    BUILD,
 }
 
 private enum class LogSource {
@@ -155,6 +158,9 @@ fun DiagnosticsScreen(
                         onLogs = {
                             page = DiagnosticsPage.LOGS
                         },
+                        onBuild = {
+                            page = DiagnosticsPage.BUILD
+                        },
                     )
 
                 DiagnosticsPage.PLATFORM ->
@@ -207,6 +213,13 @@ fun DiagnosticsScreen(
                             page = DiagnosticsPage.OVERVIEW
                         },
                     )
+
+                DiagnosticsPage.BUILD ->
+                    BuildScreen(
+                        onBack = {
+                            page = DiagnosticsPage.OVERVIEW
+                        },
+                    )
             }
         }
     }
@@ -225,6 +238,7 @@ private fun OverviewScreen(
     onCommands: () -> Unit,
     onTools: () -> Unit,
     onLogs: () -> Unit,
+    onBuild: () -> Unit,
 ) {
     val diagnostics by
         platform.diagnostics.state.collectAsStateWithLifecycle()
@@ -444,6 +458,90 @@ private fun OverviewScreen(
                     "release build"
                 },
             healthy = true,
+            onClick = onBuild,
+        )
+    }
+}
+
+@Composable
+private fun BuildScreen(
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+
+    val buildInfo =
+        remember(context) {
+            DeveloperBuildInfoSource.snapshot(
+                context,
+            )
+        }
+
+    DeveloperPage(
+        title = "Build details",
+        subtitle =
+            "${buildInfo.versionName} · code ${buildInfo.versionCode}",
+        onBack = onBack,
+    ) {
+        DiagnosticCard(
+            title = "VERSION",
+            primary = buildInfo.versionName,
+            secondary =
+                "versionCode ${buildInfo.versionCode} · " +
+                    buildInfo.buildType,
+            healthy = true,
+        )
+
+        DiagnosticCard(
+            title = "COMMIT",
+            primary =
+                buildInfo.gitShaShort
+                    ?: "Unknown",
+            secondary =
+                buildInfo.gitSha
+                    ?: "No source revision embedded",
+            healthy =
+                buildInfo.gitSha != null,
+        )
+
+        DiagnosticCard(
+            title = "BUILT",
+            primary =
+                buildInfo.buildTimestampUtc,
+            secondary =
+                "Embedded at build time",
+            healthy = true,
+        )
+
+        DiagnosticCard(
+            title = "CI RUN",
+            primary =
+                buildInfo.ciRunId
+                    ?: "Not a CI build",
+            secondary =
+                if (buildInfo.ciRunId != null) {
+                    "GitHub Actions run"
+                } else {
+                    "No CI run embedded"
+                },
+            healthy =
+                buildInfo.ciRunId != null,
+        )
+
+        DiagnosticCard(
+            title = "INSTALLATION",
+            primary =
+                buildInfo.lastUpdateTimeMs
+                    ?.let {
+                        "Updated ${formatDateTime(it)}"
+                    }
+                    ?: "Unavailable",
+            secondary =
+                buildInfo.firstInstallTimeMs
+                    ?.let {
+                        "First installed ${formatDateTime(it)}"
+                    },
+            healthy =
+                buildInfo.lastUpdateTimeMs != null,
         )
     }
 }
@@ -1646,6 +1744,16 @@ private fun OfflineDiagnosticsScreen() {
         )
     }
 }
+
+private fun formatDateTime(
+    timestampMs: Long,
+): String =
+    DateFormat
+        .getDateTimeInstance(
+            DateFormat.MEDIUM,
+            DateFormat.MEDIUM,
+        )
+        .format(Date(timestampMs))
 
 private fun formatTimestamp(
     timestampMs: Long,

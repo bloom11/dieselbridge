@@ -6,6 +6,7 @@ import org.aaustralian.dieselbridge.protocol.DieselCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
 import org.aaustralian.dieselbridge.protocol.DieselCommandResult
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
+import org.aaustralian.dieselbridge.protocol.DieselResponseStatus
 import org.aaustralian.dieselbridge.protocol.DieselValue
 
 interface DeveloperCommandRuntime {
@@ -15,6 +16,8 @@ interface DeveloperCommandRuntime {
     fun showCommands(
         commands: List<DieselCommandSpec>,
     )
+
+    fun buildInfo(): DieselCommandResult
 
     fun runSafeTest(
         target: String?,
@@ -44,6 +47,13 @@ class DeveloperCommandModule(
                 name = COMMAND_COMMANDS,
                 summary =
                     "List supported Diesel commands",
+                effect =
+                    DeveloperCommandEffect.READ_ONLY,
+            ),
+            developerSpec(
+                name = COMMAND_BUILD_INFO,
+                summary =
+                    "Return installed APK build provenance",
                 effect =
                     DeveloperCommandEffect.READ_ONLY,
             ),
@@ -88,6 +98,34 @@ class DeveloperCommandModule(
             commandCatalogResult(
                 liveCatalog,
             )
+        }
+
+        val buildInfo =
+            commandSpecs.first {
+                it.name == COMMAND_BUILD_INFO
+            }
+
+        registry.register(
+            buildInfo,
+        ) { context ->
+            if (
+                context.name != null ||
+                context.args.isNotEmpty()
+            ) {
+                DieselCommandResult(
+                    status =
+                        DieselResponseStatus.INVALID_REQUEST,
+                    data =
+                        mapOf(
+                            "reason" to
+                                DieselValue.Text(
+                                    "invalid_args",
+                                ),
+                        ),
+                )
+            } else {
+                runtime.buildInfo()
+            }
         }
 
         val test =
@@ -167,6 +205,9 @@ class DeveloperCommandModule(
 
         const val COMMAND_COMMANDS =
             "commands"
+
+        const val COMMAND_BUILD_INFO =
+            "debug.build.info"
 
         const val COMMAND_TEST =
             "test"
