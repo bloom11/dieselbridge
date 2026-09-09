@@ -50,7 +50,7 @@ object DeveloperRuntimeAccess {
     private val mutableCommandDispatcher =
         MutableStateFlow<(suspend (DieselRequest) -> DieselCommandResult)?>(null)
 
-    val commandDispatcher: StateFlow<suspend (DieselRequest) -> DieselCommandResult?> =
+    val commandDispatcher: StateFlow<(suspend (DieselRequest) -> DieselCommandResult)?> =
         mutableCommandDispatcher.asStateFlow()
 
     fun attachCommandDispatcher(

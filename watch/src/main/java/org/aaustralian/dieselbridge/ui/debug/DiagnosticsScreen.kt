@@ -65,10 +65,9 @@ import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
 import org.aaustralian.dieselbridge.platform.provider.ProviderStatus
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
-import org.aaustralian.dieselbridge.platform.sensor.SensorCapability
-import org.aaustralian.dieselbridge.platform.sensor.SensorReadOptions
-import org.aaustralian.dieselbridge.platform.sensor.SensorReadResult
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
+import org.aaustralian.dieselbridge.protocol.DieselCommandResult
+import org.aaustralian.dieselbridge.protocol.DieselRequest
 import org.aaustralian.dieselbridge.protocol.DieselValue
 
 private val CardBackground = Color(0xFF202124)
@@ -106,6 +105,9 @@ fun DiagnosticsScreen(
 
     val commandCatalog by
         DeveloperRuntimeAccess.commandCatalog.collectAsStateWithLifecycle()
+
+    val commandDispatcher by
+        DeveloperRuntimeAccess.commandDispatcher.collectAsStateWithLifecycle()
 
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
@@ -190,7 +192,7 @@ fun DiagnosticsScreen(
 
                 DiagnosticsPage.SENSORS ->
                     SensorsScreen(
-                        platform = currentPlatform,
+                        dispatcher = commandDispatcher,
                         inventory = sensorInventory,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
@@ -208,6 +210,7 @@ fun DiagnosticsScreen(
                 DiagnosticsPage.COMMANDS ->
                     CommandsScreen(
                         commands = commandCatalog,
+                        dispatcher = commandDispatcher,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
@@ -582,7 +585,7 @@ private fun BuildScreen(
 
 @Composable
 private fun SensorsScreen(
-    platform: DieselPlatform,
+    dispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
     inventory: SensorInventory?,
     onBack: () -> Unit,
 ) {
@@ -611,7 +614,7 @@ private fun SensorsScreen(
             },
         onBack = onBack,
     ) {
-        SensorReadPanel(platform)
+        SensorReadPanel(dispatcher)
 
         when {
             inventory == null ->
@@ -659,7 +662,9 @@ private fun SensorsScreen(
 }
 
 @Composable
-private fun SensorReadPanel(platform: DieselPlatform) {
+private fun SensorReadPanel(
+    dispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
+) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var running by remember { mutableStateOf<String?>(null) }
     var resultText by remember { mutableStateOf<String?>(null) }
@@ -690,9 +695,15 @@ private fun SensorReadPanel(platform: DieselPlatform) {
                 running = target
                 resultText = null
                 scope.launch {
-                    val capability = platform.capabilities.resolveAs<SensorCapability>("sensor.$target")
-                    val result = capability?.read(SensorReadOptions()) ?: SensorReadResult.Unavailable
-                    resultText = sensorReadSummary(target, result)
+                    val result = dispatcher?.invoke(
+                        DieselRequest(
+                            requestId = "local-sensor-ui",
+                            command = "sensor.read",
+                            name = target,
+                            args = mapOf("timeoutMs" to DieselValue.Integer(5000)),
+                        ),
+                    )
+                    resultText = if (result == null) "$target: command dispatcher unavailable" else sensorReadSummary(target, result)
                     running = null
                 }
             },
@@ -700,14 +711,11 @@ private fun SensorReadPanel(platform: DieselPlatform) {
     }
 }
 
-private fun sensorReadSummary(target: String, result: SensorReadResult): String =
-    when (result) {
-        is SensorReadResult.Event -> "$target: event ${result.reading.values.joinToString(prefix = "[", postfix = "]")} · ${result.reading.elapsedMs} ms"
-        SensorReadResult.Unavailable -> "$target: unavailable"
-        is SensorReadResult.PermissionDenied -> "$target: permission denied${result.requiredPermission?.let { " ($it)" } ?: ""}"
-        SensorReadResult.Timeout -> "$target: timeout"
-        is SensorReadResult.RegistrationRejected -> "$target: registration rejected${result.reason?.let { " ($it)" } ?: ""}"
-    }
+private fun sensorReadSummary(target: String, result: DieselCommandResult): String {
+    val data = commandMetadataValue(DieselValue.ObjectValue(result.data))
+    return "$target: ${result.status.wireName} $data"
+}
+
 
 @Composable
 private fun SensorInventoryCard(
@@ -841,8 +849,12 @@ private fun SensorDetailLine(
 @Composable
 private fun CommandsScreen(
     commands: List<DieselCommandSpec>,
+    dispatcher: (suspend (DieselRequest) -> org.aaustralian.dieselbridge.protocol.DieselCommandResult)?,
     onBack: () -> Unit,
 ) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var lastResult by remember { mutableStateOf<String?>(null) }
+
     DeveloperPage(
         title = "Commands",
         subtitle = "${commands.size} registered",
@@ -863,15 +875,36 @@ private fun CommandsScreen(
                     secondary = commandMetadataSummary(command.metadata),
                     healthy = true,
                 )
+                if (command.name in setOf("diagnostics", "commands", "debug.build.info") && dispatcher != null) {
+                    NavigationChip(
+                        label = "RUN ${command.name.uppercase()}",
+                        onClick = {
+                            scope.launch {
+                                val result = dispatcher(
+                                    DieselRequest(requestId = "local-ui", command = command.name),
+                                )
+                                lastResult = "${command.name}: ${result.status.wireName} ${commandMetadataValue(DieselValue.ObjectValue(result.data))}"
+                            }
+                        },
+                    )
+                }
             }
+        }
+        lastResult?.let {
+            DiagnosticCard("LAST COMMAND RESULT", it, null, healthy = true)
         }
     }
 }
 
-private fun commandMetadataSummary(metadata: Map<String, DieselValue>): String =
-    metadata.entries.joinToString(" · ") { (key, value) ->
+private fun commandMetadataSummary(metadata: Map<String, DieselValue>): String {
+    if (metadata.isEmpty()) return "No metadata declared"
+    val preferred = listOf("domain", "effect", "target", "routing", "arguments")
+    val ordered = preferred.mapNotNull { key -> metadata[key]?.let { key to it } } +
+        metadata.filterKeys { it !in preferred }.toList()
+    return ordered.joinToString(" · ") { (key, value) ->
         "$key=${commandMetadataValue(value)}"
-    }.takeIf { it.isNotBlank() } ?: "No metadata declared"
+    }.take(180)
+}
 
 private fun commandMetadataValue(value: DieselValue): String =
     when (value) {
