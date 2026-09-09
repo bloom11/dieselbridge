@@ -162,7 +162,6 @@ class SensorCommandModule(
             DieselResponseStatus.INVALID_REQUEST,
             mapOf("reason" to DieselValue.Text("invalid_args")),
         )
-    }
 
     private fun listSensors(
         context: DieselCommandContext,
