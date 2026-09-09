@@ -43,6 +43,8 @@ import org.aaustralian.dieselbridge.system.BatteryUsageSnapshot
 import org.aaustralian.dieselbridge.system.PowerHelper
 import org.aaustralian.dieselbridge.system.PowerMode
 import org.aaustralian.dieselbridge.system.PowerPolicy
+import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
+import org.aaustralian.dieselbridge.sensor.SensorMatrixExperimentResult
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.foundation.rotary.rotaryScrollable
@@ -112,6 +114,9 @@ fun DiagnosticsScreen(
 
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
+
+    val sensorMatrixExperiment by
+        DeveloperRuntimeAccess.sensorMatrixExperiment.collectAsStateWithLifecycle()
 
     val developerRemoteAccessPolicy by
         DeveloperRuntimeAccess
@@ -242,6 +247,7 @@ fun DiagnosticsScreen(
                 DiagnosticsPage.TOOLS ->
                     ToolsScreen(
                         runner = safeTestRunner,
+                        sensorMatrixExperiment = sensorMatrixExperiment,
                         developerRemoteAccessPolicy =
                             developerRemoteAccessPolicy,
                         onBack = {
@@ -1033,6 +1039,7 @@ private fun RemoteDeveloperAccessControl(
 @Composable
 private fun ToolsScreen(
     runner: SafePlatformTestRunner?,
+    sensorMatrixExperiment: SensorMatrixExperiment?,
     developerRemoteAccessPolicy: DeveloperRemoteAccessPolicy?,
     onBack: () -> Unit,
 ) {
@@ -1044,6 +1051,11 @@ private fun ToolsScreen(
     var lastResult by remember(runner) {
         mutableStateOf<SafePlatformTestResult?>(null)
     }
+    var matrixResult by remember(sensorMatrixExperiment) {
+        mutableStateOf<SensorMatrixExperimentResult?>(null)
+    }
+    var matrixRunning by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     DeveloperPage(
         title = "Tools",
@@ -1054,6 +1066,28 @@ private fun ToolsScreen(
             policy =
                 developerRemoteAccessPolicy,
         )
+
+        sensorMatrixExperiment?.let { experiment ->
+            DiagnosticCard(
+                title = "SENSOR MATRIX",
+                primary = if (matrixRunning) "Running…" else "8 logical targets",
+                secondary = matrixResult?.let { "${it.eventCount} events · ${it.unavailableCount} unavailable · ${it.nonEventCount} other" }
+                    ?: "One bounded sample per target",
+                healthy = !matrixRunning,
+            )
+            NavigationChip(
+                label = if (matrixRunning) "RUNNING SENSOR MATRIX…" else "RUN SENSOR MATRIX",
+                onClick = {
+                    if (!matrixRunning) {
+                        matrixRunning = true
+                        scope.launch {
+                            matrixResult = experiment.run()
+                            matrixRunning = false
+                        }
+                    }
+                },
+            )
+        }
 
         lastResult?.let { result ->
             DiagnosticCard(

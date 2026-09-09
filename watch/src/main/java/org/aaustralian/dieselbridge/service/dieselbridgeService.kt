@@ -178,6 +178,10 @@ class DieselBridgeService : Service() {
             priority = LegacyBatteryProvider.PRIORITY,
         )
 
+        DeveloperRuntimeAccess.attachSensorMatrixExperiment(
+            SensorMatrixExperiment(platform.capabilities),
+        )
+
         DeveloperRuntimeAccess.attach(
             platform = platform,
             safePlatformTestRunner = safePlatformTestRunner,
