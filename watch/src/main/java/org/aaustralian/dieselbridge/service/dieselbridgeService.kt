@@ -44,6 +44,7 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteProbe
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
+import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 
@@ -155,6 +156,16 @@ class DieselBridgeService : Service() {
                 sensorSource,
             )
 
+        val sensorSampler = AndroidSensorSampler(applicationContext)
+        val sensorManagerProvider = SensorManagerProvider(sensorSource, sensorSampler)
+        sensorManagerProvider.capabilities().forEach { capability ->
+            platform.capabilities.register(
+                capability = capability,
+                provider = sensorManagerProvider,
+                priority = 10,
+            )
+        }
+
         platform.capabilities.register(
             capability = vibrationProvider,
             provider = vibrationProvider,
@@ -202,7 +213,7 @@ class DieselBridgeService : Service() {
                         authorization = developerRemoteAccessPolicy,
                         probe = AndroidSensorRouteProbe(
                             source = sensorSource,
-                            sampler = AndroidSensorSampler(applicationContext),
+                            sampler = sensorSampler,
                         ),
                     ),
                 ),

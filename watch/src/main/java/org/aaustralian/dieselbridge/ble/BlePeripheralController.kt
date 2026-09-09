@@ -104,6 +104,8 @@ class BlePeripheralController(
                     SensorCommandModule(
                         routes =
                             sensorRouteCatalog,
+                        capabilities =
+                            capabilities,
                     ),
                 )
 

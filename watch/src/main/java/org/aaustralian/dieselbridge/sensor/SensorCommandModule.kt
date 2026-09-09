@@ -4,6 +4,11 @@ package org.aaustralian.dieselbridge.sensor
 
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRoute
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
+import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.platform.sensor.SensorCapability
+import org.aaustralian.dieselbridge.platform.sensor.SensorReadOptions
+import org.aaustralian.dieselbridge.platform.sensor.SensorReadResult
+import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.protocol.DieselCommandContext
 import org.aaustralian.dieselbridge.protocol.DieselCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
@@ -20,6 +25,7 @@ import org.aaustralian.dieselbridge.protocol.DieselValue
  */
 class SensorCommandModule(
     private val routes: AndroidSensorRouteCatalog,
+    private val capabilities: CapabilityRegistry? = null,
 ) : DieselCommandModule {
 
     override fun install(
@@ -52,6 +58,110 @@ class SensorCommandModule(
                 context,
             )
         }
+
+        if (capabilities != null) {
+            registry.register(
+                DieselCommandSpec(
+                    name = COMMAND_SENSOR_READ,
+                    summary = "Read one logical sensor capability",
+                    metadata = mapOf(
+                        "domain" to DieselValue.Text("sensor"),
+                        "effect" to DieselValue.Text("read_only"),
+                        "routing" to DieselValue.Text("automatic_provider_selection"),
+                    ),
+                ),
+            ) { context -> readSensor(context, capabilities) }
+        }
+    }
+
+    private suspend fun readSensor(
+        context: DieselCommandContext,
+        registry: CapabilityRegistry,
+    ): DieselCommandResult {
+        if (context.name == null || context.args.keys.any { it != ARG_TIMEOUT_MS }) {
+            return invalidReadArguments()
+        }
+        val timeout = when (val value = context.args[ARG_TIMEOUT_MS]) {
+            null -> AndroidSensorSampler.DEFAULT_TIMEOUT_MS
+            is DieselValue.Integer -> value.value
+            else -> return invalidReadArguments()
+        }
+        if (timeout !in AndroidSensorSampler.MIN_TIMEOUT_MS..AndroidSensorSampler.MAX_TIMEOUT_MS) {
+            return invalidReadArguments()
+        }
+        val capability = registry.resolveAs<SensorCapability>("sensor.${context.name}")
+        if (capability == null) {
+            val known = context.name in CANONICAL_LOGICAL_IDS
+            return DieselCommandResult(
+                if (known) DieselResponseStatus.UNAVAILABLE else DieselResponseStatus.UNKNOWN_TARGET,
+                mapOf(
+                    "reason" to DieselValue.Text(
+                        if (known) "sensor_provider_unavailable" else "unknown_sensor_capability",
+                    ),
+                ),
+            )
+        }
+        return when (val result = capability.read(SensorReadOptions(timeout))) {
+            is SensorReadResult.Event -> encodeReading(result.reading)
+            SensorReadResult.Unavailable -> DieselCommandResult(
+                DieselResponseStatus.UNAVAILABLE,
+                mapOf("reason" to DieselValue.Text("sensor_unavailable")),
+            )
+            is SensorReadResult.PermissionDenied -> DieselCommandResult.ok(
+                mapOf(
+                    "outcome" to DieselValue.Text("permission_denied"),
+                    "requiredPermission" to (result.requiredPermission?.let(DieselValue::Text) ?: DieselValue.Null),
+                ),
+            )
+            SensorReadResult.Timeout -> DieselCommandResult.ok(mapOf("outcome" to DieselValue.Text("timeout")))
+            is SensorReadResult.RegistrationRejected -> DieselCommandResult.ok(
+                mapOf(
+                    "outcome" to DieselValue.Text("registration_rejected"),
+                    "reason" to (result.reason?.let(DieselValue::Text) ?: DieselValue.Null),
+                ),
+            )
+        }
+    }
+
+    private fun encodeReading(reading: org.aaustralian.dieselbridge.platform.sensor.SensorReading): DieselCommandResult {
+        val values = reading.values.take(MAX_READ_VALUES)
+        val nonFinite = linkedMapOf<String, MutableList<DieselValue>>()
+        val encoded = values.mapIndexed { index, value ->
+            if (value.isFinite()) {
+                DieselValue.Decimal(value.toDouble())
+            } else {
+                val category = when {
+                    value.isNaN() -> "nan"
+                    value > 0 -> "positiveInfinity"
+                    else -> "negativeInfinity"
+                }
+                nonFinite.getOrPut(category) { mutableListOf() }.add(DieselValue.Integer(index.toLong()))
+                DieselValue.Null
+            }
+        }
+        val data = linkedMapOf<String, DieselValue>(
+            "outcome" to DieselValue.Text("event"),
+            "capability" to DieselValue.Text(reading.capabilityId.value),
+            "providerId" to DieselValue.Text(reading.providerId),
+            "accuracy" to (reading.accuracy?.let { DieselValue.Integer(it.toLong()) } ?: DieselValue.Null),
+            "sensorTimestampNs" to DieselValue.Integer(reading.timestampNanos),
+            "timeToEventMs" to DieselValue.Integer(reading.elapsedMs),
+            "valueCount" to DieselValue.Integer(reading.values.size.toLong()),
+            "returnedValueCount" to DieselValue.Integer(values.size.toLong()),
+            "valuesTruncated" to DieselValue.Flag(reading.values.size > values.size),
+            "values" to DieselValue.ListValue(encoded),
+        )
+        if (nonFinite.isNotEmpty()) {
+            data["nonFinite"] = DieselValue.ObjectValue(nonFinite.mapValues { DieselValue.ListValue(it.value) })
+        }
+        return DieselCommandResult.ok(data)
+    }
+
+    private fun invalidReadArguments(): DieselCommandResult =
+        DieselCommandResult(
+            DieselResponseStatus.INVALID_REQUEST,
+            mapOf("reason" to DieselValue.Text("invalid_args")),
+        )
     }
 
     private fun listSensors(
@@ -317,14 +427,33 @@ class SensorCommandModule(
         )
 
     companion object {
+        private val CANONICAL_LOGICAL_IDS = setOf(
+            "accelerometer",
+            "gyroscope",
+            "magnetic_field",
+            "light",
+            "pressure",
+            "ambient_temperature",
+            "heart_rate",
+            "step_counter",
+        )
+
         const val COMMAND_SENSOR_LIST =
             "sensor.list"
+
+        const val COMMAND_SENSOR_READ =
+            "sensor.read"
 
         const val ARG_OFFSET =
             "offset"
 
         const val ARG_LIMIT =
             "limit"
+
+        const val ARG_TIMEOUT_MS =
+            "timeoutMs"
+
+        const val MAX_READ_VALUES = 64
 
         const val DEFAULT_PAGE_SIZE =
             4
