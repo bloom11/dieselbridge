@@ -38,8 +38,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge"
         minSdk = 28          // Wear OS 3 — covers every Pixel Watch Gen-1 firmware
         targetSdk = 28         // Wear OS 5.1 (Android 15) — the Gen-1 terminal OS. 36 is also valid.
-        versionCode = 24
-        versionName = "1.0.0-dev.19"
+        versionCode = 25
+        versionName = "1.0.0-dev.20"
 
         buildConfigField(
             "String",

@@ -9,9 +9,9 @@ is M4.3. Public capability/provider routing is M4.2c.
 
 Use the `dieselbridge-bloom-debug` artifact from the successful **DieselBridge CI** run for the probe
 commit. Install `watch-debug.apk` with `adb install -r` using the current paired watch connection.
-The Bloom debug signing lineage and version 24 / 1.0.0-dev.19 are preserved. Because the version is
-unchanged, identify this build by its CI commit/artifact and the presence of `debug.sensor.probe` in
-`commands`, rather than the Android version label alone. Do not assume an old ADB address is current.
+The Bloom debug signing lineage now uses version 25 / 1.0.0-dev.20. Identify each installed build by
+its in-app build details (version, commit, CI run, and build timestamp) and the CI artifact; do not
+assume an old ADB address is current. Do not assume an old ADB address is current.
 
 Gadgetbridge remains the BLE owner. The commands below run in **phone Termux**, not `adb shell` on
 the watch. Configure response capture before probing: Gadgetbridge delivers the fixed action
