@@ -45,6 +45,9 @@ import org.aaustralian.dieselbridge.system.PowerMode
 import org.aaustralian.dieselbridge.system.PowerPolicy
 import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
 import org.aaustralian.dieselbridge.sensor.SensorMatrixExperimentResult
+import org.aaustralian.dieselbridge.sensor.SensorReadCoordinator
+import org.aaustralian.dieselbridge.platform.sensor.SensorReadOptions
+import org.aaustralian.dieselbridge.platform.sensor.SensorReadResult
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.foundation.rotary.rotaryScrollable
@@ -205,7 +208,7 @@ fun DiagnosticsScreen(
 
                 DiagnosticsPage.SENSORS ->
                     SensorsScreen(
-                        dispatcher = commandDispatcher,
+                        capabilities = currentPlatform.capabilities,
                         inventory = sensorInventory,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
@@ -614,7 +617,7 @@ private fun BuildScreen(
 
 @Composable
 private fun SensorsScreen(
-    dispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
+    capabilities: org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry,
     inventory: SensorInventory?,
     onBack: () -> Unit,
 ) {
@@ -643,7 +646,7 @@ private fun SensorsScreen(
             },
         onBack = onBack,
     ) {
-        SensorReadPanel(dispatcher)
+        SensorReadPanel(capabilities)
 
         when {
             inventory == null ->
@@ -692,25 +695,16 @@ private fun SensorsScreen(
 
 @Composable
 private fun SensorReadPanel(
-    dispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
+    capabilities: org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var running by remember { mutableStateOf<String?>(null) }
     var resultText by remember { mutableStateOf<String?>(null) }
-    val targets = listOf(
-        "accelerometer",
-        "gyroscope",
-        "magnetic_field",
-        "light",
-        "pressure",
-        "ambient_temperature",
-        "heart_rate",
-        "step_counter",
-    )
+    val targets = SensorReadCoordinator.standardTargets
 
     SectionLabel("PUBLIC SENSOR READ")
     Text(
-        text = resultText ?: "Select a logical target; reads use the same registry path as BLE and ADB.",
+        text = resultText ?: "Select a logical target; reads use the local platform registry.",
         style = MaterialTheme.typography.bodySmall,
         color = SecondaryText,
         maxLines = 4,
@@ -724,21 +718,30 @@ private fun SensorReadPanel(
                 running = target
                 resultText = null
                 scope.launch {
-                    val result = dispatcher?.invoke(
-                        DieselRequest(
-                            requestId = "local-sensor-ui",
-                            command = "sensor.read",
-                            name = target,
-                            args = mapOf("timeoutMs" to DieselValue.Integer(5000)),
-                        ),
+                    val result = SensorReadCoordinator.read(
+                        registry = capabilities,
+                        target = target,
+                        options = SensorReadOptions(),
                     )
-                    resultText = if (result == null) "$target: command dispatcher unavailable" else sensorReadSummary(target, result)
+                    resultText = sensorReadResultSummary(target, result)
                     running = null
                 }
             },
         )
     }
 }
+
+private fun sensorReadResultSummary(target: String, result: SensorReadResult): String =
+    when (result) {
+        is SensorReadResult.Event ->
+            "$target: event ${result.reading.values.take(4).joinToString()}"
+        SensorReadResult.Unavailable -> "$target: unavailable"
+        is SensorReadResult.PermissionDenied ->
+            "$target: permission denied ${result.requiredPermission ?: "unknown"}"
+        SensorReadResult.Timeout -> "$target: timeout"
+        is SensorReadResult.RegistrationRejected ->
+            "$target: registration rejected ${result.reason ?: "unknown"}"
+    }
 
 private fun sensorReadSummary(target: String, result: DieselCommandResult): String {
     val data = commandMetadataValue(DieselValue.ObjectValue(result.data))

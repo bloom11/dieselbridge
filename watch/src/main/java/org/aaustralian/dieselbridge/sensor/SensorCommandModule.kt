@@ -6,6 +6,7 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRoute
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.sensor.SensorCapability
+import org.aaustralian.dieselbridge.platform.sensor.SensorCapabilityCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorReadOptions
 import org.aaustralian.dieselbridge.platform.sensor.SensorReadResult
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
@@ -171,10 +172,21 @@ class SensorCommandModule(
                     fields["outcome"] = DieselValue.Text("event")
                     fields["providerId"] = DieselValue.Text(result.reading.providerId)
                     fields["elapsedMs"] = DieselValue.Integer(result.reading.elapsedMs)
-                    fields["values"] = DieselValue.ListValue(result.reading.values.take(MAX_READ_VALUES).map { value -> if (value.isFinite()) DieselValue.Decimal(value.toDouble()) else DieselValue.Null })
+                    val values = result.reading.values.take(MAX_MATRIX_VALUES)
+                    fields["capability"] = DieselValue.Text(result.reading.capabilityId.value)
+                    fields["accuracy"] = result.reading.accuracy?.let { DieselValue.Integer(it.toLong()) } ?: DieselValue.Null
+                    fields["sensorTimestampNs"] = DieselValue.Integer(result.reading.timestampNanos)
+                    fields["valueCount"] = DieselValue.Integer(result.reading.values.size.toLong())
+                    fields["returnedValueCount"] = DieselValue.Integer(values.size.toLong())
+                    fields["valuesTruncated"] = DieselValue.Flag(result.reading.values.size > values.size)
+                    fields["values"] = DieselValue.ListValue(values.map { value -> if (value.isFinite()) DieselValue.Decimal(value.toDouble()) else DieselValue.Null })
                 }
                 SensorReadResult.Unavailable -> { fields["status"] = DieselValue.Text("unavailable") }
-                is SensorReadResult.PermissionDenied -> { fields["status"] = DieselValue.Text("ok"); fields["outcome"] = DieselValue.Text("permission_denied") }
+                is SensorReadResult.PermissionDenied -> {
+                    fields["status"] = DieselValue.Text("ok")
+                    fields["outcome"] = DieselValue.Text("permission_denied")
+                    fields["requiredPermission"] = result.requiredPermission?.let(DieselValue::Text) ?: DieselValue.Null
+                }
                 SensorReadResult.Timeout -> { fields["status"] = DieselValue.Text("ok"); fields["outcome"] = DieselValue.Text("timeout") }
                 is SensorReadResult.RegistrationRejected -> { fields["status"] = DieselValue.Text("ok"); fields["outcome"] = DieselValue.Text("registration_rejected"); fields["reason"] = DieselValue.Text(result.reason ?: "unknown") }
             }
@@ -486,16 +498,8 @@ class SensorCommandModule(
         )
 
     companion object {
-        private val CANONICAL_LOGICAL_IDS = setOf(
-            "accelerometer",
-            "gyroscope",
-            "magnetic_field",
-            "light",
-            "pressure",
-            "ambient_temperature",
-            "heart_rate",
-            "step_counter",
-        )
+        private val CANONICAL_LOGICAL_IDS =
+            SensorCapabilityCatalog.standardLogicalIds.toSet()
 
         const val COMMAND_SENSOR_LIST =
             "sensor.list"
@@ -516,6 +520,9 @@ class SensorCommandModule(
             "timeoutMs"
 
         const val MAX_READ_VALUES = 64
+
+        // Keeps the eight-target matrix safely below the 4 KiB protocol limit.
+        const val MAX_MATRIX_VALUES = 16
 
         const val DEFAULT_PAGE_SIZE =
             4

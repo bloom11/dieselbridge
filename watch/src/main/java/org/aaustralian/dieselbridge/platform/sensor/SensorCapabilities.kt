@@ -4,6 +4,20 @@ package org.aaustralian.dieselbridge.platform.sensor
 
 import org.aaustralian.dieselbridge.platform.capability.DieselCapability
 
+/** Canonical logical sensor names exposed by the platform. */
+object SensorCapabilityCatalog {
+    val standardLogicalIds: List<String> = listOf(
+        "accelerometer",
+        "gyroscope",
+        "magnetic_field",
+        "light",
+        "pressure",
+        "ambient_temperature",
+        "heart_rate",
+        "step_counter",
+    )
+}
+
 @JvmInline
 value class SensorCapabilityId(val value: String) {
     init { require(value.startsWith("sensor.") && value.length > 7) }
@@ -38,10 +52,7 @@ internal class SensorManagerProvider(
     private val sampler: AndroidSensorSampler,
 ) : org.aaustralian.dieselbridge.platform.provider.DieselProvider {
     override val providerId: String = SensorManagerRouteCatalog.PROVIDER_ID
-    fun capabilities(): List<SensorCapability> = STANDARD_LOGICAL_IDS.map { SensorManagerCapability(it, source, sampler) }
-    private companion object {
-        val STANDARD_LOGICAL_IDS = listOf("accelerometer", "gyroscope", "magnetic_field", "light", "pressure", "ambient_temperature", "heart_rate", "step_counter")
-    }
+    fun capabilities(): List<SensorCapability> = SensorCapabilityCatalog.standardLogicalIds.map { SensorManagerCapability(it, source, sampler) }
 }
 
 private class SensorManagerCapability(
