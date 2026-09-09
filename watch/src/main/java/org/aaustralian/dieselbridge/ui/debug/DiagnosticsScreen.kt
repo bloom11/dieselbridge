@@ -85,6 +85,7 @@ private enum class DiagnosticsPage {
     SENSORS,
     BLUETOOTH,
     COMMANDS,
+    COMMAND_DETAIL,
     TOOLS,
     LOGS,
     BUILD,
@@ -123,6 +124,8 @@ fun DiagnosticsScreen(
     val probe by
         ProbeStateHolder.state.collectAsStateWithLifecycle()
 
+    var selectedCommand by remember { mutableStateOf<DieselCommandSpec?>(null) }
+
     var page by remember {
         mutableStateOf(
             if (openCommandsInitially) {
@@ -136,7 +139,12 @@ fun DiagnosticsScreen(
     BackHandler(
         enabled = page != DiagnosticsPage.OVERVIEW,
     ) {
-        page = DiagnosticsPage.OVERVIEW
+        if (page == DiagnosticsPage.COMMAND_DETAIL) {
+            selectedCommand = null
+            page = DiagnosticsPage.COMMANDS
+        } else {
+            page = DiagnosticsPage.OVERVIEW
+        }
     }
 
     MaterialTheme {
@@ -211,10 +219,25 @@ fun DiagnosticsScreen(
                     CommandsScreen(
                         commands = commandCatalog,
                         dispatcher = commandDispatcher,
+                        onCommand = { command ->
+                            selectedCommand = command
+                            page = DiagnosticsPage.COMMAND_DETAIL
+                        },
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
                     )
+
+                DiagnosticsPage.COMMAND_DETAIL ->
+                    selectedCommand?.let { command ->
+                        CommandDetailScreen(
+                            command = command,
+                            onBack = {
+                                selectedCommand = null
+                                page = DiagnosticsPage.COMMANDS
+                            },
+                        )
+                    } ?: run { page = DiagnosticsPage.COMMANDS }
 
                 DiagnosticsPage.TOOLS ->
                     ToolsScreen(
@@ -849,7 +872,8 @@ private fun SensorDetailLine(
 @Composable
 private fun CommandsScreen(
     commands: List<DieselCommandSpec>,
-    dispatcher: (suspend (DieselRequest) -> org.aaustralian.dieselbridge.protocol.DieselCommandResult)?,
+    dispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
+    onCommand: (DieselCommandSpec) -> Unit,
     onBack: () -> Unit,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -874,25 +898,61 @@ private fun CommandsScreen(
                     primary = command.summary,
                     secondary = commandMetadataSummary(command.metadata),
                     healthy = true,
+                    onClick = { onCommand(command) },
                 )
-                if (command.name in setOf("diagnostics", "commands", "debug.build.info") && dispatcher != null) {
-                    NavigationChip(
-                        label = "RUN ${command.name.uppercase()}",
-                        onClick = {
-                            scope.launch {
-                                val result = dispatcher(
-                                    DieselRequest(requestId = "local-ui", command = command.name),
-                                )
-                                lastResult = "${command.name}: ${result.status.wireName} ${commandMetadataValue(DieselValue.ObjectValue(result.data))}"
-                            }
-                        },
-                    )
+                if (command.name in setOf("diagnostics", "commands", "debug.build.info")) {
+                    dispatcher?.let { activeDispatcher ->
+                        NavigationChip(
+                            label = "RUN ${command.name.uppercase()}",
+                            onClick = {
+                                scope.launch {
+                                    val result = activeDispatcher(
+                                        DieselRequest(requestId = "local-ui", command = command.name),
+                                    )
+                                    lastResult = "${command.name}: ${result.status.wireName} " +
+                                        commandMetadataValue(DieselValue.ObjectValue(result.data))
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
         lastResult?.let {
             DiagnosticCard("LAST COMMAND RESULT", it, null, healthy = true)
         }
+    }
+}
+
+@Composable
+private fun CommandDetailScreen(
+    command: DieselCommandSpec,
+    onBack: () -> Unit,
+) {
+    DeveloperPage(
+        title = command.name,
+        subtitle = "Command API details",
+        onBack = onBack,
+    ) {
+        DiagnosticCard("SUMMARY", command.summary, null, healthy = true)
+        if (command.metadata.isEmpty()) {
+            DiagnosticCard("METADATA", "None declared", null, healthy = false)
+        } else {
+            command.metadata.entries.forEach { (key, value) ->
+                DiagnosticCard(
+                    title = key.uppercase(),
+                    primary = commandMetadataValue(value),
+                    secondary = "Structured command metadata",
+                    healthy = true,
+                )
+            }
+        }
+        DiagnosticCard(
+            title = "REQUEST SHAPE",
+            primary = "cmd=\"${command.name}\"",
+            secondary = "Use the target name and arguments documented above",
+            healthy = true,
+        )
     }
 }
 
