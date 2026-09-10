@@ -9,6 +9,7 @@ import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.MeasureClient
 import androidx.health.services.client.data.DataPointContainer
+import androidx.health.services.client.data.Availability
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -90,6 +91,8 @@ class AndroidHealthServicesSource(private val context: Context) : HealthServices
         val type = dataType(logicalId) ?: throw IllegalArgumentException("Unsupported Health Services sensor: $logicalId")
         suspendCancellableCoroutine { continuation ->
             val callback = object : MeasureCallback {
+                override fun onAvailabilityChanged(dataType: DeltaDataType<*, *>, availability: Availability) = Unit
+
                 override fun onDataReceived(data: DataPointContainer) {
                     val value = extract(logicalId, data) ?: return
                     if (continuation.isActive) continuation.resume(HealthServicesSample(listOf(value.toFloat())))
