@@ -33,6 +33,9 @@ import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperSensorProbeCommandModule
+import org.aaustralian.dieselbridge.debug.DeveloperSensorScanCommandModule
+import org.aaustralian.dieselbridge.debug.SensorProbeStore
+import org.aaustralian.dieselbridge.debug.SensorScanRunner
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.debug.WatchDeveloperExportRegistry
@@ -162,6 +165,13 @@ class DieselBridgeService : Service() {
 
         val sensorSampler = AndroidSensorSampler(applicationContext)
         val sensorManagerProvider = SensorManagerProvider(sensorSource, sensorSampler)
+        val sensorProbeStore = SensorProbeStore()
+        val sensorScanRunner = SensorScanRunner(
+            probe = AndroidSensorRouteProbe(source = sensorSource, sampler = sensorSampler),
+            routes = { sensorRouteCatalog.snapshot() },
+            store = sensorProbeStore,
+            scope = platformScope,
+        )
         sensorManagerProvider.capabilities().forEach { capability ->
             platform.capabilities.register(
                 capability = capability,
@@ -227,6 +237,7 @@ class DieselBridgeService : Service() {
                 sensorRouteCatalog =
                     sensorRouteCatalog,
                 safeTestRunner = safePlatformTestRunner,
+                sensorProbeStore = sensorProbeStore,
             )
 
         val bleController =
@@ -250,6 +261,11 @@ class DieselBridgeService : Service() {
                             source = sensorSource,
                             sampler = sensorSampler,
                         ),
+                    ),
+                    DeveloperSensorScanCommandModule(
+                        authorization = developerRemoteAccessPolicy,
+                        runner = sensorScanRunner,
+                        store = sensorProbeStore,
                     ),
                 ),
             )

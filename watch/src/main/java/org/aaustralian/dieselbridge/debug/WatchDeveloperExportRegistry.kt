@@ -30,6 +30,7 @@ object WatchDeveloperExportRegistry {
         platform: DieselPlatform,
         sensorRouteCatalog: AndroidSensorRouteCatalog,
         safeTestRunner: SafePlatformTestRunner,
+        sensorProbeStore: SensorProbeStore? = null,
     ): DeveloperExportRegistry =
         DeveloperExportRegistry()
             .apply {
@@ -70,6 +71,27 @@ object WatchDeveloperExportRegistry {
                 ) {
                     sensorsSnapshot(
                         sensorRouteCatalog,
+                    )
+                }
+
+                register("sensor_probes") {
+                    DeveloperExportSnapshot(
+                        source = "android.sensor_probe_scan",
+                        items = sensorProbeStore?.snapshot().orEmpty().mapIndexed { index, record ->
+                            objectValue(
+                                "index" to integer(index),
+                                "runId" to text(record.runId),
+                                "routeId" to nullableText(record.route?.descriptor?.routeId?.value),
+                                "logicalId" to nullableText(record.route?.descriptor?.logicalId?.value),
+                                "providerId" to nullableText(record.route?.descriptor?.providerId),
+                                "androidType" to nullableInteger(record.route?.inventory?.androidType?.toLong()),
+                                "androidId" to nullableInteger(record.route?.inventory?.androidId?.toLong()),
+                                "outcome" to text(record.outcome),
+                                "elapsedMs" to integer(record.elapsedMs),
+                                "reason" to nullableText(record.reason),
+                            )
+                        },
+                        metadata = mapOf("recordCount" to integer(sensorProbeStore?.snapshot()?.size ?: 0)),
                     )
                 }
 
