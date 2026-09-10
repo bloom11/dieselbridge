@@ -41,7 +41,9 @@ class SensorProbeStoreTest {
     @Test fun runner_records_route_outcomes_and_finishes_within_budget() = runBlocking {
         val store = SensorProbeStore()
         val runner = SensorScanRunner(
-            probe = SensorRouteProbe { SensorRouteProbeOutcome.RouteUnavailable },
+            probe = object : SensorRouteProbe {
+                override suspend fun probe(routeId: SensorRouteId) = SensorRouteProbeOutcome.RouteUnavailable
+            },
             routes = { listOf(route) },
             store = store,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
