@@ -13,6 +13,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Bounded first-event sampler for exact Android SensorManager routes.
@@ -45,6 +47,9 @@ internal class AndroidSensorSampler(
             .getSystemService(
                 SensorManager::class.java,
             )
+
+    /* One shared sampler instance is used by logical reads and route diagnostics. */
+    private val activationMutex = Mutex()
 
     suspend fun sample(
         handle:
@@ -85,24 +90,19 @@ internal class AndroidSensorSampler(
                             REASON_SENSOR_MANAGER_UNAVAILABLE,
                     )
 
-        return boundedSampler
-            .sample(
+        return activationMutex.withLock {
+            boundedSampler.sample(
                 registration =
                     SensorManagerSampleRegistration(
-                        sensorManager =
-                            manager,
-                        sensor =
-                            handle.sensor,
-                        callbackHandler =
-                            callbackHandler,
-                        samplePeriodUs =
-                            samplePeriodUs,
-                        kind =
-                            kind,
+                        sensorManager = manager,
+                        sensor = handle.sensor,
+                        callbackHandler = callbackHandler,
+                        samplePeriodUs = samplePeriodUs,
+                        kind = kind,
                     ),
-                timeoutMs =
-                    timeoutMs,
+                timeoutMs = timeoutMs,
             )
+        }
     }
 
     private fun registrationKind(

@@ -195,7 +195,9 @@ class DieselBridgeService : Service() {
         platformScope.launch {
             healthServicesProvider.capabilities().forEach { capability ->
                 runCatching {
-                    val supported = healthServicesSource.supports(capability.capabilityId.value.removePrefix("sensor."))
+                    val logicalId = capability.capabilityId.value.removePrefix("sensor.")
+                    val supported = healthServicesSource.hasRequiredPermission(logicalId) &&
+                        healthServicesSource.supports(logicalId)
                     if (supported) {
                         platform.capabilities.setAvailability(
                             capability.id,

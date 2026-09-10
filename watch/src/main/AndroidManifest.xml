@@ -19,7 +19,6 @@
 
     <!-- Optional Health Services spot measurements. -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Ask the user to exempt us from battery optimization so Doze doesn't drop the link -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />

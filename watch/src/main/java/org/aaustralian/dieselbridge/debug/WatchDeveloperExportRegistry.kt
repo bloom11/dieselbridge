@@ -86,9 +86,22 @@ object WatchDeveloperExportRegistry {
                                 "providerId" to nullableText(record.route?.descriptor?.providerId),
                                 "androidType" to nullableInteger(record.route?.inventory?.androidType?.toLong()),
                                 "androidId" to nullableInteger(record.route?.inventory?.androidId?.toLong()),
+                                "name" to text(record.route.inventory.name),
+                                "vendor" to text(record.route.inventory.vendor),
+                                "stringType" to text(record.route.inventory.stringType),
+                                "wakeUp" to flag(record.route.inventory.wakeUp),
                                 "outcome" to text(record.outcome),
+                                "registrationKind" to nullableText(record.registrationKind?.name?.lowercase(Locale.ROOT)),
                                 "elapsedMs" to integer(record.elapsedMs),
+                                "requiredPermission" to nullableText(record.requiredPermission),
                                 "reason" to nullableText(record.reason),
+                                "sensorTimestampNs" to nullableInteger(record.event?.timestampNanos),
+                                "accuracy" to nullableInteger(record.event?.accuracy),
+                                "values" to DieselValue.ListValue(record.event?.values.orEmpty().take(16).map { value ->
+                                    if (value.isFinite()) decimal(value.toDouble()) else DieselValue.Null
+                                }),
+                                "valueCount" to integer(record.event?.values?.size ?: 0),
+                                "valuesTruncated" to flag((record.event?.values?.size ?: 0) > 16),
                             )
                         },
                         metadata = mapOf("recordCount" to integer(sensorProbeStore?.snapshot()?.size ?: 0)),
