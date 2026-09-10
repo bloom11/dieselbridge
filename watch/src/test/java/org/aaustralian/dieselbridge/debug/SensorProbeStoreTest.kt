@@ -42,7 +42,7 @@ class SensorProbeStoreTest {
         val store = SensorProbeStore()
         val runner = SensorScanRunner(
             probe = object : SensorRouteProbe {
-                override suspend fun probe(routeId: SensorRouteId) = SensorRouteProbeOutcome.RouteUnavailable
+                override suspend fun probe(routeId: SensorRouteId, timeoutMs: Long) = SensorRouteProbeOutcome.RouteUnavailable
             },
             routes = { listOf(route) },
             store = store,
