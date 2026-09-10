@@ -19,6 +19,7 @@ wearOngoing = "1.0.0"         # OngoingActivity for the foreground-service notif
 wearTiles = "1.6.1"           # androidx.wear.tiles.* — glanceable status/find-phone tile
 wearProtolayout = "1.4.1"     # androidx.wear.protolayout.* — Material3 tile layout DSL
 concurrentFutures = "1.2.0"   # androidx.concurrent — CallbackToFutureAdapter for the tile's ListenableFuture
+healthServices = "1.1.0-rc02"
 junit = "4.13.2"              # JVM unit tests
 orgJson = "20240303"          # real org.json on the unit-test classpath (Android's is a stub)
 androidxTestExtJunit = "1.2.1"
@@ -53,6 +54,7 @@ androidx-wear-protolayout = { group = "androidx.wear.protolayout", name = "proto
 androidx-wear-protolayout-material3 = { group = "androidx.wear.protolayout", name = "protolayout-material3", version.ref = "wearProtolayout" }
 androidx-wear-protolayout-expression = { group = "androidx.wear.protolayout", name = "protolayout-expression", version.ref = "wearProtolayout" }
 androidx-concurrent-futures = { group = "androidx.concurrent", name = "concurrent-futures", version.ref = "concurrentFutures" }
+androidx-health-services-client = { group = "androidx.health", name = "health-services-client", version.ref = "healthServices" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

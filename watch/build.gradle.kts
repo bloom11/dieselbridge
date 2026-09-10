@@ -147,6 +147,7 @@ dependencies {
     debugImplementation(libs.androidx.wear.tiles.tooling)
     // CallbackToFutureAdapter for the tile's ListenableFuture returns
     implementation(libs.androidx.concurrent.futures)
+    implementation(libs.androidx.health.services.client)
 
     // --- Testing ---
     testImplementation(libs.junit)

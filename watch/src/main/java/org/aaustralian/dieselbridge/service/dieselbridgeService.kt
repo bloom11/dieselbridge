@@ -43,6 +43,9 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteProbe
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
+import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesSource
+import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
+import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
 import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
@@ -165,6 +168,33 @@ class DieselBridgeService : Service() {
                 provider = sensorManagerProvider,
                 priority = 10,
             )
+        }
+
+        // Health Services is an optional higher-priority source. Register it as standby until
+        // the watch reports support; the SensorManager provider remains the safe fallback.
+        val healthServicesSource = AndroidHealthServicesSource(applicationContext)
+        val healthServicesProvider = HealthServicesProvider(healthServicesSource)
+        healthServicesProvider.capabilities().forEach { capability ->
+            platform.capabilities.register(
+                capability = capability,
+                provider = healthServicesProvider,
+                priority = 20,
+                initialAvailability = ProviderAvailability.UNAVAILABLE,
+            )
+        }
+        platformScope.launch {
+            healthServicesProvider.capabilities().forEach { capability ->
+                runCatching {
+                    val supported = healthServicesSource.supports(capability.capabilityId.value.removePrefix("sensor."))
+                    if (supported) {
+                        platform.capabilities.setAvailability(
+                            capability.id,
+                            healthServicesProvider.providerId,
+                            ProviderAvailability.AVAILABLE,
+                        )
+                    }
+                }
+            }
         }
 
         platform.capabilities.register(
