@@ -58,6 +58,16 @@ object DeveloperRuntimeAccess {
         StateFlow<SensorInventory?> =
         mutableSensorInventory.asStateFlow()
 
+    private val mutableHealthServicesRefresh =
+        MutableStateFlow<(suspend () -> Unit)?>(null)
+
+    val healthServicesRefresh: StateFlow<(suspend () -> Unit)?> =
+        mutableHealthServicesRefresh.asStateFlow()
+
+    fun attachHealthServicesRefresh(refresh: suspend () -> Unit) {
+        mutableHealthServicesRefresh.value = refresh
+    }
+
     private val mutableCommandDispatcher =
         MutableStateFlow<(suspend (DieselRequest) -> DieselCommandResult)?>(null)
 
@@ -122,6 +132,7 @@ object DeveloperRuntimeAccess {
             mutableSafeTestRunner.value = null
             mutableSensorMatrixExperiment.value = null
             mutableCommandDispatcher.value = null
+            mutableHealthServicesRefresh.value = null
             mutablePlatform.value = null
         }
     }

@@ -192,22 +192,23 @@ class DieselBridgeService : Service() {
                 initialAvailability = ProviderAvailability.UNAVAILABLE,
             )
         }
-        platformScope.launch {
+        val refreshHealthServicesAvailability: suspend () -> Unit = {
             healthServicesProvider.capabilities().forEach { capability ->
-                runCatching {
-                    val logicalId = capability.capabilityId.value.removePrefix("sensor.")
-                    val supported = healthServicesSource.hasRequiredPermission(logicalId) &&
+                val logicalId = capability.capabilityId.value.removePrefix("sensor.")
+                val available = runCatching {
+                    healthServicesSource.hasRequiredPermission(logicalId) &&
                         healthServicesSource.supports(logicalId)
-                    if (supported) {
-                        platform.capabilities.setAvailability(
-                            capability.id,
-                            healthServicesProvider.providerId,
-                            ProviderAvailability.AVAILABLE,
-                        )
-                    }
-                }
+                }.getOrDefault(false)
+                platform.capabilities.setAvailability(
+                    capability.id,
+                    healthServicesProvider.providerId,
+                    if (available) ProviderAvailability.AVAILABLE else ProviderAvailability.UNAVAILABLE,
+                    if (available) null else "unsupported_or_permission_not_granted",
+                )
             }
         }
+        platformScope.launch { refreshHealthServicesAvailability() }
+        DeveloperRuntimeAccess.attachHealthServicesRefresh(refreshHealthServicesAvailability)
 
         platform.capabilities.register(
             capability = vibrationProvider,

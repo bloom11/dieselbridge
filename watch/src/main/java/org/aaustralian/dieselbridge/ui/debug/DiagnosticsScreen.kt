@@ -2,7 +2,11 @@
 
 package org.aaustralian.dieselbridge.ui.debug
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -115,6 +119,9 @@ fun DiagnosticsScreen(
 
     val commandDispatcher by
         DeveloperRuntimeAccess.commandDispatcher.collectAsStateWithLifecycle()
+
+    val healthServicesRefresh by
+        DeveloperRuntimeAccess.healthServicesRefresh.collectAsStateWithLifecycle()
 
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
@@ -255,6 +262,7 @@ fun DiagnosticsScreen(
                         developerRemoteAccessPolicy =
                             developerRemoteAccessPolicy,
                         commandDispatcher = commandDispatcher,
+                        healthServicesRefresh = healthServicesRefresh,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
@@ -1047,6 +1055,7 @@ private fun ToolsScreen(
     sensorMatrixExperiment: SensorMatrixExperiment?,
     developerRemoteAccessPolicy: DeveloperRemoteAccessPolicy?,
     commandDispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
+    healthServicesRefresh: (suspend () -> Unit)?,
     onBack: () -> Unit,
 ) {
     val tests =
@@ -1072,6 +1081,28 @@ private fun ToolsScreen(
             policy =
                 developerRemoteAccessPolicy,
         )
+
+        val context = LocalContext.current
+        val healthPermissionLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) {
+            scope.launch { healthServicesRefresh?.invoke() }
+        }
+        healthServicesRefresh?.let { refresh ->
+            val granted = context.checkSelfPermission(Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED
+            DiagnosticCard(
+                title = "HEALTH SERVICES",
+                primary = if (granted) "Heart-rate permission granted" else "Heart-rate permission required",
+                secondary = "Enables the optional Health Services provider",
+                healthy = granted,
+            )
+            NavigationChip(
+                label = if (granted) "REFRESH HEALTH PROVIDER" else "GRANT HEART-RATE PERMISSION",
+                onClick = {
+                    if (granted) scope.launch { refresh() } else healthPermissionLauncher.launch(Manifest.permission.BODY_SENSORS)
+                },
+            )
+        }
 
         var scanRunId by remember { mutableStateOf<String?>(null) }
         var scanResult by remember { mutableStateOf<DieselCommandResult?>(null) }
