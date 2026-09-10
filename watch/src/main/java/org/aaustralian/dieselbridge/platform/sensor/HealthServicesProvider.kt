@@ -4,6 +4,7 @@ package org.aaustralian.dieselbridge.platform.sensor
 
 import android.Manifest
 import android.content.Context
+import android.os.Build
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.MeasureClient
@@ -80,6 +81,7 @@ class AndroidHealthServicesSource(private val context: Context) : HealthServices
     }
 
     override suspend fun supports(logicalId: String): Boolean {
+        if (Build.VERSION.SDK_INT < 30) return false
         val type = dataType(logicalId) ?: return false
         return measureClient.getCapabilitiesAsync().awaitFuture().supportedDataTypesMeasure.contains(type)
     }

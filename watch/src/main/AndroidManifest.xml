@@ -5,6 +5,9 @@
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
+    <!-- Health Services supports Wear OS API 30+; retain the app's API 28 floor for legacy watches. -->
+    <uses-sdk tools:overrideLibrary="androidx.health.services.client" />
+
     <!-- BLE peripheral role: advertise + serve a GATT server; connect (Android 12+ runtime perms) -->
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
