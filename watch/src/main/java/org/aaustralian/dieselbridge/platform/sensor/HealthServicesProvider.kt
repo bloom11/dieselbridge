@@ -102,7 +102,7 @@ class AndroidHealthServicesSource(private val context: Context) : HealthServices
     override suspend fun read(logicalId: String, timeoutMs: Long): HealthServicesSample = withTimeout(timeoutMs) {
         if (Build.VERSION.SDK_INT < 30) throw UnsupportedOperationException("Health Services requires API 30")
         val type = dataType(logicalId) ?: throw IllegalArgumentException("Unsupported Health Services sensor: $logicalId")
-        lateinit var callback: MeasureCallback
+        var callback: MeasureCallback? = null
         try {
             suspendCancellableCoroutine { continuation ->
                 callback = object : MeasureCallback {
@@ -117,11 +117,11 @@ class AndroidHealthServicesSource(private val context: Context) : HealthServices
                         if (continuation.isActive) continuation.resumeWith(Result.failure(IllegalStateException(throwable.message, throwable)))
                     }
                 }
-                measureClient.registerMeasureCallback(type, callback)
+                measureClient.registerMeasureCallback(type, requireNotNull(callback))
             }
         } finally {
-            if (::callback.isInitialized) {
-                runCatching { measureClient.unregisterMeasureCallbackAsync(type, callback) }
+            callback?.let { registered ->
+                runCatching { measureClient.unregisterMeasureCallbackAsync(type, registered) }
             }
         }
     }
@@ -135,7 +135,7 @@ class AndroidHealthServicesSource(private val context: Context) : HealthServices
         "heart_rate" -> data.getData(DataType.HEART_RATE_BPM).lastOrNull()?.let { point ->
             HealthServicesSample(
                 values = listOf(point.value.toFloat()),
-                timestampNanos = point.timeDurationFromBoot.inWholeNanoseconds,
+                timestampNanos = point.timeDurationFromBoot.toNanos(),
             )
         }
         else -> null

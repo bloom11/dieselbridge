@@ -42,28 +42,28 @@ internal data class SensorProbeRecord(
 )
 
 /** Bounded process-local evidence store for whole-watch route scans. */
-internal class SensorProbeStore(private val capacity: Int = 256, private val runCapacity: Int = 8) {
+class SensorProbeStore(private val capacity: Int = 256, private val runCapacity: Int = 8) {
     private val lock = Any()
     private val records = ArrayDeque<SensorProbeRecord>()
     private val summaries = LinkedHashMap<String, SensorScanSummary>()
 
     init { require(capacity > 0); require(runCapacity > 0) }
 
-    fun begin(summary: SensorScanSummary) = synchronized(lock) {
+    internal fun begin(summary: SensorScanSummary) = synchronized(lock) {
         while (summaries.size >= runCapacity) summaries.remove(summaries.entries.first().key)
         summaries[summary.runId] = summary
     }
 
-    fun update(summary: SensorScanSummary) = synchronized(lock) { summaries[summary.runId] = summary }
+    internal fun update(summary: SensorScanSummary) = synchronized(lock) { summaries[summary.runId] = summary }
 
-    fun add(record: SensorProbeRecord) = synchronized(lock) {
+    internal fun add(record: SensorProbeRecord) = synchronized(lock) {
         if (records.size >= capacity) records.removeFirst()
         records.addLast(record)
     }
 
-    fun summary(runId: String): SensorScanSummary? = synchronized(lock) { summaries[runId] }
-    fun latestSummary(): SensorScanSummary? = synchronized(lock) { summaries.values.lastOrNull() }
-    fun snapshot(runId: String? = null): List<SensorProbeRecord> = synchronized(lock) {
+    internal fun summary(runId: String): SensorScanSummary? = synchronized(lock) { summaries[runId] }
+    internal fun latestSummary(): SensorScanSummary? = synchronized(lock) { summaries.values.lastOrNull() }
+    internal fun snapshot(runId: String? = null): List<SensorProbeRecord> = synchronized(lock) {
         records.filter { runId == null || it.runId == runId }
     }
 }

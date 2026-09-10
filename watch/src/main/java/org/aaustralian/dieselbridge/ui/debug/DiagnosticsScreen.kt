@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import android.content.Intent
 import android.provider.Settings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import org.aaustralian.dieselbridge.system.BatteryUsageMonitor
@@ -253,6 +254,7 @@ fun DiagnosticsScreen(
                         sensorMatrixExperiment = sensorMatrixExperiment,
                         developerRemoteAccessPolicy =
                             developerRemoteAccessPolicy,
+                        commandDispatcher = commandDispatcher,
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
@@ -1044,6 +1046,7 @@ private fun ToolsScreen(
     runner: SafePlatformTestRunner?,
     sensorMatrixExperiment: SensorMatrixExperiment?,
     developerRemoteAccessPolicy: DeveloperRemoteAccessPolicy?,
+    commandDispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
     onBack: () -> Unit,
 ) {
     val tests =
@@ -1069,6 +1072,43 @@ private fun ToolsScreen(
             policy =
                 developerRemoteAccessPolicy,
         )
+
+        var scanRunId by remember { mutableStateOf<String?>(null) }
+        var scanResult by remember { mutableStateOf<DieselCommandResult?>(null) }
+        val scanState = (scanResult?.data?.get("state") as? DieselValue.Text)?.value
+        val scanCompleted = (scanResult?.data?.get("completedRoutes") as? DieselValue.Integer)?.value
+        val scanTotal = (scanResult?.data?.get("totalRoutes") as? DieselValue.Integer)?.value
+        commandDispatcher?.let { dispatch ->
+            DiagnosticCard(
+                title = "WHOLE-WATCH SENSOR SCAN",
+                primary = scanState ?: "Ready",
+                secondary = if (scanCompleted != null && scanTotal != null) "$scanCompleted / $scanTotal routes" else "2 s per route · 60 s maximum",
+                healthy = scanState != "time_budget_exhausted",
+            )
+            NavigationChip(
+                label = if (scanState == "running") "REFRESH SCAN STATUS" else "START SENSOR SCAN",
+                onClick = {
+                    scope.launch {
+                        if (scanState == "running" && scanRunId != null) {
+                            scanResult = dispatch(DieselRequest("local-scan-status", "debug.sensor.scan.status", args = mapOf("runId" to DieselValue.Text(scanRunId!!))))
+                        } else {
+                            scanResult = dispatch(DieselRequest("local-scan-start", "debug.sensor.scan.start"))
+                            scanRunId = (scanResult?.data?.get("runId") as? DieselValue.Text)?.value
+                        }
+                    }
+                },
+            )
+            if (scanState == "running" && scanRunId != null) {
+                NavigationChip(
+                    label = "CANCEL SENSOR SCAN",
+                    onClick = {
+                        scope.launch {
+                            scanResult = dispatch(DieselRequest("local-scan-cancel", "debug.sensor.scan.cancel", args = mapOf("runId" to DieselValue.Text(scanRunId!!))))
+                        }
+                    },
+                )
+            }
+        }
 
         sensorMatrixExperiment?.let { experiment ->
             DiagnosticCard(

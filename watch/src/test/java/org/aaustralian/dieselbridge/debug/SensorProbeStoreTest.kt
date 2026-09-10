@@ -5,6 +5,13 @@ import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
 import org.aaustralian.dieselbridge.platform.sensor.SensorLogicalId
 import org.aaustralian.dieselbridge.platform.sensor.SensorRouteDescriptor
 import org.aaustralian.dieselbridge.platform.sensor.SensorRouteId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbe
+import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbeOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -29,5 +36,21 @@ class SensorProbeStoreTest {
         assertEquals(listOf(1, 2), store.snapshot().map { it.index })
         assertEquals(null, store.summary("a"))
         assertEquals("b", store.latestSummary()?.runId)
+    }
+
+    @Test fun runner_records_route_outcomes_and_finishes_within_budget() = runBlocking {
+        val store = SensorProbeStore()
+        val runner = SensorScanRunner(
+            probe = SensorRouteProbe { SensorRouteProbeOutcome.RouteUnavailable },
+            routes = { listOf(route) },
+            store = store,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            perRouteTimeoutMs = 500,
+            totalTimeoutMs = 1_000,
+        )
+        val runId = runner.start()!!
+        while (runner.summary(runId)?.finishedAtMs == null) delay(1)
+        assertEquals(SensorScanTerminalReason.FINISHED, runner.summary(runId)?.terminalReason)
+        assertEquals("route_unavailable", store.snapshot(runId).single().outcome)
     }
 }
