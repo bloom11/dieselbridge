@@ -6,7 +6,7 @@ import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbe
 import org.aaustralian.dieselbridge.protocol.*
 
 /** Developer-only asynchronous whole-watch route scan controls. */
-class DeveloperSensorScanCommandModule(
+internal class DeveloperSensorScanCommandModule(
     private val authorization: DeveloperRemoteAccessAuthorization,
     private val runner: SensorScanRunner,
     private val store: SensorProbeStore,

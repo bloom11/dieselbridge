@@ -44,7 +44,7 @@ class SensorProbeStore(private val capacity: Int = 256) {
 }
 
 /** Single-flight, cancellable route scanner. It never fan-outs sensor activation. */
-class SensorScanRunner(
+internal class SensorScanRunner(
     private val probe: SensorRouteProbe,
     private val routes: () -> List<AndroidSensorRoute>,
     private val store: SensorProbeStore,
