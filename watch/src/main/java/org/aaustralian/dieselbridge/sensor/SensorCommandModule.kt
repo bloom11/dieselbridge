@@ -28,6 +28,7 @@ class SensorCommandModule(
     private val routes: AndroidSensorRouteCatalog,
     private val capabilities: CapabilityRegistry? = null,
 ) : DieselCommandModule {
+    private val experimentRunner = capabilities?.let(::SensorExperimentRunner)
 
     override fun install(
         registry: DieselCommandRegistry,
@@ -100,6 +101,24 @@ class SensorCommandModule(
                     ),
                 ),
             ) { context -> readMatrix(context, capabilities) }
+            registry.register(
+                DieselCommandSpec(
+                    name = COMMAND_SENSOR_EXPERIMENT,
+                    summary = "Run a bounded repeated logical sensor experiment",
+                    metadata = mapOf(
+                        "domain" to DieselValue.Text("sensor"),
+                        "effect" to DieselValue.Text("read_only"),
+                        "bounded" to DieselValue.Text("maximum 8 rounds and 30 seconds"),
+                        "arguments" to DieselValue.ObjectValue(
+                            mapOf(
+                                ARG_ROUNDS to DieselValue.Text("integer 1..${SensorExperimentRunner.MAX_ROUNDS}, default 1"),
+                                ARG_TIMEOUT_MS to DieselValue.Text("integer ${SensorExperimentRunner.MIN_TIMEOUT_MS}..${SensorExperimentRunner.MAX_TIMEOUT_MS}, default ${AndroidSensorSampler.DEFAULT_TIMEOUT_MS}"),
+                                ARG_TOTAL_TIMEOUT_MS to DieselValue.Text("integer ${SensorExperimentRunner.MIN_TOTAL_TIMEOUT_MS}..${SensorExperimentRunner.MAX_TOTAL_TIMEOUT_MS}, default ${SensorExperimentRunner.DEFAULT_TOTAL_TIMEOUT_MS}"),
+                            ),
+                        ),
+                    ),
+                ),
+            ) { context -> runExperiment(context, experimentRunner) }
         }
     }
 
@@ -151,6 +170,58 @@ class SensorCommandModule(
                 ),
             )
         }
+    }
+
+    private suspend fun runExperiment(
+        context: DieselCommandContext,
+        runner: SensorExperimentRunner?,
+    ): DieselCommandResult {
+        if (context.name != null || context.args.keys.any { it !in EXPERIMENT_ARGUMENTS }) return invalidReadArguments()
+        val rounds = integerArgument(context, ARG_ROUNDS, 1, 1, SensorExperimentRunner.MAX_ROUNDS) ?: return invalidReadArguments()
+        val timeout = longArgument(context, ARG_TIMEOUT_MS, AndroidSensorSampler.DEFAULT_TIMEOUT_MS, SensorExperimentRunner.MIN_TIMEOUT_MS, SensorExperimentRunner.MAX_TIMEOUT_MS) ?: return invalidReadArguments()
+        val totalTimeout = longArgument(context, ARG_TOTAL_TIMEOUT_MS, SensorExperimentRunner.DEFAULT_TOTAL_TIMEOUT_MS, SensorExperimentRunner.MIN_TOTAL_TIMEOUT_MS, SensorExperimentRunner.MAX_TOTAL_TIMEOUT_MS) ?: return invalidReadArguments()
+        val activeRunner = runner ?: return DieselCommandResult(DieselResponseStatus.UNAVAILABLE, mapOf("reason" to DieselValue.Text("experiment_runner_unavailable")))
+        val result = activeRunner.run(SensorExperimentSpec(rounds = rounds, timeoutMs = timeout, totalTimeoutMs = totalTimeout))
+        val samples = result.samples.take(MAX_EXPERIMENT_SAMPLES).map { sample ->
+            val fields = linkedMapOf<String, DieselValue>(
+                "round" to DieselValue.Integer(sample.round.toLong()),
+                "target" to DieselValue.Text(sample.target),
+                "elapsedMs" to DieselValue.Integer(sample.elapsedMs),
+            )
+            when (val read = sample.result) {
+                is SensorReadResult.Event -> {
+                    fields["outcome"] = DieselValue.Text("event")
+                    fields["providerId"] = DieselValue.Text(read.reading.providerId)
+                    fields["values"] = DieselValue.ListValue(read.reading.values.take(MAX_EXPERIMENT_VALUES).map { if (it.isFinite()) DieselValue.Decimal(it.toDouble()) else DieselValue.Null })
+                }
+                SensorReadResult.Unavailable -> fields["outcome"] = DieselValue.Text("unavailable")
+                SensorReadResult.Timeout -> fields["outcome"] = DieselValue.Text("timeout")
+                is SensorReadResult.PermissionDenied -> {
+                    fields["outcome"] = DieselValue.Text("permission_denied")
+                    fields["requiredPermission"] = read.requiredPermission?.let(DieselValue::Text) ?: DieselValue.Null
+                }
+                is SensorReadResult.RegistrationRejected -> {
+                    fields["outcome"] = DieselValue.Text("registration_rejected")
+                    fields["reason"] = DieselValue.Text(read.reason ?: "unknown")
+                }
+            }
+            DieselValue.ObjectValue(fields)
+        }
+        return DieselCommandResult.ok(
+            mapOf(
+                "experimentId" to DieselValue.Text(result.spec.id),
+                "startedAtMs" to DieselValue.Integer(result.startedAtMs),
+                "finishedAtMs" to DieselValue.Integer(result.finishedAtMs),
+                "roundsCompleted" to DieselValue.Integer(result.roundsCompleted.toLong()),
+                "eventCount" to DieselValue.Integer(result.eventCount.toLong()),
+                "unavailableCount" to DieselValue.Integer(result.unavailableCount.toLong()),
+                "timeoutCount" to DieselValue.Integer(result.timeoutCount.toLong()),
+                "sampleCount" to DieselValue.Integer(result.samples.size.toLong()),
+                "samplesReturned" to DieselValue.Integer(samples.size.toLong()),
+                "samplesTruncated" to DieselValue.Flag(result.samples.size > samples.size),
+                "samples" to DieselValue.ListValue(samples),
+            ),
+        )
     }
 
     private suspend fun readMatrix(
@@ -400,6 +471,12 @@ class SensorCommandModule(
         )
     }
 
+    private fun longArgument(context: DieselCommandContext, key: String, defaultValue: Long, minimum: Long, maximum: Long): Long? {
+        val value = context.args[key] ?: return defaultValue
+        val integer = (value as? DieselValue.Integer)?.value ?: return null
+        return integer.takeIf { it in minimum..maximum }
+    }
+
     private fun integerArgument(
         context: DieselCommandContext,
         key: String,
@@ -510,6 +587,9 @@ class SensorCommandModule(
         const val COMMAND_SENSOR_MATRIX =
             "sensor.matrix"
 
+        const val COMMAND_SENSOR_EXPERIMENT =
+            "sensor.experiment"
+
         const val ARG_OFFSET =
             "offset"
 
@@ -519,10 +599,19 @@ class SensorCommandModule(
         const val ARG_TIMEOUT_MS =
             "timeoutMs"
 
+        const val ARG_ROUNDS =
+            "rounds"
+
+        const val ARG_TOTAL_TIMEOUT_MS =
+            "totalTimeoutMs"
+
         const val MAX_READ_VALUES = 64
 
         // Keeps the eight-target matrix safely below the 4 KiB protocol limit.
         const val MAX_MATRIX_VALUES = 16
+
+        const val MAX_EXPERIMENT_VALUES = 8
+        const val MAX_EXPERIMENT_SAMPLES = 16
 
         const val DEFAULT_PAGE_SIZE =
             4
@@ -535,6 +624,8 @@ class SensorCommandModule(
 
         private const val SOURCE_ANDROID_SENSOR_MANAGER =
             "android.sensor_manager"
+
+        private val EXPERIMENT_ARGUMENTS = setOf(ARG_ROUNDS, ARG_TIMEOUT_MS, ARG_TOTAL_TIMEOUT_MS)
 
         private val ALLOWED_ARGUMENTS =
             setOf(

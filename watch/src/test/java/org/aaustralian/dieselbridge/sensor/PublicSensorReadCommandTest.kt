@@ -131,6 +131,31 @@ class PublicSensorReadCommandTest {
     }
 
     @Test
+    fun boundedExperimentReturnsRepeatedPerTargetSamples() = runBlocking {
+        val result = registry(
+            FakeSensor(
+                SensorCapabilityId("sensor.accelerometer"),
+                SensorReadResult.Event(
+                    SensorReading(SensorCapabilityId("sensor.accelerometer"), "fake", listOf(1f), 1L, 3, 1L),
+                ),
+            ),
+        ).dispatch(
+            DieselRequest(
+                requestId = "experiment",
+                command = "sensor.experiment",
+                args = mapOf(
+                    "rounds" to DieselValue.Integer(2),
+                    "timeoutMs" to DieselValue.Integer(500),
+                    "totalTimeoutMs" to DieselValue.Integer(5000),
+                ),
+            ),
+        )
+        assertEquals(DieselResponseStatus.OK, result.status)
+        assertEquals(DieselValue.Integer(16), result.data["sampleCount"])
+        assertEquals(DieselValue.Integer(2), result.data["roundsCompleted"])
+    }
+
+    @Test
     fun validationRejectsNameMissingWrongTimeoutAndRouteSelection() = runBlocking {
         val sensor = FakeSensor(SensorCapabilityId("sensor.accelerometer"), SensorReadResult.Timeout)
         val registry = registry(sensor)
