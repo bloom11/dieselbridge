@@ -1,0 +1,265 @@
+#!/data/data/com.termux/files/usr/bin/python3
+"""Discover and run bounded Diesel SensorManager hardware tests from phone Termux."""
+
+import argparse
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent.parent
+DIESEL_ADB = ROOT / "tools" / "diesel-adb"
+LIST_PAGE_SIZE = 4
+
+
+class DieselCommandError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def run_command(command: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Use the established correlated ADB/Gadgetbridge helper for one command."""
+    request = {"cmd": command, "args": args or {}}
+    result = subprocess.run(
+        [str(DIESEL_ADB), json.dumps(request, separators=(",", ":"))],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=os.environ.copy(),
+        check=False,
+    )
+    if result.returncode:
+        raise DieselCommandError(
+            f"{command} failed (exit {result.returncode}).\n{result.stdout}{result.stderr}"
+        )
+    marker = "===== RESPONSE ====="
+    if marker not in result.stdout:
+        raise DieselCommandError(f"{command} did not return a Diesel response.\n{result.stdout}")
+    try:
+        response = json.loads(result.stdout.rsplit(marker, 1)[1].strip())
+    except json.JSONDecodeError as error:
+        raise DieselCommandError(f"{command} returned malformed response JSON.") from error
+    if not isinstance(response, dict):
+        raise DieselCommandError(f"{command} returned a non-object response.")
+    return response
+
+
+def data_or_error(response: dict[str, Any], command: str) -> dict[str, Any]:
+    if response.get("status") != "ok":
+        raise DieselCommandError(
+            f"{command} returned {response.get('status')}: "
+            f"{json.dumps(response.get('data', {}), ensure_ascii=False)}"
+        )
+    data = response.get("data")
+    if not isinstance(data, dict):
+        raise DieselCommandError(f"{command} returned no object data.")
+    return data
+
+
+def paged(command: str, args: dict[str, Any], item_key: str) -> list[dict[str, Any]]:
+    """Fetch a Diesel offset/limit response fully and reject inconsistent pages."""
+    items: list[dict[str, Any]] = []
+    offset = 0
+    total: int | None = None
+    while True:
+        data = data_or_error(run_command(command, {**args, "offset": offset}), command)
+        page = data.get(item_key)
+        returned = data.get("returned")
+        reported_total = data.get("total")
+        if (
+            not isinstance(page, list)
+            or not isinstance(returned, int)
+            or not isinstance(reported_total, int)
+            or returned != len(page)
+            or returned < 0
+            or reported_total < 0
+            or any(not isinstance(item, dict) for item in page)
+        ):
+            raise DieselCommandError(f"{command} returned invalid pagination metadata.")
+        if total is None:
+            total = reported_total
+        elif total != reported_total:
+            raise DieselCommandError(f"{command} inventory changed while it was paged; retry.")
+        items.extend(page)
+        if data.get("hasMore") is False:
+            break
+        if data.get("hasMore") is not True or returned == 0:
+            raise DieselCommandError(f"{command} pagination did not make progress.")
+        offset += returned
+    if len(items) != total:
+        raise DieselCommandError(f"{command} returned {len(items)} items but reported {total}.")
+    return items
+
+
+def discover_routes() -> list[dict[str, Any]]:
+    return paged("sensor.list", {"limit": LIST_PAGE_SIZE}, "sensors")
+
+
+def print_routes(routes: list[dict[str, Any]]) -> None:
+    print(f"\nDiscovered {len(routes)} process-visible SensorManager routes:\n")
+    print("IDX  LOGICAL ID                    NAME                          ROUTE ID")
+    for route in routes:
+        print(
+            f"{str(route.get('index', '?')):>3}  "
+            f"{str(route.get('id', '?')):<28.28}  "
+            f"{str(route.get('name', '?')):<28.28}  "
+            f"{route.get('routeId', '?')}"
+        )
+
+
+def find_route(routes: list[dict[str, Any]], selection: str) -> dict[str, Any]:
+    if selection.isdecimal():
+        for route in routes:
+            if route.get("index") == int(selection):
+                return route
+        raise DieselCommandError(f"No route has inventory index {selection}.")
+    for route in routes:
+        if route.get("routeId") == selection:
+            return route
+    raise DieselCommandError("That route ID was not present in this live sensor.list inventory.")
+
+
+def output_path(value: str | None, mode: str) -> Path:
+    if value:
+        return Path(value).expanduser()
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%SZ")
+    return Path.home() / "dieselbridge-sensor-tests" / f"{stamp}-{mode}.json"
+
+
+def write_report(path: Path, report: dict[str, Any], announce: bool = True) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if announce:
+        print(f"\nSaved complete report: {path}")
+
+
+def probe(route: dict[str, Any], timeout_ms: int, output: str | None) -> None:
+    route_id = route.get("routeId")
+    if not isinstance(route_id, str):
+        raise DieselCommandError("Selected inventory item has no routeId.")
+    print(f"\nProbing {route_id} for one event (timeout {timeout_ms} ms)...")
+    response = run_command("debug.sensor.probe", {"routeId": route_id, "timeoutMs": timeout_ms})
+    data = data_or_error(response, "debug.sensor.probe")
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    write_report(
+        output_path(output, "single-route"),
+        {
+            "schemaVersion": 1,
+            "mode": "single_route_probe",
+            "createdAtUtc": utc_now(),
+            "adbSerial": os.environ.get("DIESEL_ADB_SERIAL"),
+            "selectedInventoryRoute": route,
+            "request": {"cmd": "debug.sensor.probe", "args": {"routeId": route_id, "timeoutMs": timeout_ms}},
+            "response": response,
+        },
+    )
+
+
+def probe_all(routes: list[dict[str, Any]], timeout_ms: int, output: str | None) -> None:
+    """Probe every route from this one live inventory snapshot, in sequence."""
+    path = output_path(output, "all-routes")
+    report: dict[str, Any] = {
+        "schemaVersion": 1,
+        "mode": "all_route_probes",
+        "createdAtUtc": utc_now(),
+        "adbSerial": os.environ.get("DIESEL_ADB_SERIAL"),
+        "inventory": routes,
+        "timeoutMs": timeout_ms,
+        "records": [],
+    }
+    print(f"\nProbing all {len(routes)} routes individually (timeout {timeout_ms} ms each)...")
+    for position, route in enumerate(routes, start=1):
+        route_id = route.get("routeId")
+        record: dict[str, Any] = {"position": position, "inventoryRoute": route}
+        if not isinstance(route_id, str):
+            record["localError"] = "inventory route has no routeId"
+        else:
+            try:
+                response = run_command(
+                    "debug.sensor.probe",
+                    {"routeId": route_id, "timeoutMs": timeout_ms},
+                )
+                record["response"] = response
+                data = response.get("data")
+                outcome = data.get("outcome") if isinstance(data, dict) else None
+                print(
+                    f"  {position}/{len(routes)} {route_id}: "
+                    f"{response.get('status', '?')}/{outcome or 'no_outcome'}"
+                )
+            except DieselCommandError as error:
+                record["localError"] = str(error)
+                print(f"  {position}/{len(routes)} {route_id}: local_error")
+        report["records"].append(record)
+        if (
+            position == 1
+            and isinstance(record.get("response"), dict)
+            and record["response"].get("status") == "unavailable"
+            and isinstance(record["response"].get("data"), dict)
+            and record["response"]["data"].get("reason") == "remote_developer_access_disabled"
+        ):
+            report["abortedReason"] = "remote_developer_access_disabled"
+            write_report(path, report)
+            raise DieselCommandError(
+                "REMOTE DEVELOPER ACCESS is disabled on the watch; no further routes were probed."
+            )
+        write_report(path, report, announce=False)
+
+    counts: dict[str, int] = {}
+    for record in report["records"]:
+        response = record.get("response")
+        data = response.get("data") if isinstance(response, dict) else None
+        outcome = data.get("outcome") if isinstance(data, dict) else record.get("localError", "unknown")
+        key = str(outcome)
+        counts[key] = counts.get(key, 0) + 1
+    report["outcomeCounts"] = counts
+    write_report(path, report)
+    print("\nAll-route probe complete:")
+    print(json.dumps(counts, indent=2))
+
+
+def arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Discover and test live DieselBridge SensorManager routes on the connected watch."
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--list", action="store_true", help="print live inventory and stop")
+    mode.add_argument("--all", action="store_true", help="probe every discovered route once, in inventory order")
+    mode.add_argument("--select", metavar="INDEX_OR_ROUTE", help="probe one live inventory index or route ID")
+    parser.add_argument("--timeout-ms", type=int, default=2000, help="single probe timeout, 500..15000")
+    parser.add_argument("--output", help="path for the JSON evidence report")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = arguments()
+    if not DIESEL_ADB.is_file() or not os.access(DIESEL_ADB, os.X_OK):
+        raise DieselCommandError(f"Expected executable helper: {DIESEL_ADB}")
+    if not 500 <= args.timeout_ms <= 15000:
+        raise DieselCommandError("--timeout-ms must be from 500 through 15000.")
+
+    routes = discover_routes()
+    print_routes(routes)
+    if args.list:
+        return 0
+    selection = args.select
+    if not args.all and selection is None:
+        selection = input("\nChoose [a]ll routes, an inventory [index], or [q]uit: ").strip()
+    if args.all or selection.lower() in {"a", "all"}:
+        probe_all(routes, args.timeout_ms, args.output)
+    elif selection.lower() not in {"q", "quit"}:
+        probe(find_route(routes, selection), args.timeout_ms, args.output)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (DieselCommandError, KeyboardInterrupt) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        raise SystemExit(1)

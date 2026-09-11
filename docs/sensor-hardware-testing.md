@@ -1,81 +1,95 @@
-# First SensorManager hardware campaign
+# SensorManager hardware campaign
 
-This build adds `debug.sensor.probe` (M4.2b2). Its purpose is to discover what this watch actually
-exposes, not to assign medical meaning to vendor names. It returns the first event and unregisters;
-it does not stream, persist a scan or run every sensor automatically. Whole-watch scan orchestration
-is M4.3. Public capability/provider routing is M4.2c.
+DieselBridge distinguishes normal logical sensor reads from developer hardware research. The normal
+`sensor.read` API automatically chooses a provider for a logical capability. This campaign uses
+exact SensorManager routes so it can record every process-visible hardware route without assigning
+medical meaning to a vendor name or raw vector.
+
+`tools/diesel-watch-sensor-test` is the supported phone-Termux helper. It pages the live
+`sensor.list` inventory before selecting anything, so it neither hard-codes TicWatch routes nor
+guesses Android IDs. It can print every route, select any one by inventory index or opaque route ID,
+or probe every listed route sequentially and export per-route evidence as JSON outside the repository.
 
 ## Install and confirm
 
-Use the `dieselbridge-bloom-debug` artifact from the successful **DieselBridge CI** run for the probe
-commit. Install `watch-debug.apk` with `adb install -r` using the current paired watch connection.
-The Bloom debug signing lineage now uses version 25 / 1.0.0-dev.20. Identify each installed build by
-its in-app build details (version, commit, CI run, and build timestamp) and the CI artifact; do not
-assume an old ADB address is current. Do not assume an old ADB address is current.
+Use the `dieselbridge-bloom-debug` artifact from the successful **DieselBridge CI** run. Install
+`watch-debug.apk` with `adb install -r` using the current paired watch connection. Identify a build
+by its in-app version, commit, CI run, and build timestamp; do not assume an old ADB address is current.
 
-Gadgetbridge remains the BLE owner. The commands below run in **phone Termux**, not `adb shell` on
-the watch. Configure response capture before probing: Gadgetbridge delivers the fixed action
-`io.github.bloom11.dieselbridge.DIESEL_MESSAGE`, whose `json` extra is the response envelope. Save
-that complete JSON, including the request ID. Broadcast submission result 0 is not proof that the
-watch ran the command or that the reply was received.
+Gadgetbridge remains the BLE owner. The commands below run in phone Termux, not in `adb shell` on
+the watch. `tools/diesel-adb` sends the request through Gadgetbridge and uses the watch ADB log
+mirror only to correlate the response.
 
-```sh
-cd ~/dieselbridge
-am broadcast -a com.banglejs.uart.tx --es line 'GB({"t":"diesel","id":"hw-commands","cmd":"commands"})'
-am broadcast -a com.banglejs.uart.tx --es line 'GB({"t":"diesel","id":"hw-access","cmd":"debug.status"})'
-am broadcast -a com.banglejs.uart.tx --es line 'GB({"t":"diesel","id":"hw-list-0","cmd":"sensor.list","args":{"offset":0,"limit":4}})'
-```
+## Route discovery and selection
 
-Send requests one at a time and wait for their correlated responses. Advance list offset by the
-returned count until `hasMore:false`; retain all pages as the inventory for this campaign. Full
-metadata is also available from `debug.export` section `sensors`, once locally authorized.
-
-## Authorization check and one route
-
-First leave **REMOTE DEVELOPER ACCESS** disabled on the watch developer page and submit one valid
-probe copied from the current inventory. Expect `unavailable / remote_developer_access_disabled`.
-Then enable access locally and repeat with a new request ID. Remote commands cannot enable access.
-
-This interactive block reads an exact route ID from you, safely forms the JSON without shell
-interpolation, and sends one request. Copy an accelerometer/light/pressure route from the actual
-inventory for the first authorized attempt. It sends no DLE prefix or extra newline at the Intent
-boundary. It only submits the request; collect the response through your configured receiver.
+Set `DIESEL_ADB_SERIAL` when more than one ADB device is visible.
 
 ```sh
 cd ~/dieselbridge
-python3 -c '
-import json, subprocess, uuid
-route = input("Route ID from sensor.list: ").strip()
-if route and len(route) <= 128 and not any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in route):
-    request_id = "hw-" + uuid.uuid4().hex[:12]
-    request = {"t": "diesel", "id": request_id, "cmd": "debug.sensor.probe",
-               "args": {"routeId": route, "timeoutMs": 5000}}
-    print("Save response ID:", request_id)
-    subprocess.run(["am", "broadcast", "-a", "com.banglejs.uart.tx", "--es", "line",
-                    "GB(" + json.dumps(request, separators=(",", ":")) + ")"], check=True)
-else:
-    print("Invalid route ID; nothing sent.")
-'
+export DIESEL_ADB_SERIAL='watch-ip:wireless-debugging-port'
+
+# Read-only: print every currently process-visible route.
+tools/diesel-watch-sensor-test --list
+
+# Interactive: display the same inventory, then enter one displayed index or route ID.
+tools/diesel-watch-sensor-test
+
+# Probe one exact live inventory index for the first event.
+tools/diesel-watch-sensor-test --select 0 --timeout-ms 5000
+
+# Probe one exact route copied from this invocation's live inventory.
+tools/diesel-watch-sensor-test --select 'android.sensor_manager:1:0:0' --timeout-ms 5000
+
+# Probe every route in this inventory once, then save each response under ~/dieselbridge-sensor-tests/.
+tools/diesel-watch-sensor-test --all
 ```
+
+Leave **REMOTE DEVELOPER ACCESS** disabled for one valid selected-route attempt to confirm
+`unavailable / remote_developer_access_disabled`. Enable it only on the watch developer page before
+the intended probe or whole-watch scan. Remote commands and this helper cannot enable that setting.
+
+## Route and command contract
+
+`sensor.list` is read-only and returns a paged process-visible Android SensorManager census. Each
+item contains the stable-in-that-snapshot `index`, opaque `routeId`, logical `id`, provider ID,
+Android ID/type, string type, display name, vendor, wake-up flag and reporting mode. The route ID is
+`android.sensor_manager:<androidType>:<androidId>:<ordinal>` today, but clients must treat it as
+opaque and obtain it from the current list because inventory may change across watch software or
+hardware states.
+
+`debug.sensor.probe` accepts only `routeId` and optional `timeoutMs` (500-15000, default 5000).
+It resolves the exact current route, registers either a listener or trigger sensor, returns the first
+event and always unregisters. It returns `status:"ok"` with one of `event`, `timeout`,
+`permission_denied`, `registration_rejected` or `route_unavailable`; each is useful hardware
+evidence. Event responses retain raw values, SensorManager monotonic timestamp, accuracy and
+registration metadata. They do not infer units or medical meaning.
+
+`tools/diesel-watch-sensor-test --all` invokes `debug.sensor.probe` once for every route
+from that single inventory snapshot, waits for each correlated response, and writes the report after
+each attempt. It is the complete route campaign, so it may take several minutes when routes time out.
+
+`debug.sensor.scan.start` is a separate quick diagnostic: one active background scan, two seconds
+per route, 60 seconds total and at most 256 in-memory records. It can therefore finish with
+`time_budget_exhausted` before every route has been attempted. `debug.sensor.scan.status`
+reports progress or the terminal state, `debug.sensor.scan.cancel` cancels it, and
+`debug.export` section `sensor_probes` pages route identity, outcome, registration kind, timing,
+permission or rejection reason, timestamp, accuracy and up to 16 raw values for its captured records.
 
 ## Evidence to collect
 
 1. Accelerometer, light and pressure: event contents, latency, and clean repeated reads.
 2. Steps, then heart rate with the existing permission set. A `permission_denied` outcome is useful
-   evidence; do not add/grant new sensor permissions before recording the initial results.
+   evidence; do not add or grant a sensor permission before recording the initial result.
 3. Vendor PPG, SpO2/RR-labelled routes and vendor temperature: retain raw vectors and route metadata;
-   do not assume units or call vendor temperature skin temperature.
+   do not assume units or call a vendor temperature skin temperature.
 4. One-shot routes: expect `registration.kind:"trigger"`, with null accuracy and sampling period.
    Exercise the relevant physical trigger where understood; a timeout alone does not prove a sensor
-   is broken. Test wake-up/vendor routes individually and keep each timeout bounded.
+   is broken. Test wake-up and vendor routes individually and keep each timeout bounded.
 5. Revoke remote access and verify a subsequent probe is refused. Stop the bridge during a pending
    probe if testing lifecycle cancellation, then restart and confirm ordinary requests recover.
 
-For every attempt preserve the complete request and response, CI commit/APK identity, watch build,
-whether the watch was worn/moving/charging, and any deliberate trigger. `sensorTimestampNs` is not
-a wall-clock time. `permission_denied`, `timeout`, `registration_rejected` and `route_unavailable`
-are successful diagnostic observations. `rate_limited` means the command was not admitted; wait
-before trying again. A missing response is a transport/lifecycle uncertainty, not a sensor outcome.
-
-The next development decisions depend on these records: which routes are usable, which permissions
-are needed, where Health Services adds value, and which vendor APIs actually require investigation.
+For every attempt preserve the JSON report, CI commit/APK identity, watch build, whether the watch
+was worn/moving/charging, and any deliberate trigger. `sensorTimestampNs` is not wall-clock time.
+`permission_denied`, `timeout`, `registration_rejected`, and `route_unavailable` are
+successful diagnostic observations. `rate_limited` means the command was not admitted; wait before
+trying again. A missing response is a transport or lifecycle uncertainty, not a sensor outcome.
