@@ -19,7 +19,7 @@ import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
  * UIs observe the same DieselPlatform and safe-test runner instances owned by
  * DieselBridgeService.
  */
-object DeveloperRuntimeAccess {
+internal object DeveloperRuntimeAccess {
 
     private val mutableSensorProbeStoreSnapshot =
         MutableStateFlow<SensorProbeStoreSnapshot?>(null)

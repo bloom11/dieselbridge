@@ -21,9 +21,9 @@ import org.aaustralian.dieselbridge.platform.sensor.SensorRegistrationKind
 import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbe
 import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbeOutcome
 
-enum class SensorScanTerminalReason { FINISHED, CANCELLED, TIME_BUDGET_EXHAUSTED }
+internal enum class SensorScanTerminalReason { FINISHED, CANCELLED, TIME_BUDGET_EXHAUSTED }
 
-data class SensorScanSummary(
+internal data class SensorScanSummary(
     val runId: String,
     val totalRoutes: Int,
     val completedRoutes: Int,
@@ -32,7 +32,7 @@ data class SensorScanSummary(
     val terminalReason: SensorScanTerminalReason? = null,
 )
 
-data class SensorProbeRecord(
+internal data class SensorProbeRecord(
     val runId: String,
     val index: Int,
     val route: AndroidSensorRoute,
@@ -45,7 +45,7 @@ data class SensorProbeRecord(
 )
 
 /** Immutable developer-UI view of the bounded scan evidence store. */
-data class SensorProbeStoreSnapshot(
+internal data class SensorProbeStoreSnapshot(
     val latestSummary: SensorScanSummary? = null,
     val records: List<SensorProbeRecord> = emptyList(),
 )
@@ -58,7 +58,7 @@ class SensorProbeStore(private val capacity: Int = 256, private val runCapacity:
     private val mutableState = MutableStateFlow(SensorProbeStoreSnapshot())
 
     /** Live bounded evidence for the local developer UI. */
-    val state: StateFlow<SensorProbeStoreSnapshot> = mutableState.asStateFlow()
+    internal val state: StateFlow<SensorProbeStoreSnapshot> = mutableState.asStateFlow()
 
     init { require(capacity > 0); require(runCapacity > 0) }
 
