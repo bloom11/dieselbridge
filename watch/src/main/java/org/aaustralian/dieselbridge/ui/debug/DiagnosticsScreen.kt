@@ -69,6 +69,9 @@ import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.debug.SafePlatformTestSpec
+import org.aaustralian.dieselbridge.debug.SensorProbeRecord
+import org.aaustralian.dieselbridge.debug.SensorProbeStoreSnapshot
+import org.aaustralian.dieselbridge.debug.SensorScanTerminalReason
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.capability.BatteryCapability
 import org.aaustralian.dieselbridge.platform.provider.ProviderBindingInfo
@@ -78,6 +81,7 @@ import org.aaustralian.dieselbridge.platform.sensor.SensorInventoryEntry
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
 import org.aaustralian.dieselbridge.protocol.DieselCommandResult
 import org.aaustralian.dieselbridge.protocol.DieselRequest
+import org.aaustralian.dieselbridge.protocol.DieselResponseStatus
 import org.aaustralian.dieselbridge.protocol.DieselValue
 
 private val CardBackground = Color(0xFF202124)
@@ -97,6 +101,11 @@ private enum class DiagnosticsPage {
     COMMANDS,
     COMMAND_DETAIL,
     TOOLS,
+    TEST_RESULT,
+    MATRIX_RESULTS,
+    MATRIX_ENTRY_DETAIL,
+    SCAN_RESULTS,
+    SCAN_RECORD_DETAIL,
     LOGS,
     BUILD,
     POWER,
@@ -137,10 +146,60 @@ fun DiagnosticsScreen(
     val sensorInventory by
         DeveloperRuntimeAccess.sensorInventory.collectAsStateWithLifecycle()
 
+    val sensorProbeStoreSnapshot by
+        DeveloperRuntimeAccess.sensorProbeStoreSnapshot.collectAsStateWithLifecycle()
+
     val probe by
         ProbeStateHolder.state.collectAsStateWithLifecycle()
 
     var selectedCommand by remember { mutableStateOf<DieselCommandSpec?>(null) }
+    var lastSafeResult by remember(safeTestRunner) {
+        mutableStateOf<SafePlatformTestResult?>(null)
+    }
+    var matrixResult by remember(sensorMatrixExperiment) {
+        mutableStateOf<SensorMatrixExperimentResult?>(null)
+    }
+    var matrixRunning by remember { mutableStateOf(false) }
+    var selectedMatrixEntry by remember {
+        mutableStateOf<Pair<String, SensorReadResult>?>(null)
+    }
+    var scanRunId by remember { mutableStateOf<String?>(null) }
+    var scanResult by remember { mutableStateOf<DieselCommandResult?>(null) }
+    var selectedScanRecord by remember {
+        mutableStateOf<SensorProbeRecord?>(null)
+    }
+
+    val scanState =
+        (scanResult?.data?.get("state") as? DieselValue.Text)?.value
+
+    LaunchedEffect(
+        scanRunId,
+        scanState,
+        commandDispatcher,
+    ) {
+        val activeRunId = scanRunId
+        val dispatch = commandDispatcher
+        if (
+            activeRunId != null &&
+                scanState in setOf("running", "cancelling") &&
+                dispatch != null
+        ) {
+            while (true) {
+                delay(1_000)
+                val result = dispatch(
+                    DieselRequest(
+                        requestId = "local-scan-status",
+                        command = "debug.sensor.scan.status",
+                        args = mapOf("runId" to DieselValue.Text(activeRunId)),
+                    ),
+                )
+                scanResult = result
+                val nextState =
+                    (result.data["state"] as? DieselValue.Text)?.value
+                if (nextState !in setOf("running", "cancelling")) break
+            }
+        }
+    }
 
     var page by remember {
         mutableStateOf(
@@ -155,11 +214,29 @@ fun DiagnosticsScreen(
     BackHandler(
         enabled = page != DiagnosticsPage.OVERVIEW,
     ) {
-        if (page == DiagnosticsPage.COMMAND_DETAIL) {
-            selectedCommand = null
-            page = DiagnosticsPage.COMMANDS
-        } else {
-            page = DiagnosticsPage.OVERVIEW
+        when (page) {
+            DiagnosticsPage.COMMAND_DETAIL -> {
+                selectedCommand = null
+                page = DiagnosticsPage.COMMANDS
+            }
+
+            DiagnosticsPage.MATRIX_ENTRY_DETAIL -> {
+                selectedMatrixEntry = null
+                page = DiagnosticsPage.MATRIX_RESULTS
+            }
+
+            DiagnosticsPage.SCAN_RECORD_DETAIL -> {
+                selectedScanRecord = null
+                page = DiagnosticsPage.SCAN_RESULTS
+            }
+
+            DiagnosticsPage.TEST_RESULT,
+            DiagnosticsPage.MATRIX_RESULTS,
+            DiagnosticsPage.SCAN_RESULTS ->
+                page = DiagnosticsPage.TOOLS
+
+            else ->
+                page = DiagnosticsPage.OVERVIEW
         }
     }
 
@@ -263,10 +340,99 @@ fun DiagnosticsScreen(
                             developerRemoteAccessPolicy,
                         commandDispatcher = commandDispatcher,
                         healthServicesRefresh = healthServicesRefresh,
+                        lastSafeResult = lastSafeResult,
+                        onSafeResult = {
+                            lastSafeResult = it
+                            page = DiagnosticsPage.TEST_RESULT
+                        },
+                        onSafeResultDetails = {
+                            page = DiagnosticsPage.TEST_RESULT
+                        },
+                        matrixResult = matrixResult,
+                        matrixRunning = matrixRunning,
+                        onMatrixResult = {
+                            matrixResult = it
+                        },
+                        onMatrixRunningChange = {
+                            matrixRunning = it
+                        },
+                        onMatrixDetails = {
+                            page = DiagnosticsPage.MATRIX_RESULTS
+                        },
+                        scanRunId = scanRunId,
+                        scanResult = scanResult,
+                        scanSnapshot = sensorProbeStoreSnapshot,
+                        onScanRunId = {
+                            scanRunId = it
+                        },
+                        onScanResult = {
+                            scanResult = it
+                        },
+                        onScanDetails = {
+                            page = DiagnosticsPage.SCAN_RESULTS
+                        },
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
                         },
                     )
+
+                DiagnosticsPage.TEST_RESULT ->
+                    lastSafeResult?.let { result ->
+                        SafeTestResultScreen(
+                            result = result,
+                            onBack = {
+                                page = DiagnosticsPage.TOOLS
+                            },
+                        )
+                    } ?: run { page = DiagnosticsPage.TOOLS }
+
+                DiagnosticsPage.MATRIX_RESULTS ->
+                    MatrixResultsScreen(
+                        result = matrixResult,
+                        onEntry = {
+                            selectedMatrixEntry = it
+                            page = DiagnosticsPage.MATRIX_ENTRY_DETAIL
+                        },
+                        onBack = {
+                            page = DiagnosticsPage.TOOLS
+                        },
+                    )
+
+                DiagnosticsPage.MATRIX_ENTRY_DETAIL ->
+                    selectedMatrixEntry?.let { entry ->
+                        MatrixEntryDetailScreen(
+                            entry = entry,
+                            onBack = {
+                                selectedMatrixEntry = null
+                                page = DiagnosticsPage.MATRIX_RESULTS
+                            },
+                        )
+                    } ?: run { page = DiagnosticsPage.MATRIX_RESULTS }
+
+                DiagnosticsPage.SCAN_RESULTS ->
+                    ScanResultsScreen(
+                        runId = scanRunId,
+                        commandResult = scanResult,
+                        snapshot = sensorProbeStoreSnapshot,
+                        onRecord = {
+                            selectedScanRecord = it
+                            page = DiagnosticsPage.SCAN_RECORD_DETAIL
+                        },
+                        onBack = {
+                            page = DiagnosticsPage.TOOLS
+                        },
+                    )
+
+                DiagnosticsPage.SCAN_RECORD_DETAIL ->
+                    selectedScanRecord?.let { record ->
+                        ScanRecordDetailScreen(
+                            record = record,
+                            onBack = {
+                                selectedScanRecord = null
+                                page = DiagnosticsPage.SCAN_RESULTS
+                            },
+                        )
+                    } ?: run { page = DiagnosticsPage.SCAN_RESULTS }
 
                 DiagnosticsPage.LOGS ->
                     LogsScreen(
@@ -1056,21 +1222,35 @@ private fun ToolsScreen(
     developerRemoteAccessPolicy: DeveloperRemoteAccessPolicy?,
     commandDispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
     healthServicesRefresh: (suspend () -> Unit)?,
+    lastSafeResult: SafePlatformTestResult?,
+    onSafeResult: (SafePlatformTestResult) -> Unit,
+    onSafeResultDetails: () -> Unit,
+    matrixResult: SensorMatrixExperimentResult?,
+    matrixRunning: Boolean,
+    onMatrixResult: (SensorMatrixExperimentResult) -> Unit,
+    onMatrixRunningChange: (Boolean) -> Unit,
+    onMatrixDetails: () -> Unit,
+    scanRunId: String?,
+    scanResult: DieselCommandResult?,
+    scanSnapshot: SensorProbeStoreSnapshot?,
+    onScanRunId: (String?) -> Unit,
+    onScanResult: (DieselCommandResult) -> Unit,
+    onScanDetails: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val tests =
-        runner
-            ?.specs()
-            .orEmpty()
-
-    var lastResult by remember(runner) {
-        mutableStateOf<SafePlatformTestResult?>(null)
-    }
-    var matrixResult by remember(sensorMatrixExperiment) {
-        mutableStateOf<SensorMatrixExperimentResult?>(null)
-    }
-    var matrixRunning by remember { mutableStateOf(false) }
+    val tests = runner?.specs().orEmpty()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scanState =
+        (scanResult?.data?.get("state") as? DieselValue.Text)?.value
+    val scanCompleted =
+        (scanResult?.data?.get("completedRoutes") as? DieselValue.Integer)?.value
+    val scanTotal =
+        (scanResult?.data?.get("totalRoutes") as? DieselValue.Integer)?.value
+    val scanRecordCount =
+        scanSnapshot
+            ?.records
+            ?.count { it.runId == scanRunId }
+            ?: 0
 
     DeveloperPage(
         title = "Tools",
@@ -1078,8 +1258,7 @@ private fun ToolsScreen(
         onBack = onBack,
     ) {
         RemoteDeveloperAccessControl(
-            policy =
-                developerRemoteAccessPolicy,
+            policy = developerRemoteAccessPolicy,
         )
 
         val context = LocalContext.current
@@ -1089,52 +1268,104 @@ private fun ToolsScreen(
             scope.launch { healthServicesRefresh?.invoke() }
         }
         healthServicesRefresh?.let { refresh ->
-            val granted = context.checkSelfPermission(Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED
+            val granted =
+                context.checkSelfPermission(Manifest.permission.BODY_SENSORS) ==
+                    PackageManager.PERMISSION_GRANTED
             DiagnosticCard(
                 title = "HEALTH SERVICES",
-                primary = if (granted) "Heart-rate permission granted" else "Heart-rate permission required",
+                primary =
+                    if (granted) {
+                        "Heart-rate permission granted"
+                    } else {
+                        "Heart-rate permission required"
+                    },
                 secondary = "Enables the optional Health Services provider",
                 healthy = granted,
             )
             NavigationChip(
-                label = if (granted) "REFRESH HEALTH PROVIDER" else "GRANT HEART-RATE PERMISSION",
+                label =
+                    if (granted) {
+                        "REFRESH HEALTH PROVIDER"
+                    } else {
+                        "GRANT HEART-RATE PERMISSION"
+                    },
                 onClick = {
-                    if (granted) scope.launch { refresh() } else healthPermissionLauncher.launch(Manifest.permission.BODY_SENSORS)
+                    if (granted) {
+                        scope.launch { refresh() }
+                    } else {
+                        healthPermissionLauncher.launch(Manifest.permission.BODY_SENSORS)
+                    }
                 },
             )
         }
 
-        var scanRunId by remember { mutableStateOf<String?>(null) }
-        var scanResult by remember { mutableStateOf<DieselCommandResult?>(null) }
-        val scanState = (scanResult?.data?.get("state") as? DieselValue.Text)?.value
-        val scanCompleted = (scanResult?.data?.get("completedRoutes") as? DieselValue.Integer)?.value
-        val scanTotal = (scanResult?.data?.get("totalRoutes") as? DieselValue.Integer)?.value
         commandDispatcher?.let { dispatch ->
             DiagnosticCard(
                 title = "WHOLE-WATCH SENSOR SCAN",
                 primary = scanState ?: "Ready",
-                secondary = if (scanCompleted != null && scanTotal != null) "$scanCompleted / $scanTotal routes" else "2 s per route · 60 s maximum",
+                secondary =
+                    when {
+                        scanCompleted != null && scanTotal != null ->
+                            "${scanCompleted} / ${scanTotal} routes · ${scanRecordCount} records"
+
+                        else ->
+                            "2 s per route · 60 s maximum"
+                    },
                 healthy = scanState != "time_budget_exhausted",
+                onClick =
+                    if (scanRunId == null) {
+                        null
+                    } else {
+                        onScanDetails
+                    },
             )
             NavigationChip(
-                label = if (scanState == "running") "REFRESH SCAN STATUS" else "START SENSOR SCAN",
+                label =
+                    if (scanState in setOf("running", "cancelling")) {
+                        "VIEW LIVE SENSOR SCAN"
+                    } else {
+                        "START SENSOR SCAN"
+                    },
                 onClick = {
-                    scope.launch {
-                        if (scanState == "running" && scanRunId != null) {
-                            scanResult = dispatch(DieselRequest("local-scan-status", "debug.sensor.scan.status", args = mapOf("runId" to DieselValue.Text(scanRunId!!))))
-                        } else {
-                            scanResult = dispatch(DieselRequest("local-scan-start", "debug.sensor.scan.start"))
-                            scanRunId = (scanResult?.data?.get("runId") as? DieselValue.Text)?.value
+                    if (
+                        scanState in setOf("running", "cancelling") &&
+                            scanRunId != null
+                    ) {
+                        onScanDetails()
+                    } else {
+                        scope.launch {
+                            val result = dispatch(
+                                DieselRequest(
+                                    requestId = "local-scan-start",
+                                    command = "debug.sensor.scan.start",
+                                ),
+                            )
+                            onScanResult(result)
+                            val runId =
+                                (result.data["runId"] as? DieselValue.Text)?.value
+                            onScanRunId(runId)
+                            onScanDetails()
                         }
                     }
                 },
             )
-            if (scanState == "running" && scanRunId != null) {
+            val activeScanRunId = scanRunId
+            if (scanState == "running" && activeScanRunId != null) {
                 NavigationChip(
                     label = "CANCEL SENSOR SCAN",
                     onClick = {
                         scope.launch {
-                            scanResult = dispatch(DieselRequest("local-scan-cancel", "debug.sensor.scan.cancel", args = mapOf("runId" to DieselValue.Text(scanRunId!!))))
+                            onScanResult(
+                                dispatch(
+                                    DieselRequest(
+                                        requestId = "local-scan-cancel",
+                                        command = "debug.sensor.scan.cancel",
+                                        args = mapOf(
+                                            "runId" to DieselValue.Text(activeScanRunId),
+                                        ),
+                                    ),
+                                ),
+                            )
                         }
                     },
                 )
@@ -1144,65 +1375,54 @@ private fun ToolsScreen(
         sensorMatrixExperiment?.let { experiment ->
             DiagnosticCard(
                 title = "SENSOR MATRIX",
-                primary = if (matrixRunning) "Running…" else "8 logical targets",
-                secondary = matrixResult?.let { "${it.eventCount} events · ${it.unavailableCount} unavailable · ${it.nonEventCount} other" }
-                    ?: "One bounded sample per target",
+                primary =
+                    if (matrixRunning) {
+                        "Running..."
+                    } else {
+                        "8 logical targets"
+                    },
+                secondary =
+                    matrixResult?.let {
+                        "${it.eventCount} events · ${it.unavailableCount} unavailable · ${it.nonEventCount} other"
+                    } ?: "One bounded sample per target",
                 healthy = !matrixRunning,
+                onClick =
+                    if (matrixResult == null) {
+                        null
+                    } else {
+                        onMatrixDetails
+                    },
             )
             NavigationChip(
-                label = if (matrixRunning) "RUNNING SENSOR MATRIX…" else "RUN SENSOR MATRIX",
+                label =
+                    if (matrixRunning) {
+                        "RUNNING SENSOR MATRIX..."
+                    } else {
+                        "RUN SENSOR MATRIX"
+                    },
                 onClick = {
                     if (!matrixRunning) {
-                        matrixRunning = true
+                        onMatrixRunningChange(true)
                         scope.launch {
-                            matrixResult = experiment.run()
-                            matrixRunning = false
+                            try {
+                                onMatrixResult(experiment.run())
+                                onMatrixDetails()
+                            } finally {
+                                onMatrixRunningChange(false)
+                            }
                         }
                     }
                 },
             )
         }
 
-        lastResult?.let { result ->
+        lastSafeResult?.let { result ->
             DiagnosticCard(
-                title = "LAST RESULT",
-                primary =
-                    when (result) {
-                        is SafePlatformTestResult.Success ->
-                            "SUCCESS"
-
-                        is SafePlatformTestResult.Unavailable ->
-                            "UNAVAILABLE"
-
-                        is SafePlatformTestResult.RateLimited ->
-                            "RATE LIMITED"
-
-                        is SafePlatformTestResult.Failed ->
-                            "FAILED"
-
-                        is SafePlatformTestResult.UnknownTarget ->
-                            "UNKNOWN TARGET"
-                    },
-                secondary =
-                    when (result) {
-                        is SafePlatformTestResult.Success ->
-                            "${result.target} · ${result.providerId}"
-
-                        is SafePlatformTestResult.Unavailable ->
-                            "${result.target} · no active provider"
-
-                        is SafePlatformTestResult.RateLimited ->
-                            "${result.target} · retry in ${result.retryAfterMs} ms"
-
-                        is SafePlatformTestResult.Failed ->
-                            "${result.target} · ${result.message}"
-
-                        is SafePlatformTestResult.UnknownTarget ->
-                            result.target
-                                ?: "<missing>"
-                    },
-                healthy =
-                    result is SafePlatformTestResult.Success,
+                title = "LAST TEST RESULT",
+                primary = safeTestResultTitle(result),
+                secondary = safeTestResultSummary(result),
+                healthy = result is SafePlatformTestResult.Success,
+                onClick = onSafeResultDetails,
             )
         }
 
@@ -1211,8 +1431,7 @@ private fun ToolsScreen(
                 DiagnosticCard(
                     title = "SAFE TESTS",
                     primary = "Runner unavailable",
-                    secondary =
-                        "Diesel service runtime is not attached",
+                    secondary = "Diesel service runtime is not attached",
                     healthy = false,
                 )
 
@@ -1229,20 +1448,492 @@ private fun ToolsScreen(
                     DiagnosticCard(
                         title = test.name.uppercase(),
                         primary = test.summary,
-                        secondary =
-                            "Platform routed · fixed safety bounds",
+                        secondary = "Tap to run and inspect the complete result",
                         healthy = true,
                         onClick = {
-                            lastResult =
-                                runner.run(
-                                    test.name,
-                                )
+                            onSafeResult(runner.run(test.name))
                         },
                     )
                 }
         }
     }
 }
+
+private enum class ResultFilter {
+    ALL,
+    ISSUES,
+    EVENTS,
+}
+
+private fun safeTestResultTitle(
+    result: SafePlatformTestResult,
+): String =
+    when (result) {
+        is SafePlatformTestResult.Success -> "SUCCESS"
+        is SafePlatformTestResult.Unavailable -> "UNAVAILABLE"
+        is SafePlatformTestResult.RateLimited -> "RATE LIMITED"
+        is SafePlatformTestResult.Failed -> "FAILED"
+        is SafePlatformTestResult.UnknownTarget -> "UNKNOWN TARGET"
+    }
+
+private fun safeTestResultSummary(
+    result: SafePlatformTestResult,
+): String =
+    when (result) {
+        is SafePlatformTestResult.Success ->
+            result.target + " · " + result.providerId
+
+        is SafePlatformTestResult.Unavailable ->
+            result.target + " · no active provider"
+
+        is SafePlatformTestResult.RateLimited ->
+            result.target + " · retry in " + result.retryAfterMs + " ms"
+
+        is SafePlatformTestResult.Failed ->
+            result.target + " · " + result.message
+
+        is SafePlatformTestResult.UnknownTarget ->
+            result.target ?: "<missing>"
+    }
+
+@Composable
+private fun SafeTestResultScreen(
+    result: SafePlatformTestResult,
+    onBack: () -> Unit,
+) {
+    DeveloperPage(
+        title = "Test result",
+        subtitle = safeTestResultTitle(result),
+        onBack = onBack,
+    ) {
+        DiagnosticCard(
+            title = "OUTCOME",
+            primary = safeTestResultTitle(result),
+            secondary = safeTestResultSummary(result),
+            healthy = result is SafePlatformTestResult.Success,
+        )
+        when (result) {
+            is SafePlatformTestResult.Success ->
+                DetailText("Provider: " + result.providerId)
+
+            is SafePlatformTestResult.Unavailable ->
+                DetailText("No active provider was available for this test.")
+
+            is SafePlatformTestResult.RateLimited ->
+                DetailText("Retry after " + result.retryAfterMs + " ms.")
+
+            is SafePlatformTestResult.Failed ->
+                DetailText("Failure detail: " + result.message)
+
+            is SafePlatformTestResult.UnknownTarget ->
+                DetailText("The selected test target is not registered.")
+        }
+    }
+}
+
+@Composable
+private fun MatrixResultsScreen(
+    result: SensorMatrixExperimentResult?,
+    onEntry: (Pair<String, SensorReadResult>) -> Unit,
+    onBack: () -> Unit,
+) {
+    var filter by remember { mutableStateOf(ResultFilter.ALL) }
+    val entries =
+        result
+            ?.entries
+            .orEmpty()
+            .filter { entry ->
+                when (filter) {
+                    ResultFilter.ALL -> true
+                    ResultFilter.ISSUES -> entry.second !is SensorReadResult.Event
+                    ResultFilter.EVENTS -> entry.second is SensorReadResult.Event
+                }
+            }
+
+    DeveloperPage(
+        title = "Sensor matrix",
+        subtitle =
+            result?.let {
+                it.eventCount.toString() + " events · " +
+                    it.unavailableCount + " unavailable · " +
+                    it.nonEventCount + " other"
+            } ?: "No matrix result yet",
+        onBack = onBack,
+    ) {
+        ResultFilterRow(
+            filter = filter,
+            onFilter = { filter = it },
+        )
+        if (result == null) {
+            DiagnosticCard(
+                title = "MATRIX",
+                primary = "No completed matrix",
+                secondary = "Run the matrix from Tools to inspect its eight logical targets.",
+                healthy = false,
+            )
+        } else if (entries.isEmpty()) {
+            DiagnosticCard(
+                title = "MATRIX",
+                primary = "No " + filter.name.lowercase() + " results",
+                secondary = "Choose another result filter.",
+                healthy = true,
+            )
+        } else {
+            entries.forEach { entry ->
+                val target = entry.first
+                val sensorResult = entry.second
+                DiagnosticCard(
+                    title = target.uppercase(),
+                    primary = matrixResultTitle(sensorResult),
+                    secondary = matrixResultSummary(sensorResult),
+                    healthy = sensorResult is SensorReadResult.Event,
+                    onClick = { onEntry(entry) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatrixEntryDetailScreen(
+    entry: Pair<String, SensorReadResult>,
+    onBack: () -> Unit,
+) {
+    val target = entry.first
+    val result = entry.second
+    DeveloperPage(
+        title = target,
+        subtitle = matrixResultTitle(result),
+        onBack = onBack,
+    ) {
+        DiagnosticCard(
+            title = "OUTCOME",
+            primary = matrixResultTitle(result),
+            secondary = matrixResultSummary(result),
+            healthy = result is SensorReadResult.Event,
+        )
+        when (result) {
+            is SensorReadResult.Event -> {
+                DetailText("Capability: " + result.reading.capabilityId.value)
+                DetailText("Provider: " + result.reading.providerId)
+                DetailText("Elapsed: " + result.reading.elapsedMs + " ms")
+                DetailText("Sensor timestamp: " + result.reading.timestampNanos + " ns")
+                DetailText(
+                    "Accuracy: " +
+                        (result.reading.accuracy?.toString() ?: "unknown"),
+                )
+                DetailText(
+                    "Raw values: " +
+                        result.reading.values.joinToString(),
+                )
+            }
+
+            SensorReadResult.Unavailable ->
+                DetailText("No active provider exposed this logical capability.")
+
+            is SensorReadResult.PermissionDenied ->
+                DetailText(
+                    "Required permission: " +
+                        (result.requiredPermission ?: "not reported by Android"),
+                )
+
+            SensorReadResult.Timeout ->
+                DetailText("No sample arrived before the configured timeout.")
+
+            is SensorReadResult.RegistrationRejected ->
+                DetailText(
+                    "Registration reason: " +
+                        (result.reason ?: "not reported by Android"),
+                )
+        }
+    }
+}
+
+@Composable
+private fun ScanResultsScreen(
+    runId: String?,
+    commandResult: DieselCommandResult?,
+    snapshot: SensorProbeStoreSnapshot?,
+    onRecord: (SensorProbeRecord) -> Unit,
+    onBack: () -> Unit,
+) {
+    var filter by remember { mutableStateOf(ResultFilter.ALL) }
+    val activeRunId = runId ?: snapshot?.latestSummary?.runId
+    val summary =
+        snapshot
+            ?.latestSummary
+            ?.takeIf { it.runId == activeRunId }
+    val records =
+        snapshot
+            ?.records
+            .orEmpty()
+            .asReversed()
+            .filter { it.runId == activeRunId }
+            .filter { record ->
+                when (filter) {
+                    ResultFilter.ALL -> true
+                    ResultFilter.ISSUES -> record.outcome != "event"
+                    ResultFilter.EVENTS -> record.outcome == "event"
+                }
+            }
+
+    DeveloperPage(
+        title = "Sensor scan",
+        subtitle = scanResultSubtitle(summary, commandResult),
+        onBack = onBack,
+    ) {
+        commandResult
+            ?.takeIf { it.status != DieselResponseStatus.OK }
+            ?.let { result ->
+                DiagnosticCard(
+                    title = "SCAN COMMAND",
+                    primary = result.status.wireName.uppercase(),
+                    secondary = scanCommandReason(result),
+                    healthy = false,
+                )
+            }
+        summary?.let {
+            DiagnosticCard(
+                title = "SCAN SUMMARY",
+                primary = scanTerminalTitle(it.terminalReason),
+                secondary =
+                    it.completedRoutes.toString() + " / " +
+                        it.totalRoutes + " routes · " +
+                        scanElapsedMs(it).toString() + " ms",
+                healthy = it.terminalReason == SensorScanTerminalReason.FINISHED,
+            )
+        }
+        ResultFilterRow(
+            filter = filter,
+            onFilter = { filter = it },
+        )
+        if (activeRunId == null) {
+            DiagnosticCard(
+                title = "SCAN RECORDS",
+                primary = "No scan selected",
+                secondary = "Start a whole-watch sensor scan from Tools.",
+                healthy = false,
+            )
+        } else if (records.isEmpty()) {
+            DiagnosticCard(
+                title = "SCAN RECORDS",
+                primary = "No " + filter.name.lowercase() + " records",
+                secondary = "Records appear here while the scan runs.",
+                healthy = filter != ResultFilter.ALL,
+            )
+        } else {
+            DetailText("Newest attempted route first.")
+            records.forEach { record ->
+                DiagnosticCard(
+                    title =
+                        "#" + (record.index + 1) + " · " +
+                            record.route.descriptor.logicalId.value.uppercase(),
+                    primary = record.outcome.replace('_', ' ').uppercase(),
+                    secondary = scanRecordSummary(record),
+                    healthy = record.outcome == "event",
+                    onClick = { onRecord(record) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScanRecordDetailScreen(
+    record: SensorProbeRecord,
+    onBack: () -> Unit,
+) {
+    val route = record.route
+    val sensor = route.inventory
+    DeveloperPage(
+        title = "Route #" + (record.index + 1),
+        subtitle = record.outcome.replace('_', ' ').uppercase(),
+        onBack = onBack,
+    ) {
+        DiagnosticCard(
+            title = sensor.logicalId.uppercase(),
+            primary = record.outcome.replace('_', ' ').uppercase(),
+            secondary = scanRecordSummary(record),
+            healthy = record.outcome == "event",
+        )
+        DetailText("Route ID: " + route.descriptor.routeId.value)
+        DetailText("Provider: " + route.descriptor.providerId)
+        DetailText("Android type/id: " + sensor.androidType + " / " + sensor.androidId)
+        DetailText("String type: " + sensor.stringType)
+        DetailText("Name: " + sensor.name)
+        DetailText("Vendor: " + sensor.vendor)
+        DetailText(
+            "Reporting mode: " + sensor.reportingMode +
+                if (sensor.wakeUp) " · wake-up" else " · non-wake-up",
+        )
+        DetailText(
+            "Registration: " +
+                (record.registrationKind?.name?.lowercase() ?: "not registered"),
+        )
+        DetailText("Elapsed: " + record.elapsedMs + " ms")
+        record.requiredPermission?.let {
+            DetailText("Required permission: " + it)
+        }
+        record.reason?.let {
+            DetailText("Reason: " + it)
+        }
+        record.event?.let { event ->
+            DetailText("Sensor timestamp: " + event.timestampNanos + " ns")
+            DetailText(
+                "Accuracy: " +
+                    (event.accuracy?.toString() ?: "unknown"),
+            )
+            DetailText("Raw values: " + event.values.joinToString())
+        }
+    }
+}
+
+@Composable
+private fun ResultFilterRow(
+    filter: ResultFilter,
+    onFilter: (ResultFilter) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ResultFilterChip(
+            label = "ALL",
+            selected = filter == ResultFilter.ALL,
+            onClick = { onFilter(ResultFilter.ALL) },
+            modifier = Modifier.weight(1f),
+        )
+        ResultFilterChip(
+            label = "ISSUES",
+            selected = filter == ResultFilter.ISSUES,
+            onClick = { onFilter(ResultFilter.ISSUES) },
+            modifier = Modifier.weight(1f),
+        )
+        ResultFilterChip(
+            label = "EVENTS",
+            selected = filter == ResultFilter.EVENTS,
+            onClick = { onFilter(ResultFilter.EVENTS) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun ResultFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (selected) AccentText else SecondaryText,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(15.dp))
+                .background(
+                    if (selected) {
+                        AccentText.copy(alpha = 0.14f)
+                    } else {
+                        ChipBackground
+                    },
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun DetailText(
+    text: String,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = SecondaryText,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+private fun matrixResultTitle(
+    result: SensorReadResult,
+): String =
+    when (result) {
+        is SensorReadResult.Event -> "EVENT"
+        SensorReadResult.Unavailable -> "UNAVAILABLE"
+        is SensorReadResult.PermissionDenied -> "PERMISSION DENIED"
+        SensorReadResult.Timeout -> "TIMEOUT"
+        is SensorReadResult.RegistrationRejected -> "REGISTRATION REJECTED"
+    }
+
+private fun matrixResultSummary(
+    result: SensorReadResult,
+): String =
+    when (result) {
+        is SensorReadResult.Event ->
+            result.reading.providerId + " · " +
+                result.reading.elapsedMs + " ms · " +
+                result.reading.values.take(4).joinToString()
+
+        SensorReadResult.Unavailable ->
+            "No active provider"
+
+        is SensorReadResult.PermissionDenied ->
+            result.requiredPermission ?: "Permission not reported by Android"
+
+        SensorReadResult.Timeout ->
+            "No sample before timeout"
+
+        is SensorReadResult.RegistrationRejected ->
+            result.reason ?: "Android did not report a reason"
+    }
+
+private fun scanCommandReason(
+    result: DieselCommandResult,
+): String =
+    (result.data["reason"] as? DieselValue.Text)?.value
+        ?: "The developer command did not return a reason."
+
+private fun scanRecordSummary(
+    record: SensorProbeRecord,
+): String {
+    val detail =
+        record.requiredPermission
+            ?: record.reason
+            ?: record.event?.values?.take(4)?.joinToString()
+            ?: record.route.inventory.name
+    return record.elapsedMs.toString() + " ms · " + detail
+}
+
+private fun scanTerminalTitle(
+    reason: SensorScanTerminalReason?,
+): String =
+    when (reason) {
+        null -> "RUNNING"
+        SensorScanTerminalReason.FINISHED -> "FINISHED"
+        SensorScanTerminalReason.CANCELLED -> "CANCELLED"
+        SensorScanTerminalReason.TIME_BUDGET_EXHAUSTED -> "TIME BUDGET EXHAUSTED"
+    }
+
+private fun scanElapsedMs(
+    summary: org.aaustralian.dieselbridge.debug.SensorScanSummary,
+): Long =
+    (summary.finishedAtMs ?: System.currentTimeMillis()) - summary.startedAtMs
+
+private fun scanResultSubtitle(
+    summary: org.aaustralian.dieselbridge.debug.SensorScanSummary?,
+    commandResult: DieselCommandResult?,
+): String =
+    if (summary != null) {
+        summary.completedRoutes.toString() + " / " + summary.totalRoutes + " routes"
+    } else {
+        (commandResult?.data?.get("state") as? DieselValue.Text)?.value
+            ?: "No scan result yet"
+    }
 
 @Composable
 private fun PlatformScreen(

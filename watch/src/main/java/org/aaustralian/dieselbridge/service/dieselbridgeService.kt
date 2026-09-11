@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -166,6 +167,14 @@ class DieselBridgeService : Service() {
         val sensorSampler = AndroidSensorSampler(applicationContext)
         val sensorManagerProvider = SensorManagerProvider(sensorSource, sensorSampler)
         val sensorProbeStore = SensorProbeStore()
+        DeveloperRuntimeAccess.publishSensorProbeStoreSnapshot(
+            sensorProbeStore.state.value,
+        )
+        platformScope.launch {
+            sensorProbeStore.state.collect {
+                DeveloperRuntimeAccess.publishSensorProbeStoreSnapshot(it)
+            }
+        }
         val sensorScanRunner = SensorScanRunner(
             probe = AndroidSensorRouteProbe(source = sensorSource, sampler = sensorSampler),
             routes = { sensorRouteCatalog.snapshot() },

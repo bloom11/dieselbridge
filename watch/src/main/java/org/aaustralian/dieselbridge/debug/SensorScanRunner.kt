@@ -8,6 +8,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -18,9 +21,9 @@ import org.aaustralian.dieselbridge.platform.sensor.SensorRegistrationKind
 import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbe
 import org.aaustralian.dieselbridge.platform.sensor.SensorRouteProbeOutcome
 
-internal enum class SensorScanTerminalReason { FINISHED, CANCELLED, TIME_BUDGET_EXHAUSTED }
+enum class SensorScanTerminalReason { FINISHED, CANCELLED, TIME_BUDGET_EXHAUSTED }
 
-internal data class SensorScanSummary(
+data class SensorScanSummary(
     val runId: String,
     val totalRoutes: Int,
     val completedRoutes: Int,
@@ -29,7 +32,7 @@ internal data class SensorScanSummary(
     val terminalReason: SensorScanTerminalReason? = null,
 )
 
-internal data class SensorProbeRecord(
+data class SensorProbeRecord(
     val runId: String,
     val index: Int,
     val route: AndroidSensorRoute,
@@ -41,30 +44,52 @@ internal data class SensorProbeRecord(
     val reason: String? = null,
 )
 
+/** Immutable developer-UI view of the bounded scan evidence store. */
+data class SensorProbeStoreSnapshot(
+    val latestSummary: SensorScanSummary? = null,
+    val records: List<SensorProbeRecord> = emptyList(),
+)
+
 /** Bounded process-local evidence store for whole-watch route scans. */
 class SensorProbeStore(private val capacity: Int = 256, private val runCapacity: Int = 8) {
     private val lock = Any()
     private val records = ArrayDeque<SensorProbeRecord>()
     private val summaries = LinkedHashMap<String, SensorScanSummary>()
+    private val mutableState = MutableStateFlow(SensorProbeStoreSnapshot())
+
+    /** Live bounded evidence for the local developer UI. */
+    val state: StateFlow<SensorProbeStoreSnapshot> = mutableState.asStateFlow()
 
     init { require(capacity > 0); require(runCapacity > 0) }
 
     internal fun begin(summary: SensorScanSummary) = synchronized(lock) {
         while (summaries.size >= runCapacity) summaries.remove(summaries.entries.first().key)
         summaries[summary.runId] = summary
+        publishLocked()
     }
 
-    internal fun update(summary: SensorScanSummary) = synchronized(lock) { summaries[summary.runId] = summary }
+    internal fun update(summary: SensorScanSummary) = synchronized(lock) {
+        summaries[summary.runId] = summary
+        publishLocked()
+    }
 
     internal fun add(record: SensorProbeRecord) = synchronized(lock) {
         if (records.size >= capacity) records.removeFirst()
         records.addLast(record)
+        publishLocked()
     }
 
     internal fun summary(runId: String): SensorScanSummary? = synchronized(lock) { summaries[runId] }
     internal fun latestSummary(): SensorScanSummary? = synchronized(lock) { summaries.values.lastOrNull() }
     internal fun snapshot(runId: String? = null): List<SensorProbeRecord> = synchronized(lock) {
         records.filter { runId == null || it.runId == runId }
+    }
+
+    private fun publishLocked() {
+        mutableState.value = SensorProbeStoreSnapshot(
+            latestSummary = summaries.values.lastOrNull(),
+            records = records.toList(),
+        )
     }
 }
 

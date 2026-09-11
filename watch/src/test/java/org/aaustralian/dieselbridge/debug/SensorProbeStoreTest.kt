@@ -38,6 +38,22 @@ class SensorProbeStoreTest {
         assertEquals("b", store.latestSummary()?.runId)
     }
 
+    @Test fun publishes_live_bounded_snapshot_for_developer_ui() {
+        val store = SensorProbeStore(capacity = 2, runCapacity = 1)
+        val summary = SensorScanSummary("run", 1, 0, 100)
+        store.begin(summary)
+
+        assertEquals("run", store.state.value.latestSummary?.runId)
+        assertEquals(emptyList<SensorProbeRecord>(), store.state.value.records)
+
+        store.add(SensorProbeRecord("run", 0, route, "timeout", null, 200))
+        assertEquals(listOf("timeout"), store.state.value.records.map { it.outcome })
+
+        store.update(summary.copy(completedRoutes = 1, finishedAtMs = 300))
+        assertEquals(1, store.state.value.latestSummary?.completedRoutes)
+        assertEquals(300L, store.state.value.latestSummary?.finishedAtMs)
+    }
+
     @Test fun runner_records_route_outcomes_and_finishes_within_budget() = runBlocking {
         val store = SensorProbeStore()
         val runner = SensorScanRunner(

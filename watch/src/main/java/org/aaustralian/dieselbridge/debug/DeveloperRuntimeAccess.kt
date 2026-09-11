@@ -21,6 +21,18 @@ import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
  */
 object DeveloperRuntimeAccess {
 
+    private val mutableSensorProbeStoreSnapshot =
+        MutableStateFlow<SensorProbeStoreSnapshot?>(null)
+
+    val sensorProbeStoreSnapshot: StateFlow<SensorProbeStoreSnapshot?> =
+        mutableSensorProbeStoreSnapshot.asStateFlow()
+
+    fun publishSensorProbeStoreSnapshot(
+        snapshot: SensorProbeStoreSnapshot,
+    ) {
+        mutableSensorProbeStoreSnapshot.value = snapshot
+    }
+
     private val mutablePlatform =
         MutableStateFlow<DieselPlatform?>(null)
 
@@ -131,6 +143,7 @@ object DeveloperRuntimeAccess {
             mutableSensorInventory.value = null
             mutableSafeTestRunner.value = null
             mutableSensorMatrixExperiment.value = null
+            mutableSensorProbeStoreSnapshot.value = null
             mutableCommandDispatcher.value = null
             mutableHealthServicesRefresh.value = null
             mutablePlatform.value = null
