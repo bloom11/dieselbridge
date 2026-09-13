@@ -18,7 +18,7 @@ import org.aaustralian.dieselbridge.notify.WatchNotifier
  *
  * Convenience form:
  *   adb shell am broadcast -a org.aaustralian.dieselbridge.INJECT \
- *     -n org.aaustralian.dieselbridge/.debug.DebugInjectReceiver \
+ *     -n io.github.bloom11.dieselbridge/org.aaustralian.dieselbridge.debug.DebugInjectReceiver \
  *     --es app Signal --es title Alice --es body "Coffee?" --el id 42
  *
  * Raw Bangle.js line:  --es line 'GB({"t":"notify","id":7,"src":"X","title":"Hi","body":"yo"})'

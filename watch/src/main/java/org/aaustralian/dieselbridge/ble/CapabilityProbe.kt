@@ -7,7 +7,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 
 /**
- * The single load-bearing check for the whole primary topology (docs/architecture.md):
+ * The single load-bearing check for the whole primary topology (see README.md):
  * can THIS watch act as a BLE peripheral / advertiser?
  *
  * The authoritative test is `getBluetoothLeAdvertiser() != null` PLUS actually starting to

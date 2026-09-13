@@ -23,21 +23,24 @@ internal class DeveloperSensorScanCommandModule(
     }
 
     private suspend fun start(context: DieselCommandContext): DieselCommandResult {
-        if (!valid(context, emptySet())) return invalid()
+        if (!syntaxValid(context, emptySet())) return invalid()
+        if (!authorization.isEnabled()) return unauthorized()
         val runId = runner.start() ?: return DieselCommandResult(DieselResponseStatus.RATE_LIMITED, mapOf("reason" to DieselValue.Text("sensor_scan_running")))
         return DieselCommandResult.ok(mapOf("runId" to DieselValue.Text(runId), "state" to DieselValue.Text("running")))
     }
 
     private fun status(context: DieselCommandContext): DieselCommandResult {
-        if (!valid(context, setOf(ARG_RUN_ID))) return invalid()
+        if (!syntaxValid(context, setOf(ARG_RUN_ID))) return invalid()
         if (ARG_RUN_ID in context.args && textArgument(context, ARG_RUN_ID) == null) return invalid()
+        if (!authorization.isEnabled()) return unauthorized()
         val summary = runner.summary(textArgument(context, ARG_RUN_ID)) ?: return missing()
         return DieselCommandResult.ok(summaryFields(summary))
     }
 
     private suspend fun cancel(context: DieselCommandContext): DieselCommandResult {
-        if (!valid(context, setOf(ARG_RUN_ID))) return invalid()
+        if (!syntaxValid(context, setOf(ARG_RUN_ID))) return invalid()
         val runId = textArgument(context, ARG_RUN_ID) ?: return invalid()
+        if (!authorization.isEnabled()) return unauthorized()
         return if (runner.cancel(runId)) {
             DieselCommandResult.ok(mapOf("runId" to DieselValue.Text(runId), "state" to DieselValue.Text("cancelling")))
         } else {
@@ -67,13 +70,14 @@ internal class DeveloperSensorScanCommandModule(
         )
     }
 
-    private fun valid(context: DieselCommandContext, allowed: Set<String>) =
-        authorization.isEnabled() && context.name == null && context.args.keys.all { it in allowed }
+    private fun syntaxValid(context: DieselCommandContext, allowed: Set<String>) =
+        context.name == null && context.args.keys.all { it in allowed }
 
     private fun textArgument(context: DieselCommandContext, key: String): String? =
         (context.args[key] as? DieselValue.Text)?.value
 
     private fun invalid() = DieselCommandResult(DieselResponseStatus.INVALID_REQUEST, mapOf("reason" to DieselValue.Text("invalid_args")))
+    private fun unauthorized() = DieselCommandResult(DieselResponseStatus.UNAVAILABLE, mapOf("reason" to DieselValue.Text("remote_developer_access_disabled")))
     private fun missing() = DieselCommandResult(DieselResponseStatus.UNAVAILABLE, mapOf("reason" to DieselValue.Text("sensor_scan_not_found")))
 
     private fun spec(name: String, summary: String, arguments: Map<String, String>) = DieselCommandSpec(

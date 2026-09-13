@@ -136,7 +136,7 @@ object CallController {
     }
 
     @SuppressLint("MissingPermission") // vibrate has no runtime permission; ring uses public APIs
-    @Suppress("DEPRECATION") // vibrate(effect, AudioAttributes) is deprecated on API 33+, but we need it for minSdk 30
+    @Suppress("DEPRECATION") // Legacy Vibrator overload retained for API 28 compatibility.
     private fun startRing(context: Context) {
         val ctx = context.applicationContext
         val vib = obtainVibrator(ctx).also { vibrator = it }

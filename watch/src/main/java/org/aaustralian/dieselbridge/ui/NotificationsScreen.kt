@@ -164,12 +164,12 @@ fun NotificationsScreen(
 
 @Composable
 private fun SetupBanners(s: ProbeReport) {
-    // All informational: Wear OS 5.1 exposes no in-app fix for battery/BT; see docs.
+    // Informational only; remediation varies by Wear OS and vendor power policy.
     when {
         !s.bluetoothOn ->
             Banner("Bluetooth is off — enable it", WarnColor)
         !s.ignoringBatteryOptimizations ->
-            Banner("Battery not exempt · grant via adb", Muted)
+            Banner("Battery optimization active · review device power settings", Muted)
         s.advertising && !s.centralConnected ->
             Banner("Open Gadgetbridge to connect", Muted)
     }

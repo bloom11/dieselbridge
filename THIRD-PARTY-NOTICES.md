@@ -1,6 +1,6 @@
 # Third-party notices
 
-PixelBridge (the watch app in this repository) is licensed under **Apache-2.0** (see [`LICENSE`](LICENSE)).
+DieselBridge (the watch app in this repository) is licensed under **Apache-2.0** (see [`LICENSE`](LICENSE)).
 This file lists the third-party components it builds on and their licenses. **No third-party source
 code is copied into this repository** — everything below is pulled in as a normal build/runtime
 dependency (from Google's Maven and Maven Central) or is merely spoken to over a wire protocol.
@@ -22,7 +22,7 @@ All of the following are **Apache License 2.0**:
   - `androidx.concurrent:concurrent-futures`
 
 The only transitive native library in the APK is **`androidx.graphics.path`** (pulled in via Wear
-Compose), which is Apache-2.0 and ships all four ABIs. PixelBridge itself contains no native code.
+Compose), which is Apache-2.0 and ships all four ABIs. DieselBridge itself contains no native code.
 
 ## Build / debug / test-only dependencies (NOT shipped in the APK)
 
@@ -45,17 +45,17 @@ Compose), which is Apache-2.0 and ships all four ABIs. PixelBridge itself contai
 ## Gadgetbridge (phone side — referenced, not included)
 
 The phone side of the system is **[Gadgetbridge](https://codeberg.org/Freeyourgadget/Gadgetbridge)**,
-which is licensed under the **GNU AGPL-3.0**. PixelBridge uses Gadgetbridge **completely unmodified**
+which is licensed under the **GNU AGPL-3.0**. DieselBridge uses Gadgetbridge **completely unmodified**
 and installed separately (from F-Droid). **No Gadgetbridge source code is included, forked, or
-distributed in this repository.** PixelBridge only communicates with Gadgetbridge across the public
+distributed in this repository.** DieselBridge only communicates with Gadgetbridge across the public
 Bangle.js JSON-over-Nordic-UART wire protocol, so it is a separate, independent work and carries no
-AGPL obligation. See [`docs/licensing.md`](docs/licensing.md).
+AGPL obligation. See the [License](README.md#license) section of the README.
 
 ## Trademarks
 
-- **"Bangle.js"** is a trademark of **Espruino / Pur3 Ltd**. PixelBridge is not affiliated with or
+- **"Bangle.js"** is a trademark of **Espruino / Pur3 Ltd**. DieselBridge is not affiliated with or
   endorsed by them; the name is used only to identify the wire protocol and BLE device name required
   for interoperability with Gadgetbridge's Bangle.js driver.
 - **"Google", "Pixel", "Pixel Watch", "Wear OS", and "Android"** are trademarks of **Google LLC**.
-  PixelBridge is an independent project and is not affiliated with or endorsed by Google.
+  DieselBridge is an independent project and is not affiliated with or endorsed by Google.
 - **"GrapheneOS"** is a project/name of the GrapheneOS developers, referenced only descriptively.

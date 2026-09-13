@@ -20,9 +20,9 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PixelBridge"
+rootProject.name = "DieselBridge"
 
-// The Wear OS watch app: a standalone BLE-peripheral notification bridge.
-// The phone side is unmodified Gadgetbridge
-// (installed separately) — there is no phone module here on purpose.
+// The Wear OS watch app contains the Diesel platform and BLE-peripheral bridge.
+// The phone side is unmodified Gadgetbridge, installed separately; there is intentionally
+// no phone application module in this repository.
 include(":watch")

@@ -5,7 +5,7 @@ package org.aaustralian.dieselbridge.protocol
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** A parsed inbound Gadgetbridge / Bangle.js message (see docs/ble-protocol.md). */
+/** A parsed inbound Gadgetbridge / Bangle.js message (see README.md). */
 sealed interface GbMessage {
     data class Notify(
         val id: Long,
@@ -249,7 +249,7 @@ object GbProtocol {
      * with an optional reply string. Gadgetbridge (BangleJSDeviceSupport.handleNotificationControl)
      * reads the action from `n`, the notification id from `id`, and the **reply text from `msg`**
      * (NOT `reply`); for REPLY it maps `id` -> the stored RemoteInput handle. Sent as raw
-     * newline-terminated JSON (no GB()/0x10). See docs/ble-protocol.md.
+     * newline-terminated JSON (no GB()/0x10). See README.md.
      */
     fun encodeAction(id: Long, action: String, reply: String? = null): String =
         JSONObject().apply {

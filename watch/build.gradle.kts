@@ -36,8 +36,8 @@ android {
 
     defaultConfig {
         applicationId = "io.github.bloom11.dieselbridge"
-        minSdk = 28          // Wear OS 3 — covers every Pixel Watch Gen-1 firmware
-        targetSdk = 28         // Wear OS 5.1 (Android 15) — the Gen-1 terminal OS. 36 is also valid.
+        minSdk = 28          // Android 9 API floor for legacy Wear OS compatibility
+        targetSdk = 28       // Intentional legacy target behavior; compileSdk remains 36
         versionCode = 26
         versionName = "1.0.0-dev.21"
 
@@ -61,7 +61,7 @@ android {
 
         // No NDK / no abiFilters in our code. The only transitive .so (androidx.graphics.path, via
         // Wear Compose) ships all four ABIs, so the APK installs on the watch regardless. Never add
-        // an arm64-ONLY native lib — Wear may reject it. See docs/platform-target.md.
+        // an arm64-ONLY native lib — Wear may reject it. See README.md.
     }
 
     signingConfigs {

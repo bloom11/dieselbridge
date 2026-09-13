@@ -1,4 +1,4 @@
-# PixelBridge task runner. Run `make` or `make help` for the target list.
+# DieselBridge task runner. Run `make` or `make help` for the target list.
 # Override any variable on the CLI, e.g. `make install SERIAL=emulator-5554`.
 SHELL := bash
 .DEFAULT_GOAL := help
@@ -6,7 +6,11 @@ SHELL := bash
 # --- Config ---
 GRADLE       ?= ./gradlew
 MODULE       ?= :watch
-PKG          ?= net.farcaster.pixelbridge
+APP_ID       ?= io.github.bloom11.dieselbridge
+NAMESPACE    ?= org.aaustralian.dieselbridge
+MAIN_ACTIVITY ?= $(APP_ID)/$(NAMESPACE).ui.MainActivity
+INJECT_ACTION ?= $(NAMESPACE).INJECT
+INJECT_RECEIVER ?= $(APP_ID)/$(NAMESPACE).debug.DebugInjectReceiver
 DEBUG_APK    ?= watch/build/outputs/apk/debug/watch-debug.apk
 ADB          ?= adb
 ANDROID_HOME ?= $(HOME)/Library/Android/sdk
@@ -63,17 +67,17 @@ install: build ## Install the debug APK to the connected device/emulator
 	$(ADB_T) install -r $(DEBUG_APK)
 
 run: install ## Install and launch the app
-	$(ADB_T) shell am start -n $(PKG)/.ui.MainActivity
+	$(ADB_T) shell am start -n $(MAIN_ACTIVITY)
 
 uninstall: ## Uninstall the app
-	$(ADB_T) uninstall $(PKG)
+	$(ADB_T) uninstall $(APP_ID)
 
 inject: ## Inject a test notification (TITLE=.. BODY=.. APP=.. ID=..); debug builds only
-	$(ADB_T) shell am broadcast -a $(PKG).INJECT -n $(PKG)/.debug.DebugInjectReceiver \
+	$(ADB_T) shell am broadcast -a $(INJECT_ACTION) -n $(INJECT_RECEIVER) \
 		--es app "$(APP)" --es title "$(TITLE)" --es body "$(BODY)" --el id $(ID)
 
 dismiss: ## Dismiss an injected notification (ID=..)
-	$(ADB_T) shell am broadcast -a $(PKG).INJECT -n $(PKG)/.debug.DebugInjectReceiver --el del $(ID)
+	$(ADB_T) shell am broadcast -a $(INJECT_ACTION) -n $(INJECT_RECEIVER) --el del $(ID)
 
 screenshot: ## Capture a screenshot to $(OUT)
 	$(ADB_T) shell screencap -p /sdcard/pb_shot.png
@@ -95,21 +99,19 @@ docs-check: ## Pre-release docs checklist
 	@echo "Pre-release doc check — confirm these are current for the release:"
 	@echo "  [ ] README.md          — features, setup steps, anything user-visible"
 	@echo "  [ ] CHANGELOG.md       — a new version entry"
-	@echo "  [ ] docs/*             — reflect any changed behavior"
 	@echo "  [ ] versionName in watch/build.gradle.kts matches the release tag"
 
 tag: ## Create and push a git tag (VERSION=x.y.z)
 	@test -n "$(VERSION)" || { echo "VERSION required, e.g. make tag VERSION=0.1.1"; exit 1; }
-	git rev-parse -q --verify refs/tags/v$(VERSION) >/dev/null || git tag -a v$(VERSION) -m "PixelBridge v$(VERSION)"
+	git rev-parse -q --verify refs/tags/v$(VERSION) >/dev/null || git tag -a v$(VERSION) -m "DieselBridge v$(VERSION)"
 	git push origin v$(VERSION)
 
-release: ## Cut a release: verify -> build -> tag -> push -> publish APK as a GitHub release (VERSION=x.y.z)
+release: ## Tag a reviewed main commit; GitHub Actions builds, signs and publishes the APK (VERSION=x.y.z)
 	@test -n "$(VERSION)" || { echo "VERSION required, e.g. make release VERSION=0.1.1"; exit 1; }
-	@git diff --quiet || { echo "ERROR: working tree not clean — commit first"; exit 1; }
+	@test -z "$$(git status --porcelain)" || { echo "ERROR: repository not clean — commit first"; exit 1; }
 	@test "$$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "ERROR: not on main"; exit 1; }
 	@grep -q 'versionName = "$(VERSION)"' watch/build.gradle.kts || { echo "ERROR: versionName in build.gradle.kts != $(VERSION)"; exit 1; }
 	@$(MAKE) --no-print-directory docs-check
-	$(GRADLE) $(MODULE):testDebugUnitTest $(MODULE):assembleDebug
-	git rev-parse -q --verify refs/tags/v$(VERSION) >/dev/null || git tag -a v$(VERSION) -m "PixelBridge v$(VERSION)"
-	git push origin main --follow-tags
-	bash scripts/github-release.sh $(VERSION) $(DEBUG_APK)
+	git rev-parse -q --verify refs/tags/v$(VERSION) >/dev/null || git tag -a v$(VERSION) -m "DieselBridge v$(VERSION)"
+	git push origin main "v$(VERSION)"
+	@echo "Tag v$(VERSION) pushed; GitHub Actions owns release build/sign/publish."

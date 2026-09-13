@@ -5,7 +5,7 @@ package org.aaustralian.dieselbridge.ble
 import android.content.Intent
 import android.os.BatteryManager
 
-/** Battery snapshot pushed to the phone as a `status` line (docs/ble-protocol.md). */
+/** Battery snapshot pushed to the phone as a `status` line (see README.md). */
 data class BatteryStatus(val percent: Int, val volts: Double, val charging: Int)
 
 /**

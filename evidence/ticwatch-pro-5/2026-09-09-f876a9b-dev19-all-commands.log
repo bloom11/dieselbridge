@@ -1,0 +1,589 @@
+# DieselBridge historical physical-watch evidence
+# Captured: 2026-09-09
+# Hardware: TicWatch Pro 5
+# Installed build: 1.0.0-dev.19
+# Git SHA: f876a9b0a884464bcdac11a8a61d1c900e7574e2
+# CI run: 34393457000
+#
+# This is historical hardware evidence, not output from current HEAD.
+# Local wireless-ADB IPv4:port endpoints were sanitized before publication.
+#
+
+
+
+==================================================
+1 / 8 — diagnostics
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"diagnostics","t":"diesel","v":1,"kind":"request","id":"termux-1788981685-16842-23793","args":{}}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981685-16842-23793 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981685-16842-23793",
+  "cmd": "diagnostics",
+  "status": "ok",
+  "data": {
+    "build": "1.0.0-dev.19",
+    "bleConnected": true,
+    "notifySubscribed": true,
+    "advertising": true,
+    "batteryPercent": 60,
+    "charging": false,
+    "batteryProviderId": "legacy.battery"
+  }
+}
+
+
+==================================================
+2 / 8 — commands
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"commands","t":"diesel","v":1,"kind":"request","id":"termux-1788981687-16884-32016","args":{}}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981687-16884-32016 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981687-16884-32016",
+  "cmd": "commands",
+  "status": "ok",
+  "data": {
+    "commands": [
+      {
+        "name": "diagnostics",
+        "summary": "Show runtime diagnostics notification",
+        "metadata": {
+          "effect": "read_only"
+        }
+      },
+      {
+        "name": "commands",
+        "summary": "List supported Diesel commands",
+        "metadata": {
+          "effect": "read_only"
+        }
+      },
+      {
+        "name": "debug.build.info",
+        "summary": "Return installed APK build provenance",
+        "metadata": {
+          "effect": "read_only"
+        }
+      },
+      {
+        "name": "test",
+        "summary": "Run a bounded safe platform test",
+        "metadata": {
+          "effect": "safe_action"
+        }
+      },
+      {
+        "name": "debug.status",
+        "summary": "Show remote developer export status",
+        "metadata": {
+          "domain": "debug",
+          "effect": "read_only",
+          "authorization": "local_developer_ui"
+        }
+      },
+      {
+        "name": "debug.export",
+        "summary": "Export authorized developer data",
+        "metadata": {
+          "domain": "debug",
+          "effect": "read_only",
+          "authorization": "local_developer_ui",
+          "pagination": "byte_budget_offset_limit"
+        }
+      },
+      {
+        "name": "sensor.list",
+        "summary": "List process-visible Android sensors",
+        "metadata": {
+          "domain": "sensor",
+          "effect": "read_only",
+          "pagination": "offset_limit"
+        }
+      },
+      {
+        "name": "debug.sensor.probe",
+        "summary": "Probe one exact sensor route with a bounded first-event sample",
+        "metadata": {
+          "domain": "debug",
+          "effect": "safe_action",
+          "authorization": "local_developer_ui",
+          "target": "exact_sensor_route",
+          "bounded": true
+        }
+      }
+    ]
+  }
+}
+
+
+==================================================
+3 / 8 — debug.build.info
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"debug.build.info","t":"diesel","v":1,"kind":"request","id":"termux-1788981689-16919-19121","args":{}}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981689-16919-19121 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981689-16919-19121",
+  "cmd": "debug.build.info",
+  "status": "ok",
+  "data": {
+    "versionName": "1.0.0-dev.19",
+    "versionCode": 24,
+    "buildType": "debug",
+    "debug": true,
+    "gitSha": "f876a9b0a884464bcdac11a8a61d1c900e7574e2",
+    "gitShaShort": "f876a9b",
+    "buildTimestampUtc": "2026-09-09 19:11:34 UTC",
+    "ciRunId": "34393457000",
+    "firstInstallTimeMs": 1788646020708,
+    "lastUpdateTimeMs": 1788981509720
+  }
+}
+
+
+==================================================
+4 / 8 — test / vibration
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"test","name":"vibration","t":"diesel","v":1,"kind":"request","id":"termux-1788981691-16945-12856","args":{}}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981691-16945-12856 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981691-16945-12856",
+  "cmd": "test",
+  "name": "vibration",
+  "status": "ok",
+  "data": {
+    "target": "vibration",
+    "providerId": "legacy.vibration",
+    "durationMs": 250
+  }
+}
+
+
+==================================================
+5 / 8 — debug.status
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"debug.status","t":"diesel","v":1,"kind":"request","id":"termux-1788981692-16969-26362","args":{}}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981692-16969-26362 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981692-16969-26362",
+  "cmd": "debug.status",
+  "status": "ok",
+  "data": {
+    "enabled": true,
+    "authorization": "local_developer_ui",
+    "sections": [
+      "build",
+      "platform",
+      "ble",
+      "commands",
+      "sensors",
+      "safe_tests",
+      "permissions",
+      "platform_logs",
+      "ble_logs"
+    ],
+    "pagination": "byte_budget_offset_limit",
+    "responseBudgetBytes": 4096,
+    "defaultRequestedLimit": 32,
+    "maxRequestedLimit": 64
+  }
+}
+
+
+==================================================
+6a / 8 — debug.export / build
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"debug.export","args":{"section":"build","offset":0,"limit":32},"t":"diesel","v":1,"kind":"request","id":"termux-1788981694-17026-11078"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981694-17026-11078 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981694-17026-11078",
+  "cmd": "debug.export",
+  "status": "ok",
+  "data": {
+    "section": "build",
+    "source": "android.build",
+    "total": 1,
+    "offset": 0,
+    "requestedLimit": 32,
+    "returned": 1,
+    "nextOffset": 1,
+    "hasMore": false,
+    "responseBudgetBytes": 4096,
+    "items": [
+      {
+        "packageName": "io.github.bloom11.dieselbridge",
+        "versionName": "1.0.0-dev.19",
+        "versionCode": 24,
+        "debug": true,
+        "sdkInt": 33,
+        "manufacturer": "Mobvoi",
+        "model": "TicWatch Pro 5",
+        "product": "dace",
+        "device": "dace",
+        "hardware": "dace",
+        "fingerprint": "Mobvoi/dace/dace:13/TMDB.240925.002/379:user/release-keys"
+      }
+    ]
+  }
+}
+
+
+==================================================
+6b / 8 — debug.export / sensors
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"debug.export","args":{"section":"sensors","offset":0,"limit":4},"t":"diesel","v":1,"kind":"request","id":"termux-1788981695-17047-5828"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981695-17047-5828 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981695-17047-5828",
+  "cmd": "debug.export",
+  "status": "ok",
+  "data": {
+    "section": "sensors",
+    "source": "android.sensor_manager",
+    "total": 102,
+    "offset": 0,
+    "requestedLimit": 4,
+    "returned": 4,
+    "nextOffset": 4,
+    "hasMore": true,
+    "responseBudgetBytes": 4096,
+    "items": [
+      {
+        "index": 0,
+        "routeId": "android.sensor_manager:1:0:0",
+        "providerId": "android.sensor_manager",
+        "logicalId": "accelerometer",
+        "androidId": 0,
+        "androidType": 1,
+        "stringType": "android.sensor.accelerometer",
+        "name": "lsm6dso Accelerometer Non-wakeup",
+        "vendor": "STMicro",
+        "version": 142925,
+        "maxRange": 156.90640258789062,
+        "resolution": 0.004785645287483931,
+        "powerMilliAmps": 0.17000000178813934,
+        "minDelayUs": 19231,
+        "maxDelayUs": 1000000,
+        "fifoReservedEventCount": 150,
+        "fifoMaxEventCount": 715,
+        "reportingMode": 0,
+        "wakeUp": false
+      },
+      {
+        "index": 1,
+        "routeId": "android.sensor_manager:1:0:1",
+        "providerId": "android.sensor_manager",
+        "logicalId": "accelerometer",
+        "androidId": 0,
+        "androidType": 1,
+        "stringType": "android.sensor.accelerometer",
+        "name": "lsm6dso Accelerometer Wakeup",
+        "vendor": "STMicro",
+        "version": 142925,
+        "maxRange": 156.90640258789062,
+        "resolution": 0.004785645287483931,
+        "powerMilliAmps": 0.17000000178813934,
+        "minDelayUs": 19231,
+        "maxDelayUs": 1000000,
+        "fifoReservedEventCount": 150,
+        "fifoMaxEventCount": 715,
+        "reportingMode": 0,
+        "wakeUp": true
+      },
+      {
+        "index": 2,
+        "routeId": "android.sensor_manager:2:0:0",
+        "providerId": "android.sensor_manager",
+        "logicalId": "magnetic_field",
+        "androidId": 0,
+        "androidType": 2,
+        "stringType": "android.sensor.magnetic_field",
+        "name": "ak0991x Magnetometer Non-wakeup",
+        "vendor": "akm",
+        "version": 146972,
+        "maxRange": 4912.05029296875,
+        "resolution": 0.15000000596046448,
+        "powerMilliAmps": 1.100000023841858,
+        "minDelayUs": 10000,
+        "maxDelayUs": 1000000,
+        "fifoReservedEventCount": 150,
+        "fifoMaxEventCount": 715,
+        "reportingMode": 0,
+        "wakeUp": false
+      },
+      {
+        "index": 3,
+        "routeId": "android.sensor_manager:2:0:1",
+        "providerId": "android.sensor_manager",
+        "logicalId": "magnetic_field",
+        "androidId": 0,
+        "androidType": 2,
+        "stringType": "android.sensor.magnetic_field",
+        "name": "ak0991x Magnetometer Wakeup",
+        "vendor": "akm",
+        "version": 146972,
+        "maxRange": 4912.05029296875,
+        "resolution": 0.15000000596046448,
+        "powerMilliAmps": 1.100000023841858,
+        "minDelayUs": 10000,
+        "maxDelayUs": 1000000,
+        "fifoReservedEventCount": 150,
+        "fifoMaxEventCount": 715,
+        "reportingMode": 0,
+        "wakeUp": true
+      }
+    ],
+    "meta": {
+      "sensorCount": 102,
+      "routeCount": 102,
+      "androidStringTypeCount": 43,
+      "otherStringTypeCount": 59
+    }
+  }
+}
+
+
+==================================================
+7 / 8 — sensor.list
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"sensor.list","args":{"offset":0,"limit":4},"t":"diesel","v":1,"kind":"request","id":"termux-1788981697-17071-8903"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981697-17071-8903 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981697-17071-8903",
+  "cmd": "sensor.list",
+  "status": "ok",
+  "data": {
+    "source": "android.sensor_manager",
+    "total": 102,
+    "offset": 0,
+    "returned": 4,
+    "hasMore": true,
+    "sensors": [
+      {
+        "index": 0,
+        "routeId": "android.sensor_manager:1:0:0",
+        "providerId": "android.sensor_manager",
+        "id": "accelerometer",
+        "androidId": 0,
+        "androidType": 1,
+        "stringType": "android.sensor.accelerometer",
+        "name": "lsm6dso Accelerometer Non-wakeup",
+        "vendor": "STMicro",
+        "wakeUp": false,
+        "reportingMode": 0
+      },
+      {
+        "index": 1,
+        "routeId": "android.sensor_manager:1:0:1",
+        "providerId": "android.sensor_manager",
+        "id": "accelerometer",
+        "androidId": 0,
+        "androidType": 1,
+        "stringType": "android.sensor.accelerometer",
+        "name": "lsm6dso Accelerometer Wakeup",
+        "vendor": "STMicro",
+        "wakeUp": true,
+        "reportingMode": 0
+      },
+      {
+        "index": 2,
+        "routeId": "android.sensor_manager:2:0:0",
+        "providerId": "android.sensor_manager",
+        "id": "magnetic_field",
+        "androidId": 0,
+        "androidType": 2,
+        "stringType": "android.sensor.magnetic_field",
+        "name": "ak0991x Magnetometer Non-wakeup",
+        "vendor": "akm",
+        "wakeUp": false,
+        "reportingMode": 0
+      },
+      {
+        "index": 3,
+        "routeId": "android.sensor_manager:2:0:1",
+        "providerId": "android.sensor_manager",
+        "id": "magnetic_field",
+        "androidId": 0,
+        "androidType": 2,
+        "stringType": "android.sensor.magnetic_field",
+        "name": "ak0991x Magnetometer Wakeup",
+        "vendor": "akm",
+        "wakeUp": true,
+        "reportingMode": 0
+      }
+    ]
+  }
+}
+
+
+==================================================
+8 / 8 — debug.sensor.probe / accelerometer
+==================================================
+
+===== WATCH =====
+<watch-adb-endpoint>
+
+===== REQUEST =====
+{"cmd":"debug.sensor.probe","args":{"routeId":"android.sensor_manager:1:0:0","timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1788981698-17122-29800"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1788981698-17122-29800 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1788981698-17122-29800",
+  "cmd": "debug.sensor.probe",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "route": {
+      "routeId": "android.sensor_manager:1:0:0",
+      "providerId": "android.sensor_manager",
+      "logicalId": "accelerometer",
+      "androidId": 0,
+      "androidType": 1,
+      "stringType": "android.sensor.accelerometer",
+      "name": "lsm6dso Accelerometer Non-wakeup",
+      "vendor": "STMicro",
+      "requiredPermission": null,
+      "reportingMode": 0,
+      "wakeUp": false,
+      "metadataTruncated": false
+    },
+    "registration": {
+      "kind": "listener",
+      "timeoutMs": 5000,
+      "samplingPeriodUs": 200000,
+      "elapsedMs": 369
+    },
+    "event": {
+      "accuracy": 3,
+      "sensorTimestampNs": 49965108296563,
+      "timeToEventMs": 369,
+      "sampleCount": 1,
+      "valueCount": 3,
+      "returnedValueCount": 3,
+      "valuesTruncated": false,
+      "values": [
+        7.6911301612854,
+        -6.188437461853027,
+        1.8849459886550903
+      ]
+    }
+  }
+}

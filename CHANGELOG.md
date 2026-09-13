@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to PixelBridge. Loosely follows [Keep a Changelog](https://keepachangelog.com/);
-versions map to git tags and GitHub releases. I'll try to keep DieselBridge and PixelBridge changes seperate.
+All notable changes to DieselBridge. Loosely follows [Keep a Changelog](https://keepachangelog.com/);
+versions map to git tags and GitHub releases. Inherited PixelBridge history is retained separately below.
 
 ## DieselBridge
 
@@ -10,6 +10,12 @@ versions map to git tags and GitHub releases. I'll try to keep DieselBridge and 
 - Completed the public logical sensor read and bounded sensor matrix milestone.
 - Added direct on-watch sensor diagnostics with shared platform routing.
 - Build details expose CI, commit, timestamp, and installation state for this artifact.
+- Aligned developer sensor-scan authorization with the exact-route probe and consolidated the
+  active architecture, protocol, hardware-test, platform and hand-off documentation into README.md.
+- Added the exact-CI-artifact watch installer and preserved sanitized TicWatch Pro 5 hardware
+  evidence from the dev.19 / f876a9b campaign.
+- Removed the obsolete manual debug-APK release helper; tagged releases are owned by the release
+  GitHub Actions workflow.
 
 ## [1.0.1]
 

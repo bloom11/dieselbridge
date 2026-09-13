@@ -1,0 +1,437 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+diesel_ci_watch_download_install() {
+  REPO="bloom11/dieselbridge"
+  WORKFLOW="ci.yml"
+  ARTIFACT="dieselbridge-bloom-debug"
+  PACKAGE="io.github.bloom11.dieselbridge"
+
+  ROOT="$(
+    cd "$(dirname "$0")/.." 2>/dev/null &&
+      pwd
+  )"
+
+  # If the script was downloaded outside the repo (for example ~/storage/downloads),
+  # fall back to the normal Termux repo location.
+  if [ -z "$ROOT" ] ||
+     [ ! -d "$ROOT/.git" ]; then
+    ROOT="$HOME/dieselbridge"
+  fi
+
+  if [ ! -d "$ROOT/.git" ]; then
+    echo "ERROR: DieselBridge repo not found."
+    echo "Expected:"
+    echo "  $HOME/dieselbridge"
+    return 1
+  fi
+
+  cd "$ROOT" || return 1
+
+  printf '\n===== PREFLIGHT =====\n'
+
+  for CMD in git gh adb find; do
+    if ! command -v "$CMD" >/dev/null 2>&1; then
+      echo "ERROR: missing command: $CMD"
+      return 1
+    fi
+  done
+
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "ERROR: GitHub CLI is not authenticated."
+    echo "Run:"
+    echo "  gh auth login"
+    return 1
+  fi
+
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "ERROR: repository has uncommitted changes."
+    echo
+    git status --short
+    echo
+    echo "Commit/push or restore the current work before using this installer."
+    return 1
+  fi
+
+  BRANCH="$(git branch --show-current)"
+  HEAD="$(git rev-parse HEAD)"
+  SHORT="$(git rev-parse --short=8 HEAD)"
+
+  if [ -z "$BRANCH" ]; then
+    echo "ERROR: detached HEAD."
+    return 1
+  fi
+
+  echo "Branch: $BRANCH"
+  echo "Commit: $HEAD"
+
+  printf '\n===== VERIFY COMMIT IS PUSHED =====\n'
+
+  REMOTE_HEAD="$(
+    git ls-remote \
+      origin \
+      "refs/heads/$BRANCH" |
+      awk '{print $1}'
+  )"
+
+  if [ -z "$REMOTE_HEAD" ]; then
+    echo "ERROR: could not resolve origin/$BRANCH"
+    return 1
+  fi
+
+  echo "Remote: $REMOTE_HEAD"
+
+  if [ "$HEAD" != "$REMOTE_HEAD" ]; then
+    echo "ERROR: local HEAD is not the pushed branch HEAD."
+    echo
+    echo "Local : $HEAD"
+    echo "Remote: $REMOTE_HEAD"
+    echo
+    echo "Push first:"
+    echo "  git push origin $BRANCH"
+    return 1
+  fi
+
+  printf '\n===== WAIT FOR CI RUN =====\n'
+
+  RUN_ID=""
+  ATTEMPT=0
+
+  while [ "$ATTEMPT" -lt 120 ]; do
+    ATTEMPT=$((ATTEMPT + 1))
+
+    RUN_ID="$(
+      gh run list \
+        --repo "$REPO" \
+        --workflow "$WORKFLOW" \
+        --commit "$HEAD" \
+        --limit 20 \
+        --json databaseId,headSha \
+        --jq \
+        'map(select(.headSha == "'"$HEAD"'")) | first | .databaseId // empty'
+    )"
+
+    if [ -n "$RUN_ID" ]; then
+      break
+    fi
+
+    printf 'Waiting for GitHub Actions run... (%d)\r' \
+      "$ATTEMPT"
+
+    sleep 5
+  done
+
+  echo
+
+  if [ -z "$RUN_ID" ]; then
+    echo "ERROR: no CI run appeared for:"
+    echo "  $HEAD"
+    return 1
+  fi
+
+  echo "Run ID: $RUN_ID"
+
+  RUN_SHA="$(
+    gh run view \
+      "$RUN_ID" \
+      --repo "$REPO" \
+      --json headSha \
+      --jq '.headSha'
+  )"
+
+  if [ "$RUN_SHA" != "$HEAD" ]; then
+    echo "ERROR: CI run SHA does not match current HEAD."
+    echo "Expected: $HEAD"
+    echo "Actual  : $RUN_SHA"
+    return 1
+  fi
+
+  printf '\n===== LIVE CI =====\n'
+
+  gh run watch \
+    "$RUN_ID" \
+    --repo "$REPO" \
+    --interval 5 \
+    --exit-status
+
+  WATCH_RC=$?
+
+  if [ "$WATCH_RC" -ne 0 ]; then
+    printf '\n===== CI FAILED =====\n'
+
+    gh run view \
+      "$RUN_ID" \
+      --repo "$REPO" \
+      --log-failed
+
+    return "$WATCH_RC"
+  fi
+
+  printf '\n===== CI SUCCESS =====\n'
+
+  gh run view \
+    "$RUN_ID" \
+    --repo "$REPO" \
+    --json \
+      workflowName,headBranch,headSha,status,conclusion,url \
+    --jq '
+      "Workflow : \(.workflowName)\n" +
+      "Branch   : \(.headBranch)\n" +
+      "SHA      : \(.headSha)\n" +
+      "Status   : \(.status)\n" +
+      "Result   : \(.conclusion)\n" +
+      "URL      : \(.url)"
+    '
+
+  BUILD_ROOT="$HOME/dieselbridge-builds"
+  BUILD_DIR="$BUILD_ROOT/${SHORT}-run-${RUN_ID}"
+
+  printf '\n===== DOWNLOAD APK =====\n'
+  echo "$BUILD_DIR"
+
+  rm -rf "$BUILD_DIR"
+  mkdir -p "$BUILD_DIR"
+
+  gh run download \
+    "$RUN_ID" \
+    --repo "$REPO" \
+    --name "$ARTIFACT" \
+    --dir "$BUILD_DIR"
+
+  DOWNLOAD_RC=$?
+
+  if [ "$DOWNLOAD_RC" -ne 0 ]; then
+    echo "ERROR: artifact download failed."
+    return "$DOWNLOAD_RC"
+  fi
+
+  APK_COUNT="$(
+    find "$BUILD_DIR" \
+      -type f \
+      -name '*.apk' |
+      wc -l |
+      tr -d '[:space:]'
+  )"
+
+  if [ "$APK_COUNT" -ne 1 ]; then
+    echo "ERROR: expected exactly one APK; found $APK_COUNT"
+    find "$BUILD_DIR" -maxdepth 3 -type f
+    return 1
+  fi
+
+  APK="$(
+    find "$BUILD_DIR" \
+      -type f \
+      -name '*.apk' |
+      head -n1
+  )"
+
+  printf '\n===== DOWNLOADED APK =====\n'
+  echo "$APK"
+  ls -lh "$APK"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$APK"
+  fi
+
+  adb_connect_watch() {
+    if [ -n "${DIESEL_ADB_SERIAL:-}" ]; then
+      STATE="$(
+        adb -s "$DIESEL_ADB_SERIAL" \
+          get-state \
+          2>/dev/null
+      )"
+
+      if [ "$STATE" = "device" ]; then
+        ENDPOINT="$DIESEL_ADB_SERIAL"
+        ADB_IP="${ENDPOINT%:*}"
+        ADB_PORT="${ENDPOINT##*:}"
+
+        echo
+        echo "Using connected DIESEL_ADB_SERIAL:"
+        echo "  $ENDPOINT"
+        return 0
+      fi
+    fi
+
+    EXISTING="$(
+      adb devices |
+        awk '
+          NR > 1 &&
+          $2 == "device" &&
+          $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$/ {
+            print $1
+            exit
+          }
+        '
+    )"
+
+    if [ -z "${ADB_IP:-}" ] &&
+       [ -n "$EXISTING" ]; then
+      ADB_IP="${EXISTING%:*}"
+      ADB_PORT="${EXISTING##*:}"
+
+      printf '\nExisting ADB watch: %s\n' "$EXISTING"
+      printf 'Reuse it? [Y/n] '
+      read -r REUSE
+
+      case "$REUSE" in
+        n|N|no|NO)
+          ADB_IP=""
+          ADB_PORT=""
+          ;;
+      esac
+    fi
+
+    while true; do
+      printf '\n===== WATCH ADB CONNECTION =====\n'
+
+      if [ -n "${ADB_IP:-}" ]; then
+        printf 'Watch IP [%s]: ' "$ADB_IP"
+      else
+        printf 'Watch IP: '
+      fi
+
+      read -r NEW_IP
+
+      if [ -n "$NEW_IP" ]; then
+        ADB_IP="$NEW_IP"
+      fi
+
+      if [ -z "${ADB_IP:-}" ]; then
+        echo "IP cannot be empty."
+        continue
+      fi
+
+      if [ -n "${ADB_PORT:-}" ]; then
+        printf 'ADB port [%s]: ' "$ADB_PORT"
+      else
+        printf 'ADB port: '
+      fi
+
+      read -r NEW_PORT
+
+      if [ -n "$NEW_PORT" ]; then
+        ADB_PORT="$NEW_PORT"
+      fi
+
+      if [ -z "${ADB_PORT:-}" ]; then
+        echo "Port cannot be empty."
+        continue
+      fi
+
+      ENDPOINT="$ADB_IP:$ADB_PORT"
+
+      printf '\nConnecting to %s ...\n' "$ENDPOINT"
+
+      adb connect "$ENDPOINT"
+
+      sleep 1
+
+      STATE="$(
+        adb -s "$ENDPOINT" \
+          get-state \
+          2>/dev/null
+      )"
+
+      if [ "$STATE" = "device" ]; then
+        echo "ADB connected: $ENDPOINT"
+        return 0
+      fi
+
+      echo
+      echo "ADB connection did not succeed."
+      echo
+      echo "Wear OS wireless-debugging ports can change."
+      echo "Press Enter to retry the same IP/port, or type new values."
+    done
+  }
+
+  ADB_IP=""
+  ADB_PORT=""
+  ENDPOINT=""
+
+  adb_connect_watch || return 1
+
+  printf '\n===== INSTALL WATCH APK =====\n'
+
+  INSTALL_ATTEMPT=0
+  INSTALL_OK=0
+
+  while [ "$INSTALL_ATTEMPT" -lt 5 ]; do
+    INSTALL_ATTEMPT=$((INSTALL_ATTEMPT + 1))
+
+    printf '\nInstall attempt %d using %s\n' \
+      "$INSTALL_ATTEMPT" \
+      "$ENDPOINT"
+
+    INSTALL_OUTPUT="$(
+      adb -s "$ENDPOINT" \
+        install -r "$APK" \
+        2>&1
+    )"
+
+    INSTALL_RC=$?
+
+    printf '%s\n' "$INSTALL_OUTPUT"
+
+    if [ "$INSTALL_RC" -eq 0 ] &&
+       printf '%s\n' "$INSTALL_OUTPUT" |
+         grep -q 'Success'; then
+      INSTALL_OK=1
+      break
+    fi
+
+    case "$INSTALL_OUTPUT" in
+      *"device offline"*|\
+      *"device not found"*|\
+      *"no devices/emulators found"*|\
+      *"closed"*|\
+      *"Connection reset"*|\
+      *"cannot connect"*)
+        echo
+        echo "ADB connection was lost."
+        echo "Reconnect using the current watch Wireless debugging endpoint."
+
+        adb_connect_watch || return 1
+        ;;
+
+      *)
+        echo
+        echo "ERROR: installation failed for a non-connection reason."
+        echo "Not retrying automatically."
+        return 1
+        ;;
+    esac
+  done
+
+  if [ "$INSTALL_OK" -ne 1 ]; then
+    echo "ERROR: install did not succeed after 5 attempts."
+    return 1
+  fi
+
+  sleep 2
+
+  printf '\n===== INSTALLED PACKAGE =====\n'
+
+  adb -s "$ENDPOINT" \
+    shell dumpsys package "$PACKAGE" |
+    grep -E \
+      'versionCode=|versionName=|firstInstallTime=|lastUpdateTime='
+
+  printf '\n===== BUILD USED =====\n'
+  echo "Git SHA : $HEAD"
+  echo "CI run  : $RUN_ID"
+  echo "APK     : $APK"
+  echo "ADB     : $ENDPOINT"
+
+  printf '\n===== DONE =====\n'
+  echo "Watch APK installed successfully."
+  echo
+  echo "Next useful test:"
+  echo "  cd ~/dieselbridge"
+  echo "  tools/diesel-adb '{\"cmd\":\"debug.build.info\"}'"
+
+  return 0
+}
+
+diesel_ci_watch_download_install "$@"

@@ -60,7 +60,7 @@ import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
  * connectedDevice-typed foreground service that owns the BLE peripheral stack so the link survives
  * screen-off / backgrounding. Also listens for Bluetooth on/off so advertising (re)starts
  * automatically when the user enables Bluetooth. A foreground service alone does NOT beat Doze —
- * the app also needs a battery-optimization exemption (see docs/architecture.md).
+ * the app also needs a battery-optimization exemption (see README.md).
  */
 class DieselBridgeService : Service() {
 
@@ -383,14 +383,20 @@ class DieselBridgeService : Service() {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .build()
-        // minSdk 30 => the typed startForeground and the connectedDevice type constant always exist.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-    // Android 10+ (API 29+) requires the foreground service type parameter
-    startForeground(NOTIF_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-} else {
-    // Android 9 (API 28) on your Diesel watch uses the legacy fallback version
-    startForeground(NOTIF_ID, notification)
-}
+            // API 29+ supports the typed foreground-service overload.
+            startForeground(
+                NOTIF_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            )
+        } else {
+            // API 28 uses the legacy foreground-service overload.
+            startForeground(
+                NOTIF_ID,
+                notification,
+            )
+        }
     }
 
     private fun createChannel() {

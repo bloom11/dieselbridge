@@ -54,7 +54,7 @@ object FindAlertController {
 
     /** Idempotent — safe to call while already alerting; it just re-arms vibration and the timeout. */
     @SuppressLint("MissingPermission") // POST_NOTIFICATIONS requested at runtime in MainActivity; notify() is also runCatching-guarded
-    @Suppress("DEPRECATION") // vibrate(effect, AudioAttributes) is deprecated on API 33+, but we need it for minSdk 30
+    @Suppress("DEPRECATION") // Legacy Vibrator overload retained for API 28 compatibility.
     fun start(context: Context) {
         val ctx = context.applicationContext
         createChannel(ctx)
@@ -85,7 +85,7 @@ object FindAlertController {
     }
 
     /** One-shot buzz for the phone's `vibrate` message — independent of the find alert. */
-    @Suppress("DEPRECATION") // vibrate(VibrationEffect) is deprecated on API 33+, but we need it for minSdk 30
+    @Suppress("DEPRECATION") // Legacy Vibrator overload retained for API 28 compatibility.
     fun buzzOnce(context: Context, ms: Long = 400) {
         obtainVibrator(context).vibrate(
             VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE),

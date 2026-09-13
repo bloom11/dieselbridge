@@ -40,7 +40,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Switched to assembleRelease for optimized production compilation
+      - name: Run unit tests
+        run: ./gradlew :watch:testDebugUnitTest
+
       - name: Build release APK
         run: ./gradlew :watch:assembleRelease
 
@@ -67,7 +69,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ASSET="dieselbridge-${GITHUB_REF_NAME#v}.apk"
-          NOTES="WearOS bridge for use with Gadgetbridge. The attached APK is **release-signed** — sideload onto your Wear OS watch (like the Diesel DW9D1) with \`adb install -r\`. Requires unmodified Gadgetbridge on the phone (It'll appear as a Bangle.js device)."
+          NOTES="Standalone Wear OS bridge for unmodified Gadgetbridge. The attached APK is **release-signed**. Sideload it with \`adb install -r dieselbridge-${GITHUB_REF_NAME#v}.apk\`. See README.md for setup and CHANGELOG.md for changes."
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber

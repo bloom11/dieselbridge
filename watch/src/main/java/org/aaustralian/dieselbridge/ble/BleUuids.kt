@@ -8,8 +8,7 @@ import java.util.UUID
  * Nordic UART Service (NUS) UUIDs + Bangle.js framing constants.
  *
  * The watch is the BLE PERIPHERAL / GATT server. Gadgetbridge (phone, BLE central, unmodified,
- * configured as a Bangle.js device) connects and speaks the JSON-over-NUS dialect. See
- * docs/ble-protocol.md.
+ * configured as a Bangle.js device) connects and speaks the JSON-over-NUS dialect. See README.md.
  */
 object BleUuids {
     /** NUS primary service. */

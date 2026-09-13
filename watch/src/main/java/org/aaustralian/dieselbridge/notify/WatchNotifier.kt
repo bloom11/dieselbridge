@@ -15,7 +15,7 @@ import org.aaustralian.dieselbridge.data.WatchNotification
 /**
  * Posts each bridged notification as a REAL Wear OS system notification on a high-importance,
  * vibrating channel. This is what makes the watch buzz and show the notification in its native
- * stream even when the PixelBridge app is in the background. `notify-` cancels the matching one.
+ * stream even when the DieselBridge app is in the background. `notify-` cancels the matching one.
  *
  * POST_NOTIFICATIONS is requested at runtime in MainActivity (hence @SuppressLint); notify() is
  * additionally guarded so a missing grant never crashes the BLE thread.
