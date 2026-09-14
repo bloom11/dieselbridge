@@ -8,7 +8,6 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
-import android.os.Looper
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -28,10 +27,7 @@ internal class SensorManagerObservationCapability(
     context: Context,
     private val logicalIdValue: String,
     private val source: AndroidSensorManagerSource,
-    private val callbackHandler: Handler =
-        Handler(
-            Looper.getMainLooper(),
-        ),
+    private val callbackHandler: Handler,
 ) : SensorObservationCapability {
 
     private val sensorManager =
@@ -239,6 +235,7 @@ internal class SensorManagerObservationCapability(
 internal fun sensorManagerObservationCapabilities(
     context: Context,
     source: AndroidSensorManagerSource,
+    callbackHandler: Handler,
 ): List<SensorObservationCapability> =
     SensorCapabilityCatalog
         .standardLogicalIds
@@ -252,6 +249,8 @@ internal fun sensorManagerObservationCapabilities(
                     logicalId,
                 source =
                     source,
+                callbackHandler =
+                    callbackHandler,
             )
         }
 

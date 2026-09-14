@@ -51,6 +51,7 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesSource
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
+import org.aaustralian.dieselbridge.platform.sensor.SensorManagerObservationDispatcher
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
 import org.aaustralian.dieselbridge.platform.sensor.sensorManagerObservationCapabilities
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
@@ -70,6 +71,9 @@ class DieselBridgeService : Service() {
 
     private var sensorObservationManager:
         SensorObservationManager? = null
+
+    private var sensorObservationDispatcher:
+        SensorManagerObservationDispatcher? = null
 
     /*
      * Lifecycle scope for Diesel platform routes/modules.
@@ -194,11 +198,19 @@ class DieselBridgeService : Service() {
             )
         }
 
+        val observationDispatcher =
+            SensorManagerObservationDispatcher()
+
+        sensorObservationDispatcher =
+            observationDispatcher
+
         sensorManagerObservationCapabilities(
             context =
                 applicationContext,
             source =
                 sensorSource,
+            callbackHandler =
+                observationDispatcher.handler,
         ).forEach { capability ->
             platform.capabilities.register(
                 capability =
@@ -402,6 +414,15 @@ class DieselBridgeService : Service() {
         sensorObservationManager
             ?.close()
         sensorObservationManager =
+            null
+
+        /*
+         * Request cancellation of every active observation before retiring
+         * the dedicated SensorManager callback looper.
+         */
+        sensorObservationDispatcher
+            ?.close()
+        sensorObservationDispatcher =
             null
 
         /*
