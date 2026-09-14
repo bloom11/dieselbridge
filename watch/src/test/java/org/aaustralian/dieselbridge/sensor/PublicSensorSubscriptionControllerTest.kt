@@ -466,6 +466,10 @@ class PublicSensorSubscriptionControllerTest {
                 )
             runCurrent()
 
+            advanceTimeBy(
+                1_000L,
+            )
+
             fixture.capability
                 .emitSample(
                     2.0f,
