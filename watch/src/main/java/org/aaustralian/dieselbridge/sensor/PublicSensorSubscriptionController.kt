@@ -60,7 +60,14 @@ data class PublicSensorSubscriptionSnapshot(
     val reason: String?,
     val leaseMs: Long,
     val expiresAtMs: Long,
+    /**
+     * Legacy Diesel v1 alias for subscriptionDroppedTotal.
+     *
+     * Before provider-ingress accounting existed, sourceDroppedTotal named
+     * this subscription's own bounded-queue loss. Preserve that wire meaning.
+     */
     val sourceDroppedTotal: Long,
+    val providerDroppedTotal: Long,
     val subscriptionDroppedTotal: Long,
     val transportDroppedTotal: Long,
 )
@@ -118,7 +125,7 @@ class PublicSensorSubscriptionController(
         val leaseMs: Long,
         val expiresAtMs: Long,
         var state: SensorSubscriptionState,
-        var sourceDroppedTotal: Long = 0L,
+        var providerDroppedTotal: Long = 0L,
         var subscriptionDroppedTotal: Long = 0L,
         var transportDroppedTotal: Long = 0L,
         var stateJob: Job? = null,
@@ -359,7 +366,7 @@ class PublicSensorSubscriptionController(
                                 record.subscription.id
                             ]
                                 ?.apply {
-                                    sourceDroppedTotal =
+                                    providerDroppedTotal =
                                         sample.sourceDroppedTotal
                                     subscriptionDroppedTotal =
                                         sample.droppedTotal
@@ -572,8 +579,14 @@ class PublicSensorSubscriptionController(
                 record.leaseMs,
             expiresAtMs =
                 record.expiresAtMs,
+            /*
+             * sourceDroppedTotal is frozen as the Diesel v1 compatibility
+             * alias for this subscription's queue loss.
+             */
             sourceDroppedTotal =
-                record.sourceDroppedTotal,
+                record.subscriptionDroppedTotal,
+            providerDroppedTotal =
+                record.providerDroppedTotal,
             subscriptionDroppedTotal =
                 record.subscriptionDroppedTotal,
             transportDroppedTotal =
@@ -649,7 +662,16 @@ class PublicSensorSubscriptionController(
                         ::encodeFloat,
                     ),
                 ),
+            /*
+             * Diesel v1 compatibility:
+             * sourceDroppedTotal and droppedTotal retain their original
+             * meanings. New counters are additive fields.
+             */
             "sourceDroppedTotal" to
+                DieselValue.Integer(
+                    sample.droppedTotal,
+                ),
+            "providerDroppedTotal" to
                 DieselValue.Integer(
                     sample.sourceDroppedTotal,
                 ),
@@ -662,6 +684,11 @@ class PublicSensorSubscriptionController(
                     transportDroppedTotal,
                 ),
             "droppedTotal" to
+                DieselValue.Integer(
+                    sample.droppedTotal +
+                        transportDroppedTotal,
+                ),
+            "allDroppedTotal" to
                 DieselValue.Integer(
                     sample.sourceDroppedTotal +
                         sample.droppedTotal +

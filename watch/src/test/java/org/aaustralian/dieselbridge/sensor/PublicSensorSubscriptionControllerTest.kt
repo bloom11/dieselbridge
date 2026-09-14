@@ -423,7 +423,7 @@ class PublicSensorSubscriptionControllerTest {
         }
 
     @Test
-    fun providerSourceDropsAreReportedSeparately() =
+    fun providerDropsDoNotChangeLegacyDropFields() =
         runTest {
             val fixture =
                 fixture()
@@ -475,11 +475,25 @@ class PublicSensorSubscriptionControllerTest {
                                 .TOPIC_SENSOR_SAMPLE
                     }
 
+            /*
+             * Provider ingress loss is new and must not silently change the
+             * meaning of existing Diesel v1 fields.
+             */
+            assertEquals(
+                0L,
+                (
+                    event.data[
+                        "sourceDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+
             assertEquals(
                 3L,
                 (
                     event.data[
-                        "sourceDroppedTotal"
+                        "providerDroppedTotal"
                     ] as
                         DieselValue.Integer
                 ).value,
@@ -496,10 +510,20 @@ class PublicSensorSubscriptionControllerTest {
             )
 
             assertEquals(
-                3L,
+                0L,
                 (
                     event.data[
                         "droppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+
+            assertEquals(
+                3L,
+                (
+                    event.data[
+                        "allDroppedTotal"
                     ] as
                         DieselValue.Integer
                 ).value,
@@ -511,9 +535,15 @@ class PublicSensorSubscriptionControllerTest {
                     .single()
 
             assertEquals(
-                3L,
+                0L,
                 snapshot
                     .sourceDroppedTotal,
+            )
+
+            assertEquals(
+                3L,
+                snapshot
+                    .providerDroppedTotal,
             )
 
             assertEquals(
@@ -620,6 +650,30 @@ class PublicSensorSubscriptionControllerTest {
                     .snapshots()
                     .single()
                     .transportDroppedTotal,
+            )
+
+            assertEquals(
+                1L,
+                (
+                    sampleEvents
+                        .last()
+                        .data[
+                            "droppedTotal"
+                        ] as
+                        DieselValue.Integer
+                ).value,
+            )
+
+            assertEquals(
+                1L,
+                (
+                    sampleEvents
+                        .last()
+                        .data[
+                            "allDroppedTotal"
+                        ] as
+                        DieselValue.Integer
+                ).value,
             )
         }
 

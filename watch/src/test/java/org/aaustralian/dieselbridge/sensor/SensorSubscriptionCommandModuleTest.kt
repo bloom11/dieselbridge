@@ -582,7 +582,52 @@ class SensorSubscriptionCommandModuleTest {
                 0L,
                 (
                     entry.value[
+                        "sourceDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+            assertEquals(
+                0L,
+                (
+                    entry.value[
+                        "providerDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+            assertEquals(
+                0L,
+                (
+                    entry.value[
+                        "subscriptionDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+            assertEquals(
+                0L,
+                (
+                    entry.value[
+                        "transportDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+            assertEquals(
+                0L,
+                (
+                    entry.value[
                         "droppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+            assertEquals(
+                0L,
+                (
+                    entry.value[
+                        "allDroppedTotal"
                     ] as
                         DieselValue.Integer
                 ).value,

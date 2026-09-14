@@ -405,10 +405,19 @@ class SensorSubscriptionCommandModule(
                                 nowMs,
                         ),
                     ),
+                /*
+                 * Keep original Diesel v1 fields stable. Provider loss was
+                 * added later and therefore gets an additive explicit field.
+                 */
                 "sourceDroppedTotal" to
                     DieselValue.Integer(
                         snapshot
                             .sourceDroppedTotal,
+                    ),
+                "providerDroppedTotal" to
+                    DieselValue.Integer(
+                        snapshot
+                            .providerDroppedTotal,
                     ),
                 "subscriptionDroppedTotal" to
                     DieselValue.Integer(
@@ -423,7 +432,14 @@ class SensorSubscriptionCommandModule(
                 "droppedTotal" to
                     DieselValue.Integer(
                         snapshot
-                            .sourceDroppedTotal +
+                            .subscriptionDroppedTotal +
+                            snapshot
+                                .transportDroppedTotal,
+                    ),
+                "allDroppedTotal" to
+                    DieselValue.Integer(
+                        snapshot
+                            .providerDroppedTotal +
                             snapshot
                                 .subscriptionDroppedTotal +
                             snapshot
