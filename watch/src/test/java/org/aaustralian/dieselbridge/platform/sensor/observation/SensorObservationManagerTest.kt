@@ -32,14 +32,14 @@ class SensorObservationManagerTest {
     ) : DieselProvider
 
     private class FakeObservationCapability(
-        private val logicalId: String,
+        private val testLogicalId: String,
         private val providerId: String,
     ) : SensorObservationCapability {
 
         override val capabilityId =
             SensorObservationCapabilityId
                 .forLogical(
-                    logicalId,
+                    testLogicalId,
                 )
 
         val requestedPeriods =
@@ -117,7 +117,7 @@ class SensorObservationManagerTest {
                         SensorReading(
                             capabilityId =
                                 SensorCapabilityId(
-                                    "sensor.$logicalId",
+                                    "sensor.$testLogicalId",
                                 ),
                             providerId =
                                 providerId,
