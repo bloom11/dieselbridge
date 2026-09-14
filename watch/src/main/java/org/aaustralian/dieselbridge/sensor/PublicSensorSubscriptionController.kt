@@ -421,47 +421,43 @@ class PublicSensorSubscriptionController(
         record: Record,
         sample: SensorSubscriptionSample,
     ) {
-        val transportDroppedBefore =
-            synchronized(lock) {
+        synchronized(lock) {
+            val active =
                 records[
                     record.subscription.id
                 ]
-                    ?.transportDroppedTotal
-                    ?: record
-                        .transportDroppedTotal
+
+            if (active !== record) {
+                return
             }
 
-        val event =
-            DieselEvent(
-                topic =
-                    TOPIC_SENSOR_SAMPLE,
-                data =
-                    encodeSample(
-                        subscriptionId =
-                            record.subscription.id,
-                        sample =
-                            sample,
-                        transportDroppedTotal =
-                            transportDroppedBefore,
-                    ),
-            )
+            val transportDroppedBefore =
+                active.transportDroppedTotal
 
-        if (
-            !eventTransport.send(
-                event,
-            )
-        ) {
-            synchronized(lock) {
-                val active =
-                    records[
-                        record.subscription.id
-                    ]
-
-                if (active != null) {
-                    active.transportDroppedTotal++
-                } else {
-                    record.transportDroppedTotal++
+            val accepted =
+                runCatching {
+                    eventTransport.send(
+                        DieselEvent(
+                            topic =
+                                TOPIC_SENSOR_SAMPLE,
+                            data =
+                                encodeSample(
+                                    subscriptionId =
+                                        record.subscription.id,
+                                    sample =
+                                        sample,
+                                    transportDroppedTotal =
+                                        transportDroppedBefore,
+                                ),
+                        ),
+                    )
                 }
+                    .getOrDefault(
+                        false,
+                    )
+
+            if (!accepted) {
+                active.transportDroppedTotal++
             }
         }
     }
@@ -470,46 +466,45 @@ class PublicSensorSubscriptionController(
         record: Record,
         state: SensorSubscriptionState,
     ) {
-        val transportDroppedBefore =
-            synchronized(lock) {
+        synchronized(lock) {
+            val active =
                 records[
                     record.subscription.id
                 ]
-                    ?.transportDroppedTotal
-                    ?: record
-                        .transportDroppedTotal
+
+            if (active !== record) {
+                return
             }
 
-        if (
-            !eventTransport.send(
-                DieselEvent(
-                    topic =
-                        TOPIC_SENSOR_STATE,
-                    data =
-                        encodeState(
-                            state =
-                                state,
-                            leaseMs =
-                                record.leaseMs,
-                            expiresAtMs =
-                                record.expiresAtMs,
-                            transportDroppedTotal =
-                                transportDroppedBefore,
-                        ),
-                ),
-            )
-        ) {
-            synchronized(lock) {
-                val active =
-                    records[
-                        record.subscription.id
-                    ]
+            val transportDroppedBefore =
+                active.transportDroppedTotal
 
-                if (active != null) {
-                    active.transportDroppedTotal++
-                } else {
-                    record.transportDroppedTotal++
+            val accepted =
+                runCatching {
+                    eventTransport.send(
+                        DieselEvent(
+                            topic =
+                                TOPIC_SENSOR_STATE,
+                            data =
+                                encodeState(
+                                    state =
+                                        state,
+                                    leaseMs =
+                                        record.leaseMs,
+                                    expiresAtMs =
+                                        record.expiresAtMs,
+                                    transportDroppedTotal =
+                                        transportDroppedBefore,
+                                ),
+                        ),
+                    )
                 }
+                    .getOrDefault(
+                        false,
+                    )
+
+            if (!accepted) {
+                active.transportDroppedTotal++
             }
         }
     }
@@ -526,23 +521,25 @@ class PublicSensorSubscriptionController(
                     reason,
             )
 
-        eventTransport.send(
-            DieselEvent(
-                topic =
-                    TOPIC_SENSOR_STATE,
-                data =
-                    encodeState(
-                        state =
-                            finalState,
-                        leaseMs =
-                            record.leaseMs,
-                        expiresAtMs =
-                            record.expiresAtMs,
-                        transportDroppedTotal =
-                            record.transportDroppedTotal,
-                    ),
-            ),
-        )
+        runCatching {
+            eventTransport.send(
+                DieselEvent(
+                    topic =
+                        TOPIC_SENSOR_STATE,
+                    data =
+                        encodeState(
+                            state =
+                                finalState,
+                            leaseMs =
+                                record.leaseMs,
+                            expiresAtMs =
+                                record.expiresAtMs,
+                            transportDroppedTotal =
+                                record.transportDroppedTotal,
+                        ),
+                ),
+            )
+        }
     }
 
     private fun snapshotOf(
@@ -714,9 +711,13 @@ class PublicSensorSubscriptionController(
                 DieselValue.Integer(
                     leaseMs,
                 ),
-            "expiresAtMs" to
+            "expiresInMs" to
                 DieselValue.Integer(
-                    expiresAtMs,
+                    kotlin.math.max(
+                        0L,
+                        expiresAtMs -
+                            monotonicMs(),
+                    ),
                 ),
             "transportDroppedTotal" to
                 DieselValue.Integer(

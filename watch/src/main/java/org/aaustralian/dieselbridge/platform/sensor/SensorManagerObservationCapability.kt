@@ -126,29 +126,39 @@ internal class SensorManagerObservationCapability(
                     override fun onSensorChanged(
                         event: SensorEvent,
                     ) {
-                        trySend(
-                            SensorObservationUpdate
-                                .Sample(
-                                    SensorReading(
-                                        capabilityId =
-                                            SensorCapabilityId(
-                                                "sensor.$logicalIdValue",
-                                            ),
-                                        providerId =
-                                            SensorManagerRouteCatalog
-                                                .PROVIDER_ID,
-                                        values =
-                                            event.values
-                                                .toList(),
-                                        timestampNanos =
-                                            event.timestamp,
-                                        accuracy =
-                                            event.accuracy,
-                                        elapsedMs =
-                                            0L,
+                        val admitted =
+                            trySend(
+                                SensorObservationUpdate
+                                    .Sample(
+                                        SensorReading(
+                                            capabilityId =
+                                                SensorCapabilityId(
+                                                    "sensor.$logicalIdValue",
+                                                ),
+                                            providerId =
+                                                SensorManagerRouteCatalog
+                                                    .PROVIDER_ID,
+                                            values =
+                                                event.values
+                                                    .toList(),
+                                            timestampNanos =
+                                                event.timestamp,
+                                            accuracy =
+                                                event.accuracy,
+                                            elapsedMs =
+                                                0L,
+                                        ),
                                     ),
-                                ),
-                        )
+                            )
+
+                        if (
+                            admitted.isFailure &&
+                            !admitted.isClosed
+                        ) {
+                            close(
+                                SensorObservationIngressOverflowException(),
+                            )
+                        }
                     }
 
                     override fun onAccuracyChanged(
@@ -204,20 +214,16 @@ internal class SensorManagerObservationCapability(
                 return@callbackFlow
             }
 
+            /*
+             * SensorManager samplingPeriodUs is a request, not an observed
+             * guarantee. Leave provider effective cadence unknown until it is
+             * actually measured or reported by a provider.
+             */
             trySend(
                 SensorObservationUpdate
                     .Started(
                         effectiveSamplePeriodMs =
-                            if (
-                                handle.sensor
-                                    .reportingMode ==
-                                Sensor.REPORTING_MODE_CONTINUOUS
-                            ) {
-                                options
-                                    .preferredSamplePeriodMs
-                            } else {
-                                null
-                            },
+                            null,
                     ),
             )
 
@@ -298,3 +304,9 @@ internal fun selectSensorManagerObservationRoute(
                 },
         )
         .firstOrNull()
+
+
+private class SensorObservationIngressOverflowException :
+    IllegalStateException(
+        "sensor observation provider ingress overflow",
+    )

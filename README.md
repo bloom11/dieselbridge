@@ -770,6 +770,54 @@ total timeout        1000..30000 ms
 Experiments are serialized so two sensor experiments do not activate hardware concurrently through
 this runner.
 
+## Bounded logical sensor subscriptions
+
+The current branch also implements a bounded public event-subscription surface:
+
+```text
+sensor.subscribe
+sensor.unsubscribe
+sensor.subscriptions
+```
+
+Subscriptions accept only the eight canonical logical sensor names. Public callers cannot choose a
+provider or exact `routeId`.
+
+Current public bounds are:
+
+```text
+maximum active remote subscriptions   4
+periodMs                              250..60000, default 1000
+leaseMs                               5000..300000, default 60000
+buffer policy                         latest only
+```
+
+Each subscription has a finite lease and is closed on explicit unsubscribe, lease expiry, BLE
+session loss, Bluetooth transport stop, or service shutdown. Multiple consumers of the same logical
+sensor share the process-local observation runtime; provider selection and acquisition cadence remain
+platform responsibilities rather than protocol responsibilities.
+
+Unsolicited sensor events use a distinct Diesel event envelope rather than pretending to be command
+responses. Current event topics are:
+
+```text
+sensor.sample
+sensor.subscription.state
+```
+
+Sample events expose logical capability identity, diagnostic provider identity, bounded values,
+sequence, and source/transport drop counters. State events expose lifecycle/provider/cadence state
+and relative lease time. Watch-local monotonic timestamps are not exported as remotely meaningful
+expiry times.
+
+The SensorManager observation provider currently supplies the canonical logical catalogue where
+Android exposes a streamable SensorManager route. Health Services remains a bounded spot-read
+provider only; continuous Health Services heart-rate observation is a separate future milestone.
+
+This subscription path is currently **implemented and CI verified**. It is not yet current-head
+**hardware verified** until a CI-built APK from this code is exercised on the physical watch through
+the production Gadgetbridge transport.
+
 ---
 
 # Health Services
@@ -1122,6 +1170,10 @@ The project has tests covering major pieces of the Diesel platform, including:
 - sensor route catalogue;
 - bounded sensor sampler;
 - public sensor reads;
+- public bounded sensor subscription controller and commands;
+- Diesel event encoding and Gadgetbridge event transport;
+- shared sensor observation runtime;
+- SensorManager observation route selection;
 - Health Services provider seam;
 - developer export;
 - developer sensor probes;
@@ -1252,6 +1304,9 @@ The newer current branch additionally contains:
 - public `sensor.read`;
 - `sensor.matrix`;
 - `sensor.experiment`;
+- bounded `sensor.subscribe` / `sensor.unsubscribe` / `sensor.subscriptions`;
+- Diesel unsolicited event envelopes and bounded Gadgetbridge event transport;
+- shared logical sensor observation runtime with SensorManager observation capabilities;
 - automatic SensorManager provider selection;
 - Health Services heart-rate provider;
 - Health Services priority/fallback integration;
@@ -1278,7 +1333,7 @@ Not currently implemented as finished platform features:
 - Mobvoi/private sensor provider;
 - stable public vendor/private sensor semantics;
 - Espruino/Bangle runtime hosted by DieselBridge;
-- bounded sensor event subscriptions / streaming API;
+- Health Services continuous/passive sensor subscriptions;
 - plugin SDK/module packages;
 - Wi-Fi Diesel transport;
 - secondary ultra-low-power LCD reverse-engineered API for TicWatch Pro 5;

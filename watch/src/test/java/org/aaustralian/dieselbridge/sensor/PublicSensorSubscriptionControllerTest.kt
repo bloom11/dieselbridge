@@ -358,13 +358,21 @@ class PublicSensorSubscriptionControllerTest {
 
             runCurrent()
 
-            assertTrue(
+            val stateEvent =
                 transport.events
-                    .any {
+                    .first {
                         it.topic ==
                             PublicSensorSubscriptionController
                                 .TOPIC_SENSOR_STATE
-                    },
+                    }
+
+            assertTrue(
+                "expiresInMs" in
+                    stateEvent.data,
+            )
+            assertFalse(
+                "expiresAtMs" in
+                    stateEvent.data,
             )
 
             val sampleEvent =
@@ -507,6 +515,103 @@ class PublicSensorSubscriptionControllerTest {
                     .snapshots()
                     .single()
                     .transportDroppedTotal,
+            )
+        }
+
+
+    @Test
+    fun transportExceptionIsCountedAndCollectionContinues() =
+        runTest {
+            val fixture =
+                fixture()
+
+            var throwNextSample =
+                true
+
+            val transport =
+                CapturingTransport {
+                        event,
+                    ->
+                    if (
+                        event.topic ==
+                            PublicSensorSubscriptionController
+                                .TOPIC_SENSOR_SAMPLE &&
+                        throwNextSample
+                    ) {
+                        throwNextSample =
+                            false
+                        error(
+                            "synthetic transport failure",
+                        )
+                    }
+
+                    true
+                }
+
+            val controller =
+                PublicSensorSubscriptionController(
+                    client =
+                        fixture.manager
+                            .openClient(
+                                "public",
+                            ),
+                    eventTransport =
+                        transport,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            controller.subscribe(
+                "accelerometer",
+            )
+
+            runCurrent()
+
+            fixture.capability
+                .emitSample(
+                    1.0f,
+                )
+            runCurrent()
+
+            advanceTimeBy(
+                1_000L,
+            )
+
+            fixture.capability
+                .emitSample(
+                    2.0f,
+                )
+            runCurrent()
+
+            assertEquals(
+                1L,
+                controller
+                    .snapshots()
+                    .single()
+                    .transportDroppedTotal,
+            )
+
+            val lastSample =
+                transport.events
+                    .last {
+                        it.topic ==
+                            PublicSensorSubscriptionController
+                                .TOPIC_SENSOR_SAMPLE
+                    }
+
+            assertEquals(
+                1L,
+                (
+                    lastSample
+                        .data[
+                            "transportDroppedTotal"
+                        ] as
+                        DieselValue.Integer
+                ).value,
             )
         }
 
