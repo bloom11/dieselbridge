@@ -146,7 +146,7 @@ class SensorObservationManagerTest {
 
             val capability =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "heart_rate",
                     providerId =
                         "provider.hr",
@@ -289,7 +289,7 @@ class SensorObservationManagerTest {
 
             val low =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "heart_rate",
                     providerId =
                         "provider.low",
@@ -297,7 +297,7 @@ class SensorObservationManagerTest {
 
             val high =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "heart_rate",
                     providerId =
                         "provider.high",
@@ -492,7 +492,7 @@ class SensorObservationManagerTest {
 
             val capability =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "accelerometer",
                     providerId =
                         "provider.accel",
@@ -540,7 +540,7 @@ class SensorObservationManagerTest {
 
             val capability =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "accelerometer",
                     providerId =
                         "provider.accel",
@@ -673,7 +673,7 @@ class SensorObservationManagerTest {
 
             val heartRate =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "heart_rate",
                     providerId =
                         "provider.hr",
@@ -681,7 +681,7 @@ class SensorObservationManagerTest {
 
             val accelerometer =
                 FakeObservationCapability(
-                    logicalId =
+                    testLogicalId =
                         "accelerometer",
                     providerId =
                         "provider.accel",
