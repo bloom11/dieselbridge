@@ -57,6 +57,7 @@ data class PublicSensorSubscriptionSnapshot(
     val requestedPeriodMs: Long,
     val acquisitionPeriodMs: Long?,
     val providerEffectivePeriodMs: Long?,
+    val providerConfiguredPeriodMs: Long?,
     val reason: String?,
     val leaseMs: Long,
     val expiresAtMs: Long,
@@ -341,8 +342,14 @@ class PublicSensorSubscriptionController(
                             records[
                                 record.subscription.id
                             ]
-                                ?.state =
-                                state
+                                ?.apply {
+                                    this.state =
+                                        state
+                                    providerDroppedTotal =
+                                        state.sourceDroppedTotal
+                                    subscriptionDroppedTotal =
+                                        state.subscriptionDroppedTotal
+                                }
                         }
 
                         sendStateEvent(
@@ -417,6 +424,25 @@ class PublicSensorSubscriptionController(
         record.leaseJob?.cancel()
 
         record.subscription.close()
+
+        /*
+         * StateFlow is synchronous. Capture the final manager metrics after
+         * close even when the asynchronous collector had not processed its
+         * latest update yet.
+         */
+        val finalSubscriptionState =
+            record.subscription
+                .state
+                .value
+
+        record.state =
+            finalSubscriptionState
+        record.providerDroppedTotal =
+            finalSubscriptionState
+                .sourceDroppedTotal
+        record.subscriptionDroppedTotal =
+            finalSubscriptionState
+                .subscriptionDroppedTotal
 
         if (emitClosedState) {
             sendClosedStateEvent(
@@ -506,6 +532,8 @@ class PublicSensorSubscriptionController(
                                         record.leaseMs,
                                     expiresAtMs =
                                         record.expiresAtMs,
+                                    subscriptionDroppedTotal =
+                                        active.subscriptionDroppedTotal,
                                     transportDroppedTotal =
                                         transportDroppedBefore,
                                 ),
@@ -547,6 +575,8 @@ class PublicSensorSubscriptionController(
                                 record.leaseMs,
                             expiresAtMs =
                                 record.expiresAtMs,
+                            subscriptionDroppedTotal =
+                                record.subscriptionDroppedTotal,
                             transportDroppedTotal =
                                 record.transportDroppedTotal,
                         ),
@@ -573,6 +603,8 @@ class PublicSensorSubscriptionController(
                 record.state.acquisitionPeriodMs,
             providerEffectivePeriodMs =
                 record.state.providerEffectivePeriodMs,
+            providerConfiguredPeriodMs =
+                record.state.providerConfiguredPeriodMs,
             reason =
                 record.state.reason,
             leaseMs =
@@ -701,6 +733,7 @@ class PublicSensorSubscriptionController(
         state: SensorSubscriptionState,
         leaseMs: Long,
         expiresAtMs: Long,
+        subscriptionDroppedTotal: Long,
         transportDroppedTotal: Long,
     ): Map<String, DieselValue> =
         linkedMapOf(
@@ -739,6 +772,10 @@ class PublicSensorSubscriptionController(
                 nullableInteger(
                     state.providerEffectivePeriodMs,
                 ),
+            "providerConfiguredPeriodMs" to
+                nullableInteger(
+                    state.providerConfiguredPeriodMs,
+                ),
             "reason" to
                 (
                     state.reason
@@ -759,9 +796,36 @@ class PublicSensorSubscriptionController(
                             monotonicMs(),
                     ),
                 ),
+            /*
+             * State events use the same Diesel v1 compatibility semantics as
+             * sensor.sample and sensor.subscriptions.
+             */
+            "sourceDroppedTotal" to
+                DieselValue.Integer(
+                    subscriptionDroppedTotal,
+                ),
+            "providerDroppedTotal" to
+                DieselValue.Integer(
+                    state.sourceDroppedTotal,
+                ),
+            "subscriptionDroppedTotal" to
+                DieselValue.Integer(
+                    subscriptionDroppedTotal,
+                ),
             "transportDroppedTotal" to
                 DieselValue.Integer(
                     transportDroppedTotal,
+                ),
+            "droppedTotal" to
+                DieselValue.Integer(
+                    subscriptionDroppedTotal +
+                        transportDroppedTotal,
+                ),
+            "allDroppedTotal" to
+                DieselValue.Integer(
+                    state.sourceDroppedTotal +
+                        subscriptionDroppedTotal +
+                        transportDroppedTotal,
                 ),
         )
 

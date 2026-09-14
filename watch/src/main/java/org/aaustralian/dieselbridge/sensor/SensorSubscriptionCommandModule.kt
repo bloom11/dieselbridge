@@ -396,6 +396,11 @@ class SensorSubscriptionCommandModule(
                         snapshot
                             .providerEffectivePeriodMs,
                     ),
+                "providerConfiguredPeriodMs" to
+                    nullableInteger(
+                        snapshot
+                            .providerConfiguredPeriodMs,
+                    ),
                 "expiresInMs" to
                     DieselValue.Integer(
                         max(

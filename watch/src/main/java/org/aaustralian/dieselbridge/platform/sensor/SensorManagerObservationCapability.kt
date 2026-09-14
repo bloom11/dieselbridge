@@ -8,11 +8,12 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
-import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapability
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationOptions
@@ -21,9 +22,8 @@ import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservatio
 /**
  * Long-lived SensorManager-backed observation capability.
  *
- * Exact Android routes remain implementation detail. The capability accepts a
- * canonical logical sensor id and applies the same deterministic route
- * preference used by bounded logical reads.
+ * Public callers select only a logical sensor id. Route choice, physical
+ * cadence limits and callback buffering remain provider implementation detail.
  */
 internal class SensorManagerObservationCapability(
     context: Context,
@@ -51,8 +51,10 @@ internal class SensorManagerObservationCapability(
             val manager =
                 sensorManager
 
-            if (manager == null) {
-                trySend(
+            if (
+                manager == null
+            ) {
+                send(
                     SensorObservationUpdate
                         .Unavailable(
                             reason =
@@ -63,17 +65,27 @@ internal class SensorManagerObservationCapability(
                 return@callbackFlow
             }
 
+            val requestedPeriodUs =
+                sensorManagerRequestedPeriodUs(
+                    options
+                        .preferredSamplePeriodMs,
+                )
+
             val handle =
                 SensorManagerLogicalRouteSelector
-                    .select(
+                    .selectForObservation(
                         handles =
                             source.snapshot(),
                         logicalId =
                             logicalIdValue,
+                        requestedPeriodUs =
+                            requestedPeriodUs,
                     )
 
-            if (handle == null) {
-                trySend(
+            if (
+                handle == null
+            ) {
+                send(
                     SensorObservationUpdate
                         .Unavailable(
                             reason =
@@ -88,7 +100,7 @@ internal class SensorManagerObservationCapability(
                 handle.sensor.reportingMode ==
                 Sensor.REPORTING_MODE_ONE_SHOT
             ) {
-                trySend(
+                send(
                     SensorObservationUpdate
                         .Unavailable(
                             reason =
@@ -99,15 +111,33 @@ internal class SensorManagerObservationCapability(
                 return@callbackFlow
             }
 
+            val samplingPlan =
+                sensorManagerObservationSamplingPlan(
+                    preferredSamplePeriodMs =
+                        options
+                            .preferredSamplePeriodMs,
+                    minDelayUs =
+                        handle.route
+                            .inventory
+                            .minDelayUs,
+                )
+
+            val ingress =
+                SensorManagerObservationIngress<
+                    SensorReading
+                >(
+                    capacity =
+                        SOURCE_BUFFER_CAPACITY,
+                )
+
             /*
-             * Provider-ingress loss is independent from each consumer's
-             * bounded queue. The callback must never block and must not force
-             * SensorManager re-registration merely because downstream was
-             * briefly slower than the hardware.
+             * The signal channel is conflated. SensorManager callbacks never
+             * block waiting for coroutine processing and cannot accumulate an
+             * unbounded number of wake-up tokens.
              */
-            val sourceDroppedTotal =
-                AtomicLong(
-                    0L,
+            val wakeSignal =
+                Channel<Unit>(
+                    Channel.CONFLATED,
                 )
 
             val listener =
@@ -117,49 +147,31 @@ internal class SensorManagerObservationCapability(
                     override fun onSensorChanged(
                         event: SensorEvent,
                     ) {
-                        val update =
-                            SensorObservationUpdate
-                                .Sample(
-                                    reading =
-                                        SensorReading(
-                                            capabilityId =
-                                                SensorCapabilityId(
-                                                    "sensor.$logicalIdValue",
-                                                ),
-                                            providerId =
-                                                SensorManagerRouteCatalog
-                                                    .PROVIDER_ID,
-                                            values =
-                                                event.values
-                                                    .toList(),
-                                            timestampNanos =
-                                                event.timestamp,
-                                            accuracy =
-                                                event.accuracy,
-                                            elapsedMs =
-                                                0L,
-                                        ),
-                                    sourceDroppedTotal =
-                                        sourceDroppedTotal
-                                            .get(),
-                                )
+                        ingress.offer(
+                            SensorReading(
+                                capabilityId =
+                                    SensorCapabilityId(
+                                        "sensor.$logicalIdValue",
+                                    ),
+                                providerId =
+                                    SensorManagerRouteCatalog
+                                        .PROVIDER_ID,
+                                values =
+                                    event.values
+                                        .toList(),
+                                timestampNanos =
+                                    event.timestamp,
+                                accuracy =
+                                    event.accuracy,
+                                elapsedMs =
+                                    0L,
+                            ),
+                        )
 
-                        val admitted =
-                            trySend(
-                                update,
+                        wakeSignal
+                            .trySend(
+                                Unit,
                             )
-
-                        if (
-                            admitted.isFailure &&
-                            !admitted.isClosed
-                        ) {
-                            /*
-                             * Drop this sample. The next successfully admitted
-                             * sample carries the updated monotonic counter.
-                             */
-                            sourceDroppedTotal
-                                .incrementAndGet()
-                        }
                     }
 
                     override fun onAccuracyChanged(
@@ -170,29 +182,19 @@ internal class SensorManagerObservationCapability(
                     }
                 }
 
-            val samplePeriodUs =
-                options
-                    .preferredSamplePeriodMs
-                    .coerceAtMost(
-                        MAX_PERIOD_MS_FOR_INT_US,
-                    )
-                    .times(
-                        1_000L,
-                    )
-                    .toInt()
-
             val registered =
                 try {
                     manager.registerListener(
                         listener,
                         handle.sensor,
-                        samplePeriodUs,
+                        samplingPlan
+                            .registrationPeriodUs,
                         callbackHandler,
                     )
                 } catch (
                     error: SecurityException,
                 ) {
-                    trySend(
+                    send(
                         SensorObservationUpdate
                             .PermissionDenied(
                                 requiredPermission =
@@ -201,10 +203,24 @@ internal class SensorManagerObservationCapability(
                     )
                     close()
                     return@callbackFlow
+                } catch (
+                    error: IllegalArgumentException,
+                ) {
+                    send(
+                        SensorObservationUpdate
+                            .RegistrationRejected(
+                                reason =
+                                    REASON_INVALID_REGISTRATION,
+                            ),
+                    )
+                    close()
+                    return@callbackFlow
                 }
 
-            if (!registered) {
-                trySend(
+            if (
+                !registered
+            ) {
+                send(
                     SensorObservationUpdate
                         .RegistrationRejected(
                             reason =
@@ -216,28 +232,118 @@ internal class SensorManagerObservationCapability(
             }
 
             /*
-             * SensorManager samplingPeriodUs is a request, not an observed
-             * guarantee. Leave provider effective cadence unknown until it is
-             * actually measured or reported by a provider.
+             * SensorManager's period is a configured request. It is not an
+             * observed guarantee, so effectiveSamplePeriodMs remains unknown.
              */
-            trySend(
+            send(
                 SensorObservationUpdate
                     .Started(
                         effectiveSamplePeriodMs =
                             null,
+                        configuredSamplePeriodMs =
+                            samplingPlan
+                                .configuredPeriodMs,
                     ),
             )
 
+            var lastReportedSourceDrops =
+                0L
+
+            val drainJob =
+                launch {
+                    /*
+                     * A callback may race registration completion and queue a
+                     * sample before this coroutine starts.
+                     */
+                    wakeSignal
+                        .trySend(
+                            Unit,
+                        )
+
+                    for (
+                        ignored in
+                        wakeSignal
+                    ) {
+                        while (true) {
+                            /*
+                             * Drop telemetry is emitted independently from
+                             * samples. No later successfully-delivered sensor
+                             * event is required to expose an overload.
+                             */
+                            val currentDrops =
+                                ingress
+                                    .sourceDroppedTotal
+
+                            if (
+                                currentDrops !=
+                                lastReportedSourceDrops
+                            ) {
+                                send(
+                                    SensorObservationUpdate
+                                        .SourceDrops(
+                                            currentDrops,
+                                        ),
+                                )
+
+                                lastReportedSourceDrops =
+                                    currentDrops
+                            }
+
+                            val pending =
+                                ingress.poll()
+                                    ?: break
+
+                            if (
+                                pending
+                                    .sourceDroppedTotal !=
+                                lastReportedSourceDrops
+                            ) {
+                                send(
+                                    SensorObservationUpdate
+                                        .SourceDrops(
+                                            pending
+                                                .sourceDroppedTotal,
+                                        ),
+                                )
+
+                                lastReportedSourceDrops =
+                                    pending
+                                        .sourceDroppedTotal
+                            }
+
+                            send(
+                                SensorObservationUpdate
+                                    .Sample(
+                                        reading =
+                                            pending.value,
+                                        sourceDroppedTotal =
+                                            pending
+                                                .sourceDroppedTotal,
+                                    ),
+                            )
+                        }
+                    }
+                }
+
             awaitClose {
-                manager.unregisterListener(
-                    listener,
-                    handle.sensor,
-                )
+                runCatching {
+                    manager.unregisterListener(
+                        listener,
+                        handle.sensor,
+                    )
+                }
+
+                wakeSignal.close()
+                drainJob.cancel()
             }
         }
+            /*
+             * The explicit SensorManagerObservationIngress is the only sample
+             * backlog. Do not add a second hidden Flow buffer here.
+             */
             .buffer(
                 capacity =
-                    SOURCE_BUFFER_CAPACITY,
+                    0,
             )
 
     private companion object {
@@ -253,14 +359,9 @@ internal class SensorManagerObservationCapability(
         const val REASON_REGISTRATION_REJECTED =
             "sensor_registration_rejected"
 
-        const val MAX_PERIOD_MS_FOR_INT_US =
-            Int.MAX_VALUE /
-                1_000L
+        const val REASON_INVALID_REGISTRATION =
+            "sensor_registration_invalid_argument"
 
-        /*
-         * Explicit provider-ingress bound. This is separate from each
-         * SensorSubscription's own queue capacity.
-         */
         const val SOURCE_BUFFER_CAPACITY =
             64
     }

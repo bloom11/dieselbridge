@@ -10,59 +10,49 @@ import org.junit.Test
 class SensorManagerObservationCapabilityTest {
 
     @Test
-    fun routePreferenceMatchesLogicalReadOrdering() {
+    fun spotReadPreferenceRemainsNonWakeThenLowPower() {
         val selected =
             SensorManagerLogicalRouteSelector
                 .selectRoute(
-                routes =
-                    listOf(
-                        route(
-                            routeId =
-                                "route-c",
-                            logicalId =
-                                "accelerometer",
-                            wakeUp =
-                                true,
-                            power =
-                                0.1f,
+                    routes =
+                        listOf(
+                            route(
+                                routeId =
+                                    "wake",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.01f,
+                            ),
+                            route(
+                                routeId =
+                                    "nonwake-high",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    false,
+                                power =
+                                    0.4f,
+                            ),
+                            route(
+                                routeId =
+                                    "nonwake-low",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    false,
+                                power =
+                                    0.2f,
+                            ),
                         ),
-                        route(
-                            routeId =
-                                "route-b",
-                            logicalId =
-                                "accelerometer",
-                            wakeUp =
-                                false,
-                            power =
-                                0.4f,
-                        ),
-                        route(
-                            routeId =
-                                "route-z",
-                            logicalId =
-                                "accelerometer",
-                            wakeUp =
-                                false,
-                            power =
-                                0.2f,
-                        ),
-                        route(
-                            routeId =
-                                "route-a",
-                            logicalId =
-                                "accelerometer",
-                            wakeUp =
-                                false,
-                            power =
-                                0.2f,
-                        ),
-                    ),
-                logicalId =
-                    "accelerometer",
-            )
+                    logicalId =
+                        "accelerometer",
+                )
 
         assertEquals(
-            "route-a",
+            "nonwake-low",
             selected
                 ?.descriptor
                 ?.routeId
@@ -71,29 +61,256 @@ class SensorManagerObservationCapabilityTest {
     }
 
     @Test
-    fun routePreferenceDoesNotCrossLogicalTargets() {
+    fun observationRejectsOneShotAndPrefersWakeUpRoute() {
         val selected =
             SensorManagerLogicalRouteSelector
-                .selectRoute(
-                routes =
-                    listOf(
-                        route(
-                            routeId =
-                                "route-a",
-                            logicalId =
-                                "pressure",
-                            wakeUp =
-                                false,
-                            power =
-                                0.1f,
+                .selectRouteForObservation(
+                    routes =
+                        listOf(
+                            route(
+                                routeId =
+                                    "one-shot",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.01f,
+                                reportingMode =
+                                    Sensor.REPORTING_MODE_ONE_SHOT,
+                            ),
+                            route(
+                                routeId =
+                                    "continuous-nonwake",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    false,
+                                power =
+                                    0.05f,
+                            ),
+                            route(
+                                routeId =
+                                    "continuous-wake",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.2f,
+                            ),
                         ),
-                    ),
-                logicalId =
-                    "accelerometer",
-            )
+                    logicalId =
+                        "accelerometer",
+                    requestedPeriodUs =
+                        100_000,
+                )
+
+        assertEquals(
+            "continuous-wake",
+            selected
+                ?.descriptor
+                ?.routeId
+                ?.value,
+        )
+    }
+
+    @Test
+    fun observationPrefersCadenceCapableRouteBeforePower() {
+        val selected =
+            SensorManagerLogicalRouteSelector
+                .selectRouteForObservation(
+                    routes =
+                        listOf(
+                            route(
+                                routeId =
+                                    "too-slow",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.01f,
+                                minDelayUs =
+                                    500_000,
+                            ),
+                            route(
+                                routeId =
+                                    "fast-enough",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.5f,
+                                minDelayUs =
+                                    50_000,
+                            ),
+                        ),
+                    logicalId =
+                        "accelerometer",
+                    requestedPeriodUs =
+                        100_000,
+                )
+
+        assertEquals(
+            "fast-enough",
+            selected
+                ?.descriptor
+                ?.routeId
+                ?.value,
+        )
+    }
+
+    @Test
+    fun observationChoosesClosestCadenceWhenEveryRouteIsTooSlow() {
+        val selected =
+            SensorManagerLogicalRouteSelector
+                .selectRouteForObservation(
+                    routes =
+                        listOf(
+                            route(
+                                routeId =
+                                    "very-slow-low-power",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.01f,
+                                minDelayUs =
+                                    500_000,
+                            ),
+                            route(
+                                routeId =
+                                    "closest",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.5f,
+                                minDelayUs =
+                                    50_000,
+                            ),
+                            route(
+                                routeId =
+                                    "middle",
+                                logicalId =
+                                    "accelerometer",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.1f,
+                                minDelayUs =
+                                    100_000,
+                            ),
+                        ),
+                    logicalId =
+                        "accelerometer",
+                    requestedPeriodUs =
+                        20_000,
+                )
+
+        assertEquals(
+            "closest",
+            selected
+                ?.descriptor
+                ?.routeId
+                ?.value,
+        )
+    }
+
+    @Test
+    fun observationDoesNotCrossLogicalTargets() {
+        val selected =
+            SensorManagerLogicalRouteSelector
+                .selectRouteForObservation(
+                    routes =
+                        listOf(
+                            route(
+                                routeId =
+                                    "pressure",
+                                logicalId =
+                                    "pressure",
+                                wakeUp =
+                                    true,
+                                power =
+                                    0.1f,
+                            ),
+                        ),
+                    logicalId =
+                        "accelerometer",
+                    requestedPeriodUs =
+                        100_000,
+                )
 
         assertNull(
             selected,
+        )
+    }
+
+    @Test
+    fun samplingPlanHonorsPhysicalMinimumDelay() {
+        val plan =
+            sensorManagerObservationSamplingPlan(
+                preferredSamplePeriodMs =
+                    20L,
+                minDelayUs =
+                    50_000,
+            )
+
+        assertEquals(
+            20_000,
+            plan.requestedPeriodUs,
+        )
+
+        assertEquals(
+            50_000,
+            plan.registrationPeriodUs,
+        )
+
+        assertEquals(
+            50L,
+            plan.configuredPeriodMs,
+        )
+    }
+
+    @Test
+    fun samplingPlanLeavesSlowerLogicalRequestUnchanged() {
+        val plan =
+            sensorManagerObservationSamplingPlan(
+                preferredSamplePeriodMs =
+                    1_000L,
+                minDelayUs =
+                    50_000,
+            )
+
+        assertEquals(
+            1_000_000,
+            plan.registrationPeriodUs,
+        )
+
+        assertEquals(
+            1_000L,
+            plan.configuredPeriodMs,
+        )
+    }
+
+    @Test
+    fun requestedPeriodConversionStaysInsideSensorManagerIntDomain() {
+        val periodUs =
+            sensorManagerRequestedPeriodUs(
+                Long.MAX_VALUE,
+            )
+
+        assertEquals(
+            (
+                Int.MAX_VALUE /
+                    1_000
+            ) *
+                1_000,
+            periodUs,
         )
     }
 
@@ -102,6 +319,9 @@ class SensorManagerObservationCapabilityTest {
         logicalId: String,
         wakeUp: Boolean,
         power: Float,
+        minDelayUs: Int = 1,
+        reportingMode: Int =
+            Sensor.REPORTING_MODE_CONTINUOUS,
     ): AndroidSensorRoute =
         AndroidSensorRoute(
             descriptor =
@@ -141,15 +361,15 @@ class SensorManagerObservationCapabilityTest {
                     powerMilliAmps =
                         power,
                     minDelayUs =
-                        1,
+                        minDelayUs,
                     maxDelayUs =
-                        1,
+                        1_000_000,
                     fifoReservedEventCount =
                         0,
                     fifoMaxEventCount =
                         0,
                     reportingMode =
-                        Sensor.REPORTING_MODE_CONTINUOUS,
+                        reportingMode,
                     wakeUp =
                         wakeUp,
                 ),

@@ -78,7 +78,16 @@ data class SensorObservationOptions(
 sealed interface SensorObservationUpdate {
 
     data class Started(
+        /**
+         * Actual/observed provider cadence when the provider can report it.
+         */
         val effectiveSamplePeriodMs: Long? = null,
+
+        /**
+         * Provider registration/request cadence after local hardware limits
+         * were applied. This is still a request, not an observed guarantee.
+         */
+        val configuredSamplePeriodMs: Long? = null,
     ) : SensorObservationUpdate
 
     data class Sample(
@@ -89,6 +98,22 @@ sealed interface SensorObservationUpdate {
          * samples dropped before they reached SensorObservationManager.
          */
         val sourceDroppedTotal: Long = 0L,
+    ) : SensorObservationUpdate {
+        init {
+            require(sourceDroppedTotal >= 0L) {
+                "sourceDroppedTotal must not be negative"
+            }
+        }
+    }
+
+    /**
+     * Provider ingress loss telemetry independent from sample delivery.
+     *
+     * This allows the manager to observe overload even when no later sample
+     * is successfully delivered.
+     */
+    data class SourceDrops(
+        val sourceDroppedTotal: Long,
     ) : SensorObservationUpdate {
         init {
             require(sourceDroppedTotal >= 0L) {

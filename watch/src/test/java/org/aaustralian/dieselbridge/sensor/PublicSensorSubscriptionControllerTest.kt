@@ -113,6 +113,18 @@ class PublicSensorSubscriptionControllerTest {
                     ),
             )
         }
+
+        suspend fun emitSourceDrops(
+            sourceDroppedTotal: Long,
+        ) {
+            updates.emit(
+                SensorObservationUpdate
+                    .SourceDrops(
+                        sourceDroppedTotal =
+                            sourceDroppedTotal,
+                    ),
+            )
+        }
     }
 
     private class CapturingTransport(
@@ -550,6 +562,85 @@ class PublicSensorSubscriptionControllerTest {
                 0L,
                 snapshot
                     .subscriptionDroppedTotal,
+            )
+        }
+
+    @Test
+    fun providerDropMetricReachesSnapshotWithoutSample() =
+        runTest {
+            val fixture =
+                fixture()
+
+            val transport =
+                CapturingTransport()
+
+            val controller =
+                PublicSensorSubscriptionController(
+                    client =
+                        fixture.manager
+                            .openClient(
+                                "public",
+                            ),
+                    eventTransport =
+                        transport,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            controller.subscribe(
+                logicalId =
+                    "accelerometer",
+                periodMs =
+                    500L,
+            )
+
+            runCurrent()
+
+            fixture.capability
+                .emitSourceDrops(
+                    5L,
+                )
+
+            runCurrent()
+
+            val snapshot =
+                controller
+                    .snapshots()
+                    .single()
+
+            assertEquals(
+                5L,
+                snapshot
+                    .providerDroppedTotal,
+            )
+
+            assertEquals(
+                0L,
+                snapshot
+                    .sourceDroppedTotal,
+            )
+
+            assertTrue(
+                transport.events
+                    .filter {
+                        it.topic ==
+                            PublicSensorSubscriptionController
+                                .TOPIC_SENSOR_STATE
+                    }
+                    .any {
+                        (
+                            it.data[
+                                "providerDroppedTotal"
+                            ] as?
+                                DieselValue.Integer
+                        )
+                            ?.value ==
+                            5L
+                    },
             )
         }
 

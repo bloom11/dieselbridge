@@ -479,6 +479,17 @@ class SensorObservationManager(
         managerJob.cancel()
     }
 
+    /**
+     * Final owner shutdown with completion semantics.
+     *
+     * Returning from this method guarantees that every runtime child has
+     * finished cancellation and provider-flow cleanup.
+     */
+    suspend fun closeAndJoin() {
+        close()
+        managerJob.join()
+    }
+
     private data class RuntimeState(
         val phase:
             SensorSubscriptionPhase =
@@ -493,6 +504,12 @@ class SensorObservationManager(
         val providerEffectivePeriodMs:
             Long? =
             null,
+        val providerConfiguredPeriodMs:
+            Long? =
+            null,
+        val sourceDroppedTotal:
+            Long =
+            0L,
         val reason:
             String? =
             null,
@@ -829,7 +846,16 @@ class SensorObservationManager(
                             providerEffectivePeriodMs =
                                 update
                                     .effectiveSamplePeriodMs,
+                            providerConfiguredPeriodMs =
+                                update
+                                    .configuredSamplePeriodMs,
                         ),
+                    )
+                }
+
+                is SensorObservationUpdate.SourceDrops -> {
+                    recordProviderSourceDroppedTotal(
+                        update.sourceDroppedTotal,
                     )
                 }
 
@@ -979,6 +1005,9 @@ class SensorObservationManager(
             lastProviderSourceDroppedTotal =
                 reportedTotal
 
+            val previousRuntimeTotal =
+                sourceDroppedTotal
+
             sourceDroppedTotal =
                 if (
                     Long.MAX_VALUE -
@@ -991,20 +1020,43 @@ class SensorObservationManager(
                         delta
                 }
 
+            if (
+                sourceDroppedTotal !=
+                previousRuntimeTotal
+            ) {
+                /*
+                 * Publish loss independently of sample delivery so snapshots
+                 * and terminal state do not require another sensor event.
+                 */
+                setState(
+                    currentState,
+                )
+            }
+
             return sourceDroppedTotal
         }
 
         private fun setState(
             state: RuntimeState,
         ) {
+            /*
+             * sourceDroppedTotal is runtime-monotonic across provider
+             * retries/failover. State transitions must never reset it.
+             */
+            val normalized =
+                state.copy(
+                    sourceDroppedTotal =
+                        sourceDroppedTotal,
+                )
+
             currentState =
-                state
+                normalized
 
             publishRuntimeState(
                 logicalId =
                     logicalId,
                 state =
-                    state,
+                    normalized,
             )
         }
     }
@@ -1073,6 +1125,15 @@ class SensorObservationManager(
         private var droppedTotal =
             0L
 
+        private fun publishSubscriptionDropsLocked() {
+            mutableState.value =
+                mutableState.value
+                    .copy(
+                        subscriptionDroppedTotal =
+                            droppedTotal,
+                    )
+        }
+
         /*
          * Runtime source accounting is shared by every consumer. Subtract the
          * value at subscription creation so this consumer sees only losses
@@ -1091,9 +1152,21 @@ class SensorObservationManager(
                 return
             }
 
+            /*
+             * Provider/runtime state and this consumer's queue accounting are
+             * independent. Runtime updates must not reset consumer drops.
+             */
+            val subscriptionDrops =
+                mutableState.value
+                    .subscriptionDroppedTotal
+
             mutableState.value =
                 runtimeState
                     .toSubscriptionState()
+                    .copy(
+                        subscriptionDroppedTotal =
+                            subscriptionDrops,
+                    )
         }
 
         fun resetDeliveryCadence() {
@@ -1186,6 +1259,7 @@ class SensorObservationManager(
                     removed != null
                 ) {
                     droppedTotal++
+                    publishSubscriptionDropsLocked()
                 }
 
                 if (
@@ -1203,6 +1277,7 @@ class SensorObservationManager(
                  * The current sample was not admitted, so account for it.
                  */
                 droppedTotal++
+                publishSubscriptionDropsLocked()
             }
         }
 
@@ -1236,6 +1311,8 @@ class SensorObservationManager(
                             null,
                         providerEffectivePeriodMs =
                             null,
+                        providerConfiguredPeriodMs =
+                            null,
                         reason =
                             null,
                     )
@@ -1263,6 +1340,16 @@ class SensorObservationManager(
                     providerEffectivePeriodMs,
                 reason =
                     reason,
+                providerConfiguredPeriodMs =
+                    providerConfiguredPeriodMs,
+                sourceDroppedTotal =
+                    (
+                        sourceDroppedTotal -
+                            sourceDroppedBaseline
+                    )
+                        .coerceAtLeast(
+                            0L,
+                        ),
             )
     }
 }

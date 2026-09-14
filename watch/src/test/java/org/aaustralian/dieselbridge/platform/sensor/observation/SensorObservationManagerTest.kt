@@ -140,6 +140,18 @@ class SensorObservationManagerTest {
                     ),
             )
         }
+
+        suspend fun emitSourceDrops(
+            sourceDroppedTotal: Long,
+        ) {
+            updates.emit(
+                SensorObservationUpdate
+                    .SourceDrops(
+                        sourceDroppedTotal =
+                            sourceDroppedTotal,
+                    ),
+            )
+        }
     }
 
     @Test
@@ -1061,6 +1073,224 @@ class SensorObservationManagerTest {
             runCurrent()
 
             manager.close()
+        }
+
+    @Test
+    fun sourceDropTelemetryUpdatesStateWithoutAnotherSample() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val capability =
+                FakeObservationCapability(
+                    testLogicalId =
+                        "accelerometer",
+                    providerId =
+                        "provider.accel",
+                )
+
+            registry.register(
+                capability =
+                    capability,
+                provider =
+                    FakeProvider(
+                        "provider.accel",
+                    ),
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            val client =
+                manager.openClient(
+                    "metrics",
+                )
+
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId =
+                            "accelerometer",
+                        periodMs =
+                            20L,
+                    ),
+                )
+
+            runCurrent()
+
+            capability.emitSourceDrops(
+                4L,
+            )
+            runCurrent()
+
+            assertEquals(
+                4L,
+                subscription
+                    .state
+                    .value
+                    .sourceDroppedTotal,
+            )
+
+            client.close()
+            runCurrent()
+
+            manager.closeAndJoin()
+        }
+
+    @Test
+    fun consumerQueueDropsUpdateStateWithoutLaterSample() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val capability =
+                FakeObservationCapability(
+                    testLogicalId =
+                        "accelerometer",
+                    providerId =
+                        "provider.accel",
+                )
+
+            registry.register(
+                capability =
+                    capability,
+                provider =
+                    FakeProvider(
+                        "provider.accel",
+                    ),
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            val client =
+                manager.openClient(
+                    "queue-metrics",
+                )
+
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId =
+                            "accelerometer",
+                        periodMs =
+                            20L,
+                        bufferPolicy =
+                            SensorBufferPolicy.Latest,
+                    ),
+                )
+
+            runCurrent()
+
+            capability.emitSample(
+                1f,
+            )
+            runCurrent()
+
+            advanceTimeBy(
+                20L,
+            )
+
+            capability.emitSample(
+                2f,
+            )
+            runCurrent()
+
+            assertEquals(
+                1L,
+                subscription
+                    .state
+                    .value
+                    .subscriptionDroppedTotal,
+            )
+
+            client.close()
+            runCurrent()
+
+            manager.closeAndJoin()
+        }
+
+    @Test
+    fun closeAndJoinWaitsForProviderCleanup() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val capability =
+                FakeObservationCapability(
+                    testLogicalId =
+                        "heart_rate",
+                    providerId =
+                        "provider.hr",
+                )
+
+            registry.register(
+                capability =
+                    capability,
+                provider =
+                    FakeProvider(
+                        "provider.hr",
+                    ),
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        backgroundScope,
+                )
+
+            val client =
+                manager.openClient(
+                    "shutdown",
+                )
+
+            client.subscribe(
+                SensorSubscriptionRequest(
+                    logicalId =
+                        "heart_rate",
+                    periodMs =
+                        100L,
+                ),
+            )
+
+            runCurrent()
+
+            assertEquals(
+                1,
+                capability.activeSessions,
+            )
+
+            manager.closeAndJoin()
+
+            assertEquals(
+                0,
+                capability.activeSessions,
+            )
+
+            assertTrue(
+                capability.cancellations >
+                    0,
+            )
         }
 
     @Test

@@ -85,6 +85,18 @@ class DieselBridgeService : Service() {
         )
 
     /*
+     * Dedicated processing scope for shared sensor observation.
+     *
+     * Android callbacks arrive on DieselSensorObservation. Provider
+     * collection, cadence handling, state publication and consumer fan-out
+     * execute here rather than on Main.
+     */
+    private val sensorObservationScope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Default,
+        )
+
+    /*
      * Dedicated execution scope for generic Diesel protocol commands.
      *
      * Commands are serialized by DieselProtocolExecutionLane. Using Default
@@ -227,7 +239,7 @@ class DieselBridgeService : Service() {
                 registry =
                     platform.capabilities,
                 scope =
-                    platformScope,
+                    sensorObservationScope,
             )
 
         sensorObservationManager =
@@ -411,19 +423,53 @@ class DieselBridgeService : Service() {
         controller?.shutdown()
         controller = null
 
-        sensorObservationManager
-            ?.close()
+        /*
+         * Detach service-visible references synchronously, then finish sensor
+         * teardown off Main.
+         *
+         * closeAndJoin() completes provider-flow cancellation first. For
+         * SensorManager that includes callbackFlow awaitClose and
+         * unregisterListener. Only after that do we retire the callback
+         * HandlerThread.
+         *
+         * The cleanup coroutine itself keeps sensorObservationScope alive
+         * until this ordering is complete.
+         */
+        val observationManagerToClose =
+            sensorObservationManager
+
         sensorObservationManager =
             null
 
-        /*
-         * Request cancellation of every active observation before retiring
-         * the dedicated SensorManager callback looper.
-         */
-        sensorObservationDispatcher
-            ?.close()
+        val observationDispatcherToClose =
+            sensorObservationDispatcher
+
         sensorObservationDispatcher =
             null
+
+        /*
+         * Request cancellation immediately on the service thread. This call
+         * is non-suspending; the asynchronous cleanup below only waits for
+         * provider-flow finalizers to finish before retiring the HandlerThread.
+         */
+        observationManagerToClose
+            ?.close()
+
+        sensorObservationScope.launch {
+            try {
+                observationManagerToClose
+                    ?.closeAndJoin()
+            } finally {
+                observationDispatcherToClose
+                    ?.close()
+
+                /*
+                 * Cancelling this owning scope last prevents any further
+                 * observation work after provider and callback cleanup.
+                 */
+                sensorObservationScope.cancel()
+            }
+        }
 
         /*
          * Cancel queued/in-flight Diesel commands before detaching shared

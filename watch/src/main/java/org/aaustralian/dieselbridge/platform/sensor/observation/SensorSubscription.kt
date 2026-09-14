@@ -81,6 +81,22 @@ data class SensorSubscriptionState(
     val acquisitionPeriodMs: Long?,
     val providerEffectivePeriodMs: Long?,
     val reason: String?,
+
+    /**
+     * Provider registration cadence after provider/hardware limits were
+     * applied. It is not an observed timing guarantee.
+     */
+    val providerConfiguredPeriodMs: Long? = null,
+
+    /**
+     * Provider-ingress losses observed during this subscription.
+     */
+    val sourceDroppedTotal: Long = 0L,
+
+    /**
+     * Losses in this subscription's own bounded consumer queue.
+     */
+    val subscriptionDroppedTotal: Long = 0L,
 )
 
 /**
