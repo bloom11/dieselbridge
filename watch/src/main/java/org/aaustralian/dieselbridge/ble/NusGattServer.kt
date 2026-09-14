@@ -12,6 +12,7 @@ import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -98,6 +99,10 @@ class NusGattServer(
      */
     fun sendLine(line: String): Boolean {
         val device = connected ?: run { Log.w(TAG, "sendLine: no central connected"); return false }
+        if (!notifyEnabled) {
+            Log.w(TAG, "sendLine: central has not enabled TX notifications")
+            return false
+        }
         // Terminate with CRLF, not LF: Gadgetbridge's line splitter does substring(0, p-1) on the
         // '\n' index, assuming a trailing '\r' — with only '\n' it would eat our closing brace.
         val payload = (line + "\r\n").toByteArray(Charsets.UTF_8)
@@ -124,17 +129,84 @@ class NusGattServer(
     }
 
     private fun sendChunk(device: BluetoothDevice, chunk: ByteArray) {
-        val gattServer = server ?: return
-        val characteristic = txChar ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gattServer.notifyCharacteristicChanged(device, characteristic, false, chunk)
-        } else {
-            @Suppress("DEPRECATION")
-            run {
-                characteristic.value = chunk
-                gattServer.notifyCharacteristicChanged(device, characteristic, false)
-            }
+        val gattServer = server
+        val characteristic = txChar
+
+        if (
+            gattServer == null ||
+            characteristic == null ||
+            !notifyEnabled
+        ) {
+            abortQueuedTx(
+                reason =
+                    "transport unavailable before notification",
+            )
+            return
         }
+
+        val triggered =
+            try {
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.TIRAMISU
+                ) {
+                    gattServer.notifyCharacteristicChanged(
+                        device,
+                        characteristic,
+                        false,
+                        chunk,
+                    ) ==
+                        BluetoothStatusCodes.SUCCESS
+                } else {
+                    @Suppress("DEPRECATION")
+                    run {
+                        characteristic.value =
+                            chunk
+                        gattServer.notifyCharacteristicChanged(
+                            device,
+                            characteristic,
+                            false,
+                        )
+                    }
+                }
+            } catch (
+                error: RuntimeException,
+            ) {
+                Log.w(
+                    TAG,
+                    "notifyCharacteristicChanged threw; aborting queued TX",
+                    error,
+                )
+                false
+            }
+
+        if (!triggered) {
+            abortQueuedTx(
+                reason =
+                    "notification was not triggered",
+            )
+        }
+    }
+
+    /**
+     * A failed NUS chunk makes the remainder of its CRLF-delimited line
+     * unusable. Clear the bounded queue rather than sending a suffix that
+     * Gadgetbridge could parse as a corrupted line. Future sendLine calls can
+     * enqueue fresh complete frames.
+     */
+    private fun abortQueuedTx(
+        reason: String,
+    ) {
+        synchronized(txLock) {
+            txQueue.clear()
+            txBusy =
+                false
+        }
+
+        Log.w(
+            TAG,
+            "TX aborted: $reason",
+        )
     }
 
     private val callback = object : BluetoothGattServerCallback() {
@@ -162,7 +234,21 @@ class NusGattServer(
         }
 
         override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-            synchronized(txLock) { txBusy = false }
+            if (
+                status !=
+                BluetoothGatt.GATT_SUCCESS
+            ) {
+                abortQueuedTx(
+                    reason =
+                        "notification callback failed with status=$status",
+                )
+                return
+            }
+
+            synchronized(txLock) {
+                txBusy =
+                    false
+            }
             pumpTx(device)
         }
 
