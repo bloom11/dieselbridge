@@ -52,6 +52,8 @@ import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
+import org.aaustralian.dieselbridge.platform.sensor.sensorManagerObservationCapabilities
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
 import org.aaustralian.dieselbridge.tile.MusicTileService
 import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
@@ -65,6 +67,9 @@ import org.aaustralian.dieselbridge.tile.PixelBridgeTileService
 class DieselBridgeService : Service() {
 
     private var controller: BlePeripheralController? = null
+
+    private var sensorObservationManager:
+        SensorObservationManager? = null
 
     /*
      * Lifecycle scope for Diesel platform routes/modules.
@@ -189,6 +194,33 @@ class DieselBridgeService : Service() {
             )
         }
 
+        sensorManagerObservationCapabilities(
+            context =
+                applicationContext,
+            source =
+                sensorSource,
+        ).forEach { capability ->
+            platform.capabilities.register(
+                capability =
+                    capability,
+                provider =
+                    sensorManagerProvider,
+                priority =
+                    10,
+            )
+        }
+
+        val observationManager =
+            SensorObservationManager(
+                registry =
+                    platform.capabilities,
+                scope =
+                    platformScope,
+            )
+
+        sensorObservationManager =
+            observationManager
+
         // Health Services is an optional higher-priority source. Register it as standby until
         // the watch reports support; the SensorManager provider remains the safe fallback.
         val healthServicesSource = AndroidHealthServicesSource(applicationContext)
@@ -266,6 +298,8 @@ class DieselBridgeService : Service() {
                     developerRemoteAccessPolicy,
                 developerExportRegistry =
                     developerExportRegistry,
+                sensorObservationManager =
+                    observationManager,
                 additionalCommandModules = listOf(
                     DeveloperSensorProbeCommandModule(
                         authorization = developerRemoteAccessPolicy,
@@ -358,6 +392,19 @@ class DieselBridgeService : Service() {
         tileScope.cancel()
 
         /*
+         * Close remote sensor subscriptions while the observation runtime and
+         * protocol scope are still alive. This releases provider listeners
+         * before either owning scope is cancelled.
+         */
+        controller?.shutdown()
+        controller = null
+
+        sensorObservationManager
+            ?.close()
+        sensorObservationManager =
+            null
+
+        /*
          * Cancel queued/in-flight Diesel commands before detaching shared
          * runtime state. Submissions into the cancelled scope cannot execute,
          * and suspended handlers are cancelled without emitting a stale
@@ -369,8 +416,6 @@ class DieselBridgeService : Service() {
         platformScope.cancel()
         runCatching { unregisterReceiver(bluetoothReceiver) }
         runCatching { unregisterReceiver(batteryReceiver) }
-        controller?.stop()
-        controller = null
         super.onDestroy()
     }
 

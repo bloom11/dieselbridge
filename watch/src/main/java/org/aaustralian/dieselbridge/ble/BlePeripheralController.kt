@@ -22,7 +22,10 @@ import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
+import org.aaustralian.dieselbridge.sensor.PublicSensorSubscriptionController
 import org.aaustralian.dieselbridge.sensor.SensorCommandModule
+import org.aaustralian.dieselbridge.sensor.SensorSubscriptionCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandResult
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
@@ -59,6 +62,8 @@ class BlePeripheralController(
         DeveloperRemoteAccessAuthorization,
     private val developerExportRegistry:
         DeveloperExportRegistry,
+    private val sensorObservationManager:
+        SensorObservationManager? = null,
     additionalCommandModules: List<DieselCommandModule> = emptyList(),
 ) {
     private var advertiser: NusAdvertiser? = null
@@ -75,6 +80,30 @@ class BlePeripheralController(
                     ?: false
             },
         )
+
+    private val dieselEventTransport =
+        GadgetbridgeDieselEventTransport(
+            sendLine = { line ->
+                gattServer
+                    ?.sendLine(line)
+                    ?: false
+            },
+        )
+
+    private val publicSensorSubscriptionController =
+        sensorObservationManager
+            ?.let { manager ->
+                PublicSensorSubscriptionController(
+                    client =
+                        manager.openClient(
+                            "diesel-protocol",
+                        ),
+                    eventTransport =
+                        dieselEventTransport,
+                    scope =
+                        protocolScope,
+                )
+            }
 
     private val dieselCommandRegistry =
         DieselCommandRegistry(
@@ -109,6 +138,16 @@ class BlePeripheralController(
                             capabilities,
                     ),
                 )
+
+                publicSensorSubscriptionController
+                    ?.let { controller ->
+                        install(
+                            SensorSubscriptionCommandModule(
+                                controller =
+                                    controller,
+                            ),
+                        )
+                    }
 
                 additionalCommandModules.forEach { install(it) }
             }
@@ -192,11 +231,30 @@ class BlePeripheralController(
     }
 
     fun stop() {
+        publicSensorSubscriptionController
+            ?.closeAll(
+                reason =
+                    "ble_transport_stopped",
+            )
+
         advertiser?.stop()
         gattServer?.close()
         advertiser = null
         gattServer = null
         running = false
+        lastCentralConnected =
+            false
+    }
+
+    /**
+     * Final owner shutdown. Unlike a temporary BLE stop, this also closes the
+     * public observation client so no subscription state can survive service
+     * destruction.
+     */
+    fun shutdown() {
+        stop()
+        publicSensorSubscriptionController
+            ?.close()
     }
 
     /**
@@ -774,14 +832,35 @@ class BlePeripheralController(
     private fun publishServerState() {
         val server = gattServer ?: return
         val device = server.connectedDevice
+        val connected =
+            device != null
+
+        if (
+            lastCentralConnected &&
+            !connected
+        ) {
+            publicSensorSubscriptionController
+                ?.closeAll(
+                    reason =
+                        "ble_disconnected",
+                )
+        }
+
+        lastCentralConnected =
+            connected
+
         ProbeStateHolder.update {
             it.copy(
-                centralConnected = device != null,
+                centralConnected = connected,
                 connectedDeviceName = device?.let { d -> runCatching { d.name }.getOrNull() ?: d.address },
                 notifySubscribed = server.isNotifyEnabled,
             )
         }
     }
+
+    @Volatile
+    private var lastCentralConnected =
+        false
 
     private companion object {
         const val TAG = "BleController"
