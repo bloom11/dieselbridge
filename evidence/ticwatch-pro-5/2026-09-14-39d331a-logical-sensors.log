@@ -1,0 +1,687 @@
+DieselBridge current-head hardware validation
+gitSha=39d331ad55df97c26b40d7182487b60471356891
+ciRun=34865421284
+timestampUtc=2026-09-14T16:53:04Z
+
+
+===== sensor.read accelerometer =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"accelerometer","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404784-7746-20113"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404784-7746-20113 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404784-7746-20113",
+  "cmd": "sensor.read",
+  "name": "accelerometer",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.accelerometer",
+    "providerId": "android.sensor_manager",
+    "accuracy": 3,
+    "sensorTimestampNs": 65414545469779,
+    "timeToEventMs": 204,
+    "valueCount": 3,
+    "returnedValueCount": 3,
+    "valuesTruncated": false,
+    "values": [
+      2.8582265377044678,
+      -2.2091734409332275,
+      9.160921096801758
+    ]
+  }
+}
+
+===== sensor.read gyroscope =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"gyroscope","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404786-7786-10181"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404786-7786-10181 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404786-7786-10181",
+  "cmd": "sensor.read",
+  "name": "gyroscope",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.gyroscope",
+    "providerId": "android.sensor_manager",
+    "accuracy": 0,
+    "sensorTimestampNs": 65416225225092,
+    "timeToEventMs": 165,
+    "valueCount": 3,
+    "returnedValueCount": 3,
+    "valuesTruncated": false,
+    "values": [
+      0.07162389904260635,
+      0.07834340631961823,
+      0.019242240116000175
+    ]
+  }
+}
+
+===== sensor.read magnetic_field =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"magnetic_field","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404788-7823-21159"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404788-7823-21159 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404788-7823-21159",
+  "cmd": "sensor.read",
+  "name": "magnetic_field",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.magnetic_field",
+    "providerId": "android.sensor_manager",
+    "accuracy": 3,
+    "sensorTimestampNs": 65418096088842,
+    "timeToEventMs": 518,
+    "valueCount": 3,
+    "returnedValueCount": 3,
+    "valuesTruncated": false,
+    "values": [
+      -78.7125015258789,
+      -8.21250057220459,
+      13.500000953674316
+    ]
+  }
+}
+
+===== sensor.read light =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"light","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404790-7858-21857"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404790-7858-21857 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404790-7858-21857",
+  "cmd": "sensor.read",
+  "name": "light",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.light",
+    "providerId": "android.sensor_manager",
+    "accuracy": 3,
+    "sensorTimestampNs": 65419968232279,
+    "timeToEventMs": 425,
+    "valueCount": 1,
+    "returnedValueCount": 1,
+    "valuesTruncated": false,
+    "values": [
+      19.8174991607666
+    ]
+  }
+}
+
+===== sensor.read pressure =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"pressure","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404791-7888-1660"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404791-7888-1660 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404791-7888-1660",
+  "cmd": "sensor.read",
+  "name": "pressure",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.pressure",
+    "providerId": "android.sensor_manager",
+    "accuracy": 3,
+    "sensorTimestampNs": 65421833100248,
+    "timeToEventMs": 553,
+    "valueCount": 1,
+    "returnedValueCount": 1,
+    "valuesTruncated": false,
+    "values": [
+      981.0137329101562
+    ]
+  }
+}
+
+===== sensor.read ambient_temperature =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"ambient_temperature","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404793-7924-14104"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404793-7924-14104 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404793-7924-14104",
+  "cmd": "sensor.read",
+  "name": "ambient_temperature",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.ambient_temperature",
+    "providerId": "android.sensor_manager",
+    "accuracy": 3,
+    "sensorTimestampNs": 65424306428269,
+    "timeToEventMs": 1145,
+    "valueCount": 1,
+    "returnedValueCount": 1,
+    "valuesTruncated": false,
+    "values": [
+      33.540000915527344
+    ]
+  }
+}
+
+===== sensor.read heart_rate =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404796-7960-32120"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404796-7960-32120 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404796-7960-32120",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+===== sensor.read step_counter =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"step_counter","args":{"timeoutMs":5000},"t":"diesel","v":1,"kind":"request","id":"termux-1789404804-8079-30639"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789404804-8079-30639 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789404804-8079-30639",
+  "cmd": "sensor.read",
+  "name": "step_counter",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.step_counter",
+    "providerId": "android.sensor_manager",
+    "accuracy": 3,
+    "sensorTimestampNs": 64110206698428,
+    "timeToEventMs": 4,
+    "valueCount": 1,
+    "returnedValueCount": 1,
+    "valuesTruncated": false,
+    "values": [
+      167
+    ]
+  }
+}
+
+===== Health Services heart-rate validation =====
+Expected provider: wear.health_services
+
+===== heart_rate attempt 1 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":10000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405008-8957-21633"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405008-8957-21633 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405008-8957-21633",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+===== heart_rate attempt 2 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":10000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405023-9093-4952"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405023-9093-4952 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405023-9093-4952",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+===== heart_rate attempt 3 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":10000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405035-9224-15836"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405035-9224-15836 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405035-9224-15836",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+
+===== sensor.matrix =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.matrix","t":"diesel","v":1,"kind":"request","id":"termux-1789405071-9498-24989","args":{}}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405071-9498-24989 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405071-9498-24989",
+  "cmd": "sensor.matrix",
+  "status": "ok",
+  "data": {
+    "results": [
+      {
+        "target": "accelerometer",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 215,
+        "capability": "sensor.accelerometer",
+        "accuracy": 3,
+        "sensorTimestampNs": 65700834775965,
+        "valueCount": 3,
+        "returnedValueCount": 3,
+        "valuesTruncated": false,
+        "values": [
+          4.7575297355651855,
+          1.7940187454223633,
+          8.801998138427734
+        ]
+      },
+      {
+        "target": "gyroscope",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 232,
+        "capability": "sensor.gyroscope",
+        "accuracy": 0,
+        "sensorTimestampNs": 65701110662267,
+        "valueCount": 3,
+        "returnedValueCount": 3,
+        "valuesTruncated": false,
+        "values": [
+          -2.3287692070007324,
+          -0.1879936307668686,
+          -0.3197877109050751
+        ]
+      },
+      {
+        "target": "magnetic_field",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 324,
+        "capability": "sensor.magnetic_field",
+        "accuracy": 3,
+        "sensorTimestampNs": 65701478078048,
+        "valueCount": 3,
+        "returnedValueCount": 3,
+        "valuesTruncated": false,
+        "values": [
+          -91.6500015258789,
+          -6.300000190734863,
+          26.812501907348633
+        ]
+      },
+      {
+        "target": "light",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 533,
+        "capability": "sensor.light",
+        "accuracy": 3,
+        "sensorTimestampNs": 65702135285444,
+        "valueCount": 1,
+        "returnedValueCount": 1,
+        "valuesTruncated": false,
+        "values": [
+          12.194999694824219
+        ]
+      },
+      {
+        "target": "pressure",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 219,
+        "capability": "sensor.pressure",
+        "accuracy": 3,
+        "sensorTimestampNs": 65702346528465,
+        "valueCount": 1,
+        "returnedValueCount": 1,
+        "valuesTruncated": false,
+        "values": [
+          980.9549560546875
+        ]
+      },
+      {
+        "target": "ambient_temperature",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 1135,
+        "capability": "sensor.ambient_temperature",
+        "accuracy": 3,
+        "sensorTimestampNs": 65703552583465,
+        "valueCount": 1,
+        "returnedValueCount": 1,
+        "valuesTruncated": false,
+        "values": [
+          33.540000915527344
+        ]
+      },
+      {
+        "target": "heart_rate",
+        "status": "ok",
+        "outcome": "timeout"
+      },
+      {
+        "target": "step_counter",
+        "status": "ok",
+        "outcome": "event",
+        "providerId": "android.sensor_manager",
+        "elapsedMs": 5,
+        "capability": "sensor.step_counter",
+        "accuracy": 3,
+        "sensorTimestampNs": 64110206698428,
+        "valueCount": 1,
+        "returnedValueCount": 1,
+        "valuesTruncated": false,
+        "values": [
+          167
+        ]
+      }
+    ]
+  }
+}
+
+===== Health Services successful-event attempt =====
+
+===== heart_rate verification attempt 1 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":15000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405490-10833-3097"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405490-10833-3097 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405490-10833-3097",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "event",
+    "capability": "sensor.heart_rate",
+    "providerId": "wear.health_services",
+    "accuracy": null,
+    "sensorTimestampNs": 66136037000000,
+    "timeToEventMs": 11292,
+    "valueCount": 1,
+    "returnedValueCount": 1,
+    "valuesTruncated": false,
+    "values": [
+      76
+    ]
+  }
+}
+
+===== heart_rate verification attempt 2 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":15000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405509-11136-11329"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405509-11136-11329 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405509-11136-11329",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+===== heart_rate verification attempt 3 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":15000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405528-11346-31337"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405528-11346-31337 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405528-11346-31337",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+===== heart_rate verification attempt 4 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":15000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405546-11728-14229"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405546-11728-14229 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405546-11728-14229",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
+
+===== heart_rate verification attempt 5 =====
+
+===== WATCH =====
+<WATCH_ADB_ENDPOINT>
+
+===== REQUEST =====
+{"cmd":"sensor.read","name":"heart_rate","args":{"timeoutMs":15000},"t":"diesel","v":1,"kind":"request","id":"termux-1789405565-12108-25012"}
+
+===== SEND THROUGH GADGETBRIDGE =====
+Broadcasting: Intent { act=com.banglejs.uart.tx (has extras) }
+Broadcast completed: result=0
+
+===== WAIT FOR RESPONSE id=termux-1789405565-12108-25012 =====
+
+===== RESPONSE =====
+{
+  "v": 1,
+  "kind": "response",
+  "id": "termux-1789405565-12108-25012",
+  "cmd": "sensor.read",
+  "name": "heart_rate",
+  "status": "ok",
+  "data": {
+    "outcome": "timeout"
+  }
+}
