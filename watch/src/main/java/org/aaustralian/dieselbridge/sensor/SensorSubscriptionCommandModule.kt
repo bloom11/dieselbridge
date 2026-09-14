@@ -410,6 +410,11 @@ class SensorSubscriptionCommandModule(
                         snapshot
                             .sourceDroppedTotal,
                     ),
+                "subscriptionDroppedTotal" to
+                    DieselValue.Integer(
+                        snapshot
+                            .subscriptionDroppedTotal,
+                    ),
                 "transportDroppedTotal" to
                     DieselValue.Integer(
                         snapshot
@@ -419,6 +424,8 @@ class SensorSubscriptionCommandModule(
                     DieselValue.Integer(
                         snapshot
                             .sourceDroppedTotal +
+                            snapshot
+                                .subscriptionDroppedTotal +
                             snapshot
                                 .transportDroppedTotal,
                     ),

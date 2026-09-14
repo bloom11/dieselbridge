@@ -61,6 +61,7 @@ data class PublicSensorSubscriptionSnapshot(
     val leaseMs: Long,
     val expiresAtMs: Long,
     val sourceDroppedTotal: Long,
+    val subscriptionDroppedTotal: Long,
     val transportDroppedTotal: Long,
 )
 
@@ -118,6 +119,7 @@ class PublicSensorSubscriptionController(
         val expiresAtMs: Long,
         var state: SensorSubscriptionState,
         var sourceDroppedTotal: Long = 0L,
+        var subscriptionDroppedTotal: Long = 0L,
         var transportDroppedTotal: Long = 0L,
         var stateJob: Job? = null,
         var sampleJob: Job? = null,
@@ -356,8 +358,12 @@ class PublicSensorSubscriptionController(
                             records[
                                 record.subscription.id
                             ]
-                                ?.sourceDroppedTotal =
-                                sample.droppedTotal
+                                ?.apply {
+                                    sourceDroppedTotal =
+                                        sample.sourceDroppedTotal
+                                    subscriptionDroppedTotal =
+                                        sample.droppedTotal
+                                }
                         }
 
                         sendSampleEvent(
@@ -568,6 +574,8 @@ class PublicSensorSubscriptionController(
                 record.expiresAtMs,
             sourceDroppedTotal =
                 record.sourceDroppedTotal,
+            subscriptionDroppedTotal =
+                record.subscriptionDroppedTotal,
             transportDroppedTotal =
                 record.transportDroppedTotal,
         )
@@ -643,6 +651,10 @@ class PublicSensorSubscriptionController(
                 ),
             "sourceDroppedTotal" to
                 DieselValue.Integer(
+                    sample.sourceDroppedTotal,
+                ),
+            "subscriptionDroppedTotal" to
+                DieselValue.Integer(
                     sample.droppedTotal,
                 ),
             "transportDroppedTotal" to
@@ -651,7 +663,8 @@ class PublicSensorSubscriptionController(
                 ),
             "droppedTotal" to
                 DieselValue.Integer(
-                    sample.droppedTotal +
+                    sample.sourceDroppedTotal +
+                        sample.droppedTotal +
                         transportDroppedTotal,
                 ),
         )

@@ -110,29 +110,33 @@ class SensorObservationManagerTest {
 
         suspend fun emitSample(
             value: Float,
+            sourceDroppedTotal: Long = 0L,
         ) {
             updates.emit(
                 SensorObservationUpdate
                     .Sample(
-                        SensorReading(
-                            capabilityId =
-                                SensorCapabilityId(
-                                    "sensor.$testLogicalId",
-                                ),
-                            providerId =
-                                providerId,
-                            values =
-                                listOf(
-                                    value,
-                                ),
-                            timestampNanos =
-                                value
-                                    .toLong(),
-                            accuracy =
-                                3,
-                            elapsedMs =
-                                0L,
-                        ),
+                        reading =
+                            SensorReading(
+                                capabilityId =
+                                    SensorCapabilityId(
+                                        "sensor.$testLogicalId",
+                                    ),
+                                providerId =
+                                    providerId,
+                                values =
+                                    listOf(
+                                        value,
+                                    ),
+                                timestampNanos =
+                                    value
+                                        .toLong(),
+                                accuracy =
+                                    3,
+                                elapsedMs =
+                                    0L,
+                            ),
+                        sourceDroppedTotal =
+                            sourceDroppedTotal,
                     ),
             )
         }
@@ -657,6 +661,400 @@ class SensorObservationManagerTest {
                 samples.map {
                     it.droppedTotal
                 },
+            )
+
+            client.close()
+            runCurrent()
+
+            manager.close()
+        }
+
+    @Test
+    fun providerAndConsumerDropsRemainIndependent() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val capability =
+                FakeObservationCapability(
+                    testLogicalId =
+                        "accelerometer",
+                    providerId =
+                        "provider.accel",
+                )
+
+            registry.register(
+                capability =
+                    capability,
+                provider =
+                    FakeProvider(
+                        "provider.accel",
+                    ),
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            val client =
+                manager.openClient(
+                    "drop-accounting",
+                )
+
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId =
+                            "accelerometer",
+                        periodMs =
+                            20L,
+                        bufferPolicy =
+                            SensorBufferPolicy
+                                .Latest,
+                    ),
+                )
+
+            runCurrent()
+
+            capability.emitSample(
+                value =
+                    1f,
+                sourceDroppedTotal =
+                    2L,
+            )
+            runCurrent()
+
+            advanceTimeBy(
+                20L,
+            )
+
+            /*
+             * Latest has capacity one, so this second delivered sample causes
+             * one consumer-queue drop while the provider reports four source
+             * drops independently.
+             */
+            capability.emitSample(
+                value =
+                    2f,
+                sourceDroppedTotal =
+                    4L,
+            )
+            runCurrent()
+
+            val receive =
+                async {
+                    subscription
+                        .samples
+                        .take(
+                            1,
+                        )
+                        .toList()
+                        .single()
+                }
+
+            runCurrent()
+
+            val sample =
+                receive.await()
+
+            assertEquals(
+                2f,
+                sample.reading
+                    .values
+                    .single(),
+            )
+
+            assertEquals(
+                1L,
+                sample.droppedTotal,
+            )
+
+            assertEquals(
+                4L,
+                sample.sourceDroppedTotal,
+            )
+
+            client.close()
+            runCurrent()
+
+            manager.close()
+        }
+
+    @Test
+    fun newSubscriberDoesNotInheritEarlierProviderDrops() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val capability =
+                FakeObservationCapability(
+                    testLogicalId =
+                        "accelerometer",
+                    providerId =
+                        "provider.accel",
+                )
+
+            registry.register(
+                capability =
+                    capability,
+                provider =
+                    FakeProvider(
+                        "provider.accel",
+                    ),
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            val firstClient =
+                manager.openClient(
+                    "first",
+                )
+
+            val first =
+                firstClient.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId =
+                            "accelerometer",
+                        periodMs =
+                            20L,
+                    ),
+                )
+
+            runCurrent()
+
+            capability.emitSample(
+                value =
+                    1f,
+                sourceDroppedTotal =
+                    5L,
+            )
+            runCurrent()
+
+            /*
+             * Drain the first sample so its Latest queue does not introduce
+             * consumer-queue loss into this source-drop-baseline test.
+             */
+            val firstInitial =
+                async {
+                    first.samples
+                        .take(
+                            1,
+                        )
+                        .toList()
+                        .single()
+                }
+
+            runCurrent()
+
+            assertEquals(
+                5L,
+                firstInitial
+                    .await()
+                    .sourceDroppedTotal,
+            )
+
+            val secondClient =
+                manager.openClient(
+                    "second",
+                )
+
+            val second =
+                secondClient.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId =
+                            "accelerometer",
+                        periodMs =
+                            20L,
+                    ),
+                )
+
+            runCurrent()
+
+            advanceTimeBy(
+                20L,
+            )
+
+            capability.emitSample(
+                value =
+                    2f,
+                sourceDroppedTotal =
+                    6L,
+            )
+            runCurrent()
+
+            val firstNext =
+                async {
+                    first.samples
+                        .take(
+                            1,
+                        )
+                        .toList()
+                        .single()
+                }
+
+            val secondNext =
+                async {
+                    second.samples
+                        .take(
+                            1,
+                        )
+                        .toList()
+                        .single()
+                }
+
+            runCurrent()
+
+            assertEquals(
+                6L,
+                firstNext
+                    .await()
+                    .sourceDroppedTotal,
+            )
+
+            assertEquals(
+                1L,
+                secondNext
+                    .await()
+                    .sourceDroppedTotal,
+            )
+
+            firstClient.close()
+            secondClient.close()
+            runCurrent()
+
+            manager.close()
+        }
+
+    @Test
+    fun providerDropCounterResetDoesNotMoveRuntimeTotalBackward() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val capability =
+                FakeObservationCapability(
+                    testLogicalId =
+                        "accelerometer",
+                    providerId =
+                        "provider.accel",
+                )
+
+            registry.register(
+                capability =
+                    capability,
+                provider =
+                    FakeProvider(
+                        "provider.accel",
+                    ),
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            val client =
+                manager.openClient(
+                    "counter-reset",
+                )
+
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId =
+                            "accelerometer",
+                        periodMs =
+                            20L,
+                    ),
+                )
+
+            runCurrent()
+
+            capability.emitSample(
+                value =
+                    1f,
+                sourceDroppedTotal =
+                    5L,
+            )
+            runCurrent()
+
+            val first =
+                async {
+                    subscription.samples
+                        .take(
+                            1,
+                        )
+                        .toList()
+                        .single()
+                }
+
+            runCurrent()
+
+            assertEquals(
+                5L,
+                first
+                    .await()
+                    .sourceDroppedTotal,
+            )
+
+            advanceTimeBy(
+                20L,
+            )
+
+            /*
+             * Simulate a provider-local counter reset. Runtime accounting must
+             * accumulate the new-session value rather than moving backward.
+             */
+            capability.emitSample(
+                value =
+                    2f,
+                sourceDroppedTotal =
+                    2L,
+            )
+            runCurrent()
+
+            val second =
+                async {
+                    subscription.samples
+                        .take(
+                            1,
+                        )
+                        .toList()
+                        .single()
+                }
+
+            runCurrent()
+
+            assertEquals(
+                7L,
+                second
+                    .await()
+                    .sourceDroppedTotal,
             )
 
             client.close()

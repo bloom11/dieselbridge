@@ -83,7 +83,19 @@ sealed interface SensorObservationUpdate {
 
     data class Sample(
         val reading: SensorReading,
-    ) : SensorObservationUpdate
+
+        /**
+         * Monotonic count, within one provider observation session, of
+         * samples dropped before they reached SensorObservationManager.
+         */
+        val sourceDroppedTotal: Long = 0L,
+    ) : SensorObservationUpdate {
+        init {
+            require(sourceDroppedTotal >= 0L) {
+                "sourceDroppedTotal must not be negative"
+            }
+        }
+    }
 
     data class PermissionDenied(
         val requiredPermission: String?,

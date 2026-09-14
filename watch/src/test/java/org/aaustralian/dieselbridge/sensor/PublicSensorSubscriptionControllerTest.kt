@@ -83,29 +83,33 @@ class PublicSensorSubscriptionControllerTest {
 
         suspend fun emitSample(
             value: Float,
+            sourceDroppedTotal: Long = 0L,
         ) {
             updates.emit(
                 SensorObservationUpdate
                     .Sample(
-                        SensorReading(
-                            capabilityId =
-                                SensorCapabilityId(
-                                    "sensor.$logicalIdValue",
-                                ),
-                            providerId =
-                                providerId,
-                            values =
-                                listOf(
-                                    value,
-                                ),
-                            timestampNanos =
-                                value
-                                    .toLong(),
-                            accuracy =
-                                3,
-                            elapsedMs =
-                                0L,
-                        ),
+                        reading =
+                            SensorReading(
+                                capabilityId =
+                                    SensorCapabilityId(
+                                        "sensor.$logicalIdValue",
+                                    ),
+                                providerId =
+                                    providerId,
+                                values =
+                                    listOf(
+                                        value,
+                                    ),
+                                timestampNanos =
+                                    value
+                                        .toLong(),
+                                accuracy =
+                                    3,
+                                elapsedMs =
+                                    0L,
+                            ),
+                        sourceDroppedTotal =
+                            sourceDroppedTotal,
                     ),
             )
         }
@@ -415,6 +419,107 @@ class PublicSensorSubscriptionControllerTest {
                         ] as
                         DieselValue.Integer
                 ).value,
+            )
+        }
+
+    @Test
+    fun providerSourceDropsAreReportedSeparately() =
+        runTest {
+            val fixture =
+                fixture()
+
+            val transport =
+                CapturingTransport()
+
+            val controller =
+                PublicSensorSubscriptionController(
+                    client =
+                        fixture.manager
+                            .openClient(
+                                "public",
+                            ),
+                    eventTransport =
+                        transport,
+                    scope =
+                        backgroundScope,
+                    monotonicMs = {
+                        testScheduler
+                            .currentTime
+                    },
+                )
+
+            controller.subscribe(
+                logicalId =
+                    "accelerometer",
+                periodMs =
+                    500L,
+            )
+
+            runCurrent()
+
+            fixture.capability
+                .emitSample(
+                    value =
+                        7f,
+                    sourceDroppedTotal =
+                        3L,
+                )
+
+            runCurrent()
+
+            val event =
+                transport.events
+                    .last {
+                        it.topic ==
+                            PublicSensorSubscriptionController
+                                .TOPIC_SENSOR_SAMPLE
+                    }
+
+            assertEquals(
+                3L,
+                (
+                    event.data[
+                        "sourceDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+
+            assertEquals(
+                0L,
+                (
+                    event.data[
+                        "subscriptionDroppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+
+            assertEquals(
+                3L,
+                (
+                    event.data[
+                        "droppedTotal"
+                    ] as
+                        DieselValue.Integer
+                ).value,
+            )
+
+            val snapshot =
+                controller
+                    .snapshots()
+                    .single()
+
+            assertEquals(
+                3L,
+                snapshot
+                    .sourceDroppedTotal,
+            )
+
+            assertEquals(
+                0L,
+                snapshot
+                    .subscriptionDroppedTotal,
             )
         }
 

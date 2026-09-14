@@ -8,8 +8,10 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapability
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
@@ -97,6 +99,17 @@ internal class SensorManagerObservationCapability(
                 return@callbackFlow
             }
 
+            /*
+             * Provider-ingress loss is independent from each consumer's
+             * bounded queue. The callback must never block and must not force
+             * SensorManager re-registration merely because downstream was
+             * briefly slower than the hardware.
+             */
+            val sourceDroppedTotal =
+                AtomicLong(
+                    0L,
+                )
+
             val listener =
                 object :
                     SensorEventListener {
@@ -104,10 +117,10 @@ internal class SensorManagerObservationCapability(
                     override fun onSensorChanged(
                         event: SensorEvent,
                     ) {
-                        val admitted =
-                            trySend(
-                                SensorObservationUpdate
-                                    .Sample(
+                        val update =
+                            SensorObservationUpdate
+                                .Sample(
+                                    reading =
                                         SensorReading(
                                             capabilityId =
                                                 SensorCapabilityId(
@@ -126,16 +139,26 @@ internal class SensorManagerObservationCapability(
                                             elapsedMs =
                                                 0L,
                                         ),
-                                    ),
+                                    sourceDroppedTotal =
+                                        sourceDroppedTotal
+                                            .get(),
+                                )
+
+                        val admitted =
+                            trySend(
+                                update,
                             )
 
                         if (
                             admitted.isFailure &&
                             !admitted.isClosed
                         ) {
-                            close(
-                                SensorObservationIngressOverflowException(),
-                            )
+                            /*
+                             * Drop this sample. The next successfully admitted
+                             * sample carries the updated monotonic counter.
+                             */
+                            sourceDroppedTotal
+                                .incrementAndGet()
                         }
                     }
 
@@ -212,6 +235,10 @@ internal class SensorManagerObservationCapability(
                 )
             }
         }
+            .buffer(
+                capacity =
+                    SOURCE_BUFFER_CAPACITY,
+            )
 
     private companion object {
         const val REASON_SENSOR_MANAGER_UNAVAILABLE =
@@ -229,6 +256,13 @@ internal class SensorManagerObservationCapability(
         const val MAX_PERIOD_MS_FOR_INT_US =
             Int.MAX_VALUE /
                 1_000L
+
+        /*
+         * Explicit provider-ingress bound. This is separate from each
+         * SensorSubscription's own queue capacity.
+         */
+        const val SOURCE_BUFFER_CAPACITY =
+            64
     }
 }
 
@@ -253,9 +287,3 @@ internal fun sensorManagerObservationCapabilities(
                     callbackHandler,
             )
         }
-
-
-private class SensorObservationIngressOverflowException :
-    IllegalStateException(
-        "sensor observation provider ingress overflow",
-    )

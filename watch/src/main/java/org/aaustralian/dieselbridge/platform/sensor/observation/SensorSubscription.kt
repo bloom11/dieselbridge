@@ -87,14 +87,23 @@ data class SensorSubscriptionState(
  * One sample delivered to one consumer.
  *
  * sequence increments for every sample admitted for this consumer after
- * cadence filtering. droppedTotal is monotonic and counts queue-overflow
- * losses for this subscription.
+ * cadence filtering.
+ *
+ * droppedTotal counts this subscription's own bounded-queue losses.
+ * sourceDroppedTotal counts upstream provider-ingress losses observed during
+ * this subscription.
  */
 data class SensorSubscriptionSample(
     val sequence: Long,
     val reading: SensorReading,
     val droppedTotal: Long,
-)
+    val sourceDroppedTotal: Long = 0L,
+) {
+    init {
+        require(droppedTotal >= 0L)
+        require(sourceDroppedTotal >= 0L)
+    }
+}
 
 /**
  * One logical consumer subscription.

@@ -260,6 +260,8 @@ class SensorObservationManager(
                         bufferCapacity,
                     initialRuntimeState =
                         runtime.currentState,
+                    initialSourceDroppedTotal =
+                        runtime.sourceDroppedTotal,
                     onClose =
                         ::closeSubscription,
                 )
@@ -426,6 +428,7 @@ class SensorObservationManager(
     private fun dispatchSample(
         logicalId: String,
         reading: SensorReading,
+        sourceDroppedTotal: Long,
     ) {
         val now =
             monotonicMs()
@@ -435,6 +438,8 @@ class SensorObservationManager(
         ).forEach {
             it.offer(
                 reading = reading,
+                sourceDroppedTotal =
+                    sourceDroppedTotal,
                 nowMs = now,
             )
         }
@@ -513,6 +518,22 @@ class SensorObservationManager(
         var currentState =
             RuntimeState()
             private set
+
+        /**
+         * Monotonic over the lifetime of this shared logical-sensor runtime,
+         * including provider retries/failover.
+         */
+        @Volatile
+        var sourceDroppedTotal =
+            0L
+            private set
+
+        /*
+         * Provider Sample.sourceDroppedTotal is session-local. This tracks the
+         * last value in the currently collected provider session.
+         */
+        private var lastProviderSourceDroppedTotal =
+            0L
 
         private var started =
             false
@@ -704,6 +725,13 @@ class SensorObservationManager(
                 currentCoroutineContext()
                     .isActive
             ) {
+                /*
+                 * Every capability.observe() collection is a new provider
+                 * session and therefore starts a fresh provider-local counter.
+                 */
+                lastProviderSourceDroppedTotal =
+                    0L
+
                 try {
                     capability
                         .observe(
@@ -855,6 +883,10 @@ class SensorObservationManager(
                             logicalId,
                         reading =
                             update.reading,
+                        sourceDroppedTotal =
+                            recordProviderSourceDroppedTotal(
+                                update.sourceDroppedTotal,
+                            ),
                     )
                 }
 
@@ -922,6 +954,46 @@ class SensorObservationManager(
             }
         }
 
+        private fun recordProviderSourceDroppedTotal(
+            reportedTotal: Long,
+        ): Long {
+            val previous =
+                lastProviderSourceDroppedTotal
+
+            /*
+             * A lower value means the provider restarted/reset its local
+             * counter. Treat the new value as loss in the new session rather
+             * than allowing our runtime total to move backwards.
+             */
+            val delta =
+                if (
+                    reportedTotal >=
+                    previous
+                ) {
+                    reportedTotal -
+                        previous
+                } else {
+                    reportedTotal
+                }
+
+            lastProviderSourceDroppedTotal =
+                reportedTotal
+
+            sourceDroppedTotal =
+                if (
+                    Long.MAX_VALUE -
+                        sourceDroppedTotal <
+                    delta
+                ) {
+                    Long.MAX_VALUE
+                } else {
+                    sourceDroppedTotal +
+                        delta
+                }
+
+            return sourceDroppedTotal
+        }
+
         private fun setState(
             state: RuntimeState,
         ) {
@@ -945,6 +1017,8 @@ class SensorObservationManager(
         bufferCapacity: Int,
         initialRuntimeState:
             RuntimeState,
+        initialSourceDroppedTotal:
+            Long,
         private val onClose:
             (Long) -> Unit,
     ) : SensorSubscription {
@@ -999,6 +1073,14 @@ class SensorObservationManager(
         private var droppedTotal =
             0L
 
+        /*
+         * Runtime source accounting is shared by every consumer. Subtract the
+         * value at subscription creation so this consumer sees only losses
+         * occurring during its own lifetime.
+         */
+        private val sourceDroppedBaseline =
+            initialSourceDroppedTotal
+
         fun updateRuntimeState(
             runtimeState:
                 RuntimeState,
@@ -1025,6 +1107,7 @@ class SensorObservationManager(
 
         fun offer(
             reading: SensorReading,
+            sourceDroppedTotal: Long,
             nowMs: Long,
         ) {
             if (
@@ -1068,6 +1151,14 @@ class SensorObservationManager(
                             reading,
                         droppedTotal =
                             droppedTotal,
+                        sourceDroppedTotal =
+                            (
+                                sourceDroppedTotal -
+                                    sourceDroppedBaseline
+                            )
+                                .coerceAtLeast(
+                                    0L,
+                                ),
                     )
 
                 if (
