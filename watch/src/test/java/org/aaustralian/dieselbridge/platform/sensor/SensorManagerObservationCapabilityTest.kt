@@ -12,7 +12,8 @@ class SensorManagerObservationCapabilityTest {
     @Test
     fun routePreferenceMatchesLogicalReadOrdering() {
         val selected =
-            selectSensorManagerObservationRoute(
+            SensorManagerLogicalRouteSelector
+                .selectRoute(
                 routes =
                     listOf(
                         route(
@@ -72,7 +73,8 @@ class SensorManagerObservationCapabilityTest {
     @Test
     fun routePreferenceDoesNotCrossLogicalTargets() {
         val selected =
-            selectSensorManagerObservationRoute(
+            SensorManagerLogicalRouteSelector
+                .selectRoute(
                 routes =
                     listOf(
                         route(

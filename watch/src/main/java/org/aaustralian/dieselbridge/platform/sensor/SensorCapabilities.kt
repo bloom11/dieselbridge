@@ -65,10 +65,15 @@ private class SensorManagerCapability(
 
     override suspend fun read(options: SensorReadOptions): SensorReadResult {
         require(options.timeoutMs in AndroidSensorSampler.MIN_TIMEOUT_MS..AndroidSensorSampler.MAX_TIMEOUT_MS)
-        val handle = source.snapshot().asSequence()
-            .filter { it.route.inventory.logicalId == logicalId }
-            .sortedWith(compareBy<AndroidSensorHandle> { it.route.inventory.wakeUp }.thenBy { it.route.inventory.powerMilliAmps }.thenBy { it.route.descriptor.routeId.value })
-            .firstOrNull() ?: return SensorReadResult.Unavailable
+        val handle =
+            SensorManagerLogicalRouteSelector
+                .select(
+                    handles =
+                        source.snapshot(),
+                    logicalId =
+                        logicalId,
+                )
+                ?: return SensorReadResult.Unavailable
         return when (val outcome = sampler.sample(handle, options.timeoutMs)) {
             is BoundedSensorSampleOutcome.Event -> SensorReadResult.Event(SensorReading(capabilityId, providerId, outcome.event.values.toList(), outcome.event.timestampNanos, outcome.event.accuracy, outcome.elapsedMs))
             is BoundedSensorSampleOutcome.Timeout -> SensorReadResult.Timeout

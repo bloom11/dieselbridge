@@ -65,32 +65,14 @@ internal class SensorManagerObservationCapability(
                 return@callbackFlow
             }
 
-            val handles =
-                source.snapshot()
-
-            val route =
-                selectSensorManagerObservationRoute(
-                    routes =
-                        handles.map {
-                            it.route
-                        },
-                    logicalId =
-                        logicalIdValue,
-                )
-
             val handle =
-                route?.let {
-                        selectedRoute,
-                    ->
-                    handles.firstOrNull {
-                        it.route
-                            .descriptor
-                            .routeId ==
-                            selectedRoute
-                                .descriptor
-                                .routeId
-                    }
-                }
+                SensorManagerLogicalRouteSelector
+                    .select(
+                        handles =
+                            source.snapshot(),
+                        logicalId =
+                            logicalIdValue,
+                    )
 
             if (handle == null) {
                 trySend(
@@ -272,38 +254,6 @@ internal fun sensorManagerObservationCapabilities(
                     source,
             )
         }
-
-/**
- * Deterministic route preference shared with logical SensorManager reads:
- * non-wakeup first, then lower power, then stable route id.
- */
-internal fun selectSensorManagerObservationRoute(
-    routes: List<AndroidSensorRoute>,
-    logicalId: String,
-): AndroidSensorRoute? =
-    routes
-        .asSequence()
-        .filter {
-            it.inventory
-                .logicalId ==
-                logicalId
-        }
-        .sortedWith(
-            compareBy<AndroidSensorRoute> {
-                it.inventory
-                    .wakeUp
-            }
-                .thenBy {
-                    it.inventory
-                        .powerMilliAmps
-                }
-                .thenBy {
-                    it.descriptor
-                        .routeId
-                        .value
-                },
-        )
-        .firstOrNull()
 
 
 private class SensorObservationIngressOverflowException :
