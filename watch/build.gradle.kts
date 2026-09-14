@@ -152,6 +152,7 @@ dependencies {
     // --- Testing ---
     testImplementation(libs.junit)
     testImplementation(libs.json) // real org.json for GbProtocol JVM unit tests
+    testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
