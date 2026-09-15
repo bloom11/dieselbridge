@@ -107,7 +107,7 @@ class SensorObservationSmokeRunnerTest {
             val manager =
                 SensorObservationManager(
                     registry = registry,
-                    scope = backgroundScope,
+                    scope = this,
                     monotonicMs = {
                         testScheduler.currentTime
                     },
@@ -116,7 +116,7 @@ class SensorObservationSmokeRunnerTest {
             val runner =
                 SensorObservationSmokeRunner(
                     observationManager = manager,
-                    scope = backgroundScope,
+                    scope = this,
                     wallClockMs = {
                         testScheduler.currentTime
                     },
@@ -205,7 +205,7 @@ class SensorObservationSmokeRunnerTest {
             val manager =
                 SensorObservationManager(
                     registry = registry,
-                    scope = backgroundScope,
+                    scope = this,
                     monotonicMs = {
                         testScheduler.currentTime
                     },
@@ -214,7 +214,7 @@ class SensorObservationSmokeRunnerTest {
             val runner =
                 SensorObservationSmokeRunner(
                     observationManager = manager,
-                    scope = backgroundScope,
+                    scope = this,
                     routeInspector =
                         SensorObservationSmokeRouteInspector {
                                 _,
@@ -300,7 +300,7 @@ class SensorObservationSmokeRunnerTest {
             val manager =
                 SensorObservationManager(
                     registry = registry,
-                    scope = backgroundScope,
+                    scope = this,
                     monotonicMs = {
                         testScheduler.currentTime
                     },
@@ -309,7 +309,7 @@ class SensorObservationSmokeRunnerTest {
             val runner =
                 SensorObservationSmokeRunner(
                     observationManager = manager,
-                    scope = backgroundScope,
+                    scope = this,
                     wallClockMs = {
                         testScheduler.currentTime
                     },
@@ -363,7 +363,7 @@ class SensorObservationSmokeRunnerTest {
             val manager =
                 SensorObservationManager(
                     registry = registry,
-                    scope = backgroundScope,
+                    scope = this,
                     monotonicMs = {
                         testScheduler.currentTime
                     },
@@ -372,13 +372,15 @@ class SensorObservationSmokeRunnerTest {
             val runner =
                 SensorObservationSmokeRunner(
                     observationManager = manager,
-                    scope = backgroundScope,
+                    scope = this,
                 )
 
             val first =
                 runner.start(
                     SensorObservationSmokeProfile.SCREEN_OFF,
                 )
+
+            testScheduler.runCurrent()
 
             val second =
                 runner.start(
