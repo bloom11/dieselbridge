@@ -124,77 +124,152 @@ The current development branch additionally provides:
 
 # Architecture
 
-The Diesel platform is the internal center of the watch application.
+DieselBridge is now a layered watch platform rather than a BLE controller containing feature-specific
+logic. Keep three concerns separate:
 
 ```text
-                           Consumers
-              ┌──────────────┼───────────────┐
-              │              │               │
-          Watch UI      Diesel protocol   future APIs
-              │              │
-              └──────┬───────┘
-                     ▼
-               Diesel Platform
-                     │
-            CapabilityRegistry
-                     │
-          highest-priority AVAILABLE
-                     │
-       ┌─────────────┴─────────────┐
-       ▼                           ▼
- SensorManager provider      Health Services
-     priority 10               priority 20
-       │                           │
-       └─────────────┬─────────────┘
-                     ▼
-                 capability
+provider/data acquisition     SensorManager / Health Services / future vendor providers
+application protocols         Diesel request/response/events and Bangle/Gadgetbridge schemas
+physical transport            BLE/NUS today, other transports later
 ```
 
-The main architectural rule is that a normal consumer asks for a **logical capability**, not a
-specific Android sensor route or implementation.
-
-For example:
+The current internal topology is:
 
 ```text
-sensor.read + name=accelerometer
-        ↓
-SensorReadCoordinator
-        ↓
-CapabilityRegistry
-        ↓
-selected SensorCapability
-        ↓
-provider performs bounded read
-        ↓
-SensorReading
+                              CONSUMERS
+
+              Watch UI        Diesel protocol       future local APIs
+                 \                 |                       /
+                  \                |                      /
+                   +----------- Diesel Platform --------+
+                               |        |        |
+                      CapabilityRegistry |   DieselEventBus
+                               |         |    (process-local)
+                               |         |
+                   logical capability    |
+                   provider selection    |
+                               |
+                   +-----------+-------------+
+                   |                         |
+             SensorManager             Health Services
+              priority 10               priority 20
+             spot + observe              spot HR today
+                   |
+                   v
+          SensorObservationManager
+          one runtime / logical sensor
+          fastest requested acquisition cadence
+          individual bounded consumer queues
+                   |
+                   +--> local consumers
+                   |
+                   +--> PublicSensorSubscriptionController
+                                  |
+                           Diesel event envelope
+                                  |
+                    GadgetbridgeDieselEventTransport
+                                  |
+                        bounded NUS line sender
+                                  |
+                         stock Gadgetbridge
 ```
 
-Exact Android route identifiers are diagnostic identities. They are deliberately not the public
-selection mechanism.
+## Architectural boundaries
 
-## Major platform pieces
+Normal consumers request logical capabilities rather than providers or concrete Android routes.
+Examples are:
 
-The platform contains or uses these concepts:
+```text
+sensor.accelerometer
+sensor.heart_rate
+sensor.observe.accelerometer
+sensor.observe.heart_rate
+```
 
-- `DieselPlatform`
-- `CapabilityRegistry`
-- `DieselCapability`
-- provider bindings and provider availability
-- platform diagnostics/event state
-- `DieselCommandRegistry`
-- `DieselProtocolEngine`
-- `DieselProtocolExecutionLane`
-- `DieselResponseTransport`
-- typed internal sensor APIs
-- `DieselValue` only at the protocol boundary
+Exact route IDs such as `android.sensor_manager:1:0:0` remain diagnostic identities only.
 
-Multiple providers may implement the same capability. `CapabilityRegistry` chooses the
-highest-priority provider whose state is `AVAILABLE`. If the active provider becomes unavailable or
-enters an error state, the next usable implementation can become active without changing the
-consumer-facing command.
+The Diesel command path is:
 
-Local watch UI actions dispatch directly into the shared command/platform objects. They do not
-round-trip through BLE merely to call code on the same watch.
+```text
+Gadgetbridge/NUS
+    -> DieselRequest
+    -> DieselProtocolExecutionLane
+    -> DieselProtocolEngine
+    -> DieselCommandRegistry
+    -> command module / platform
+    -> DieselCommandResult
+    -> DieselResponse
+    -> DieselResponseTransport
+    -> bounded NUS line sender
+```
+
+`DieselProtocolEngine` owns correlation and response-envelope construction. Command success is kept
+separate from transport delivery: a command may succeed even when BLE delivery later fails.
+
+Local watch UI/modules call the shared platform/command runtime directly. They should not round-trip
+through BLE merely to invoke code in the same APK.
+
+## Continuous observation architecture
+
+Persistent sampling is not implemented as a loop around `sensor.read`.
+
+```text
+consumer subscription
+    -> SensorObservationManager
+    -> one shared runtime per logical sensor
+    -> CapabilityRegistry.observeActive(sensor.observe.<logical>)
+    -> selected SensorObservationCapability
+    -> provider callback stream
+```
+
+Multiple consumers of the same logical sensor share one provider acquisition. The fastest active
+consumer determines acquisition cadence; each consumer still owns its own delivery cadence, bounded
+queue, sequence counter, and queue-loss accounting.
+
+Provider changes or acquisition-period changes restart the provider session through the observation
+runtime without changing the public logical subscription.
+
+## Execution contexts
+
+The service deliberately separates execution domains:
+
+```text
+Android/Main
+    service lifecycle and ordinary platform/UI state
+
+DieselSensorObservation HandlerThread
+    raw SensorManager callbacks
+
+Dispatchers.Default observation scope
+    provider collection, cadence handling, fan-out, observation state
+
+Dispatchers.Default protocol scope
+    serialized Diesel command execution
+```
+
+SensorManager callbacks therefore do not run observation fan-out on Main.
+
+## Shutdown ownership
+
+Final service destruction closes remote subscriptions, cancels the observation manager immediately,
+then asynchronously joins provider cleanup before retiring the SensorManager callback HandlerThread.
+The service intentionally does not use an unbounded `runBlocking` wait on Android's main thread.
+
+## Process-local EventBus
+
+`DieselPlatform` already owns a process-local `DieselEventBus` intended for future native UI,
+automation, scripting and plugins. The generic observation-to-EventBus bridge is not yet complete;
+current remote sensor events are produced by `PublicSensorSubscriptionController` and sent through
+`GadgetbridgeDieselEventTransport`.
+
+The EventBus is a distribution mechanism, not a hardware-resource owner.
+
+## Shared physical line output
+
+Several watch-to-phone features ultimately use `gattServer?.sendLine(...)`. Diesel response/event
+transports intentionally remain protocol-specific. When native Gadgetbridge activity/GPS/workout
+adapters need the same output primitive, prefer a small line-level seam such as
+`BangleLineTransport` rather than turning `DieselResponseTransport` into a universal Bangle API.
 
 ---
 
@@ -571,6 +646,8 @@ itself.
 
 ## Public sensor commands
 
+Bounded reads and experiments:
+
 ```text
 sensor.list
 sensor.read
@@ -578,9 +655,19 @@ sensor.matrix
 sensor.experiment
 ```
 
-`sensor.experiment` is currently deliberately a normal bounded read-only sensor command, not a
-`debug.*` command. This README documents current code behavior; changing its namespace should be an
-explicit protocol decision rather than a documentation-only rewrite.
+Long-lived logical observation:
+
+```text
+sensor.subscribe
+sensor.unsubscribe
+sensor.subscriptions
+```
+
+The public APIs accept logical sensor names, not exact Android routes or provider IDs. Unsolicited
+subscription data uses Diesel `kind:"event"` envelopes rather than fake command responses.
+
+`sensor.experiment` remains deliberately a normal bounded read-only command rather than a `debug.*`
+command.
 
 ## Developer exact-route diagnostics
 
@@ -737,16 +824,71 @@ known target with no usable provider
 
 ## SensorManager provider
 
-The SensorManager provider offers the standard logical capabilities.
+SensorManager now implements both bounded spot reads and continuous observation where Android exposes
+a suitable route. Spot reads and observations intentionally use different route policies.
 
-When multiple concrete Android sensors match one logical capability, the implementation currently
-prefers:
+### Spot-read route policy
 
-1. non-wakeup sensors before wakeup sensors;
-2. lower reported sensor power;
-3. deterministic route-ID ordering as a tie breaker.
+```text
+1. matching logical sensor
+2. non-wakeup route
+3. lower reported power
+4. deterministic route ID
+```
 
-That selection is internal implementation policy and not part of the public wire API.
+### Continuous-observation route policy
+
+```text
+1. matching logical sensor
+2. reject one-shot reporting mode
+3. smallest requested-cadence deficit
+4. prefer wake-up route when otherwise comparable
+5. lower reported power
+6. deterministic route ID
+```
+
+If no candidate can satisfy the requested cadence, the route with the smallest cadence deficit wins
+before power is considered.
+
+### Sampling period
+
+The observation request is converted to SensorManager's finite microsecond period and clamped against
+the selected route's `minDelayUs`:
+
+```text
+registrationPeriodUs = max(requestedPeriodUs, minDelayUs)
+```
+
+`providerConfiguredPeriodMs` reports this configured registration request. It is not an observed rate
+guarantee. `providerEffectivePeriodMs` may remain unknown because SensorManager delivery timing is not
+assumed to equal the requested period.
+
+The current sampling policy does not yet use `maxDelayUs` or FIFO batching to build a power-oriented
+batching strategy.
+
+### Callback and ingress policy
+
+Continuous SensorManager callbacks run on the service-owned `DieselSensorObservation` HandlerThread.
+Observation processing then runs on the dedicated `Dispatchers.Default` observation scope.
+
+The provider owns one explicit bounded ingress queue:
+
+```text
+capacity = 64 samples
+overflow = drop oldest
+```
+
+A conflated wake signal avoids an unbounded callback-notification queue. There is deliberately no
+second hidden Flow sample backlog. Drop-oldest is intentional for realtime streams so newer sensor
+data is preferred over stale backlog.
+
+### Screen-off limitation
+
+Wake-up routes are preferred for continuous observation, but non-wakeup routes remain valid fallback
+when hardware exposes no wake-up equivalent. DieselBridge does not currently acquire a partial
+wakelock for every active observation. A foreground service alone does not guarantee delivery from a
+non-wakeup sensor while the application processor is suspended, so screen-off behavior remains a
+physical-watch validation item.
 
 ## `sensor.matrix`
 
@@ -772,51 +914,103 @@ this runner.
 
 ## Bounded logical sensor subscriptions
 
-The current branch also implements a bounded public event-subscription surface:
+Spot-read and observation capabilities are separate:
 
 ```text
-sensor.subscribe
-sensor.unsubscribe
-sensor.subscriptions
+sensor.<logical-name>
+sensor.observe.<logical-name>
 ```
 
-Subscriptions accept only the eight canonical logical sensor names. Public callers cannot choose a
-provider or exact `routeId`.
+This is deliberate: the best provider for a bounded spot measurement does not have to be the best
+provider for a long-lived stream.
 
-Current public bounds are:
+### Shared observation manager
+
+`SensorObservationManager` shares one provider session per logical sensor. If consumers request 1000,
+500 and 250 ms, acquisition runs at the fastest active request (250 ms), while each subscriber keeps
+its own delivery cadence and bounded queue. When the fastest subscriber leaves, acquisition may be
+reconfigured to the next required cadence.
+
+### Internal observation limits
 
 ```text
-maximum active remote subscriptions   4
-periodMs                              250..60000, default 1000
-leaseMs                               5000..300000, default 60000
-buffer policy                         latest only
+maximum clients                    16
+maximum subscriptions              32
+maximum subscriptions/client        8
+maximum subscriptions/sensor        8
+maximum consumer buffer             64
+minimum requested period            20 ms
+maximum requested period       3600000 ms
 ```
 
-Each subscription has a finite lease and is closed on explicit unsubscribe, lease expiry, BLE
-session loss, Bluetooth transport stop, or service shutdown. Multiple consumers of the same logical
-sensor share the process-local observation runtime; provider selection and acquisition cadence remain
-platform responsibilities rather than protocol responsibilities.
+Internal consumers may use latest-value or finite bounded queues.
 
-Unsolicited sensor events use a distinct Diesel event envelope rather than pretending to be command
-responses. Current event topics are:
+### Public Diesel subscription limits
+
+Remote Diesel clients intentionally receive stricter limits:
+
+```text
+maximum active remote subscriptions    4
+periodMs                               250..60000
+leaseMs                                5000..300000
+buffer policy                          latest only
+```
+
+This is a safety/policy boundary: the remote control plane must not become an unrestricted high-rate
+BLE telemetry interface merely because the internal runtime supports faster local consumers.
+
+Subscriptions close on explicit unsubscribe, lease expiry, BLE/session shutdown, service destruction,
+or client destruction.
+
+### Public event topics
 
 ```text
 sensor.sample
 sensor.subscription.state
 ```
 
-Sample events expose logical capability identity, diagnostic provider identity, bounded values,
-sequence, and source/transport drop counters. State events expose lifecycle/provider/cadence state
-and relative lease time. Watch-local monotonic timestamps are not exported as remotely meaningful
-expiry times.
+These use normal Diesel event envelopes:
 
-The SensorManager observation provider currently supplies the canonical logical catalogue where
-Android exposes a streamable SensorManager route. Health Services remains a bounded spot-read
-provider only; continuous Health Services heart-rate observation is a separate future milestone.
+```json
+{"v":1,"kind":"event","topic":"sensor.sample","data":{}}
+```
 
-This subscription path is currently **implemented and CI verified**. It is not yet current-head
-**hardware verified** until a CI-built APK from this code is exercised on the physical watch through
-the production Gadgetbridge transport.
+### Drop accounting
+
+Losses are separated into provider ingress, per-subscription queue loss, and transport loss.
+
+Explicit fields are:
+
+```text
+providerDroppedTotal
+subscriptionDroppedTotal
+transportDroppedTotal
+```
+
+Diesel v1 already exposed `sourceDroppedTotal` and `droppedTotal` before provider-ingress accounting
+was added. Their meanings are therefore frozen for compatibility:
+
+```text
+sourceDroppedTotal       legacy alias for subscriptionDroppedTotal
+providerDroppedTotal     provider-ingress loss
+subscriptionDroppedTotal subscription queue loss
+transportDroppedTotal    event transport loss
+droppedTotal             subscription + transport
+allDroppedTotal          provider + subscription + transport
+```
+
+Do not silently redefine `sourceDroppedTotal` in Diesel v1. A future protocol version may clean up
+these names explicitly.
+
+Provider ingress loss has a dedicated observation update, and subscription queue loss also updates
+state independently, so loss accounting normally does not require another successful sample.
+There remains a narrow terminal diagnostic race where a final provider-loss update can be cancelled
+at exactly the same time as provider Flow cancellation; this is intentionally accepted for now rather
+than adding a second metrics subsystem before hardware evidence shows one is needed.
+
+The shared observation runtime and public subscription path are implemented and CI verified, but the
+latest observation-hardening HEAD is not yet declared hardware verified until the M5.0b physical-watch
+campaign succeeds.
 
 ---
 
@@ -1320,32 +1514,136 @@ watch build corresponding to the current Git SHA.
 
 ---
 
+## Current observation baseline
+
+At the time of this documentation refresh the hardened observation baseline is:
+
+```text
+branch   feature/diesel-platform
+git SHA  9298fe3adef47e6c7cbb9108c112f6d78043e837
+```
+
+The exact-SHA CI run passed unit tests, debug APK assembly, signing-certificate verification and
+artifact upload. That establishes implementation/CI proof, not current-head hardware proof.
+
+Earlier hardware evidence remains valid historical evidence. In particular, the September 14
+logical-sensor campaign proved real TicWatch Pro 5 SensorManager reads for accelerometer, gyroscope,
+magnetic field, light, pressure, ambient temperature and step counter, while heart-rate attempts in
+that campaign timed out.
+
+The repository evidence files remain the source of truth for those physical runs.
+
+---
+
 # Current limitations
 
-Not currently implemented as finished platform features:
+Not every limitation below is a bug. Some are deliberate architecture, safety, compatibility or
+truthfulness constraints.
 
-- DieselBridge phone companion;
-- full end-to-end phone-side Diesel response receiver owned by this repo;
-- Android Clock alarm synchronization;
-- generalized health history/passive health platform;
-- Health Services step provider in the current branch;
-- VO2 max platform;
-- Mobvoi/private sensor provider;
-- stable public vendor/private sensor semantics;
-- Espruino/Bangle runtime hosted by DieselBridge;
-- Health Services continuous/passive sensor subscriptions;
-- plugin SDK/module packages;
-- Wi-Fi Diesel transport;
-- secondary ultra-low-power LCD reverse-engineered API for TicWatch Pro 5;
-- privileged per-app battery attribution;
-- hidden vendor power-management controls.
+## Intentional architectural constraints
+
+- Stock Gadgetbridge remains the phone BLE central; DieselBridge must not create a second BLE owner.
+- Public consumers use logical capabilities, not exact providers/routes.
+- Exact SensorManager route IDs remain diagnostic-only.
+- Local watch consumers do not round-trip through BLE to call local code.
+- BLE/NUS transport does not own sensor/alarm/display semantics.
+- `DieselResponseTransport` remains response-specific rather than a generic Gadgetbridge sender.
+- The process-local EventBus distributes events but does not own hardware registrations.
+- Vendor/private sensor meanings remain provisional until repeatable evidence exists.
+- The Diesel control plane remains bounded.
+- The architecture does not require Google Wearable Data Layer.
+
+## Intentional compatibility constraints
+
+Diesel v1 preserves:
+
+```text
+sourceDroppedTotal = subscription queue loss
+droppedTotal       = subscription queue loss + transport loss
+```
+
+Provider-ingress accounting was added through new fields instead of redefining v1.
+
+`targetSdk=28` with `compileSdk=36` is also intentional for the current Android 9/legacy Wear
+compatibility strategy.
+
+## Temporarily accepted implementation limits
+
+- Remote subscriptions are stricter than internal observation limits: four latest-value subscriptions,
+  minimum 250 ms cadence and finite leases.
+- Continuous route selection currently applies one background-oriented wake-up preference rather than
+  accepting a per-consumer foreground/background requirement.
+- Non-wakeup observation routes are valid fallback but cannot guarantee screen-off delivery.
+- No observation-wide partial wakelock is currently acquired; adding one must be evidence-driven due
+  to battery cost.
+- SensorManager cadence is configured, not guaranteed; `providerEffectivePeriodMs` may remain unknown.
+- No FIFO/max-delay batching policy exists yet.
+- SensorManager provider ingress is fixed at 64 samples with drop-oldest freshness behavior.
+- Final provider-loss telemetry has a narrow cancellation race accepted as a diagnostic edge.
+- Android `TYPE_STEP_COUNTER` is still raw cumulative-since-boot data, not daily/history semantics.
+
+## Not yet implemented
+
+```text
+Health Services continuous heart-rate observation
+generic observation -> DieselEventBus bridge
+Gadgetbridge-native t:"act" HR/step adapter
+Gadgetbridge step delta/history semantics
+passive health/history platform
+sleep/activity classification
+VO2 max platform
+validated SpO2/RR/RRI providers
+Mobvoi/private capability provider
+stable public vendor/private sensor semantics
+Android Clock alarm synchronization
+Espruino/Bangle runtime hosted by DieselBridge
+native APK provider/plugin SDK
+StateStore
+ActionDispatcher
+ModuleManager
+Wi-Fi Diesel transport
+TicWatch Pro 5 secondary low-power display API
+privileged per-app battery attribution
+hidden vendor power-management controls
+full phone-side end-to-end Diesel response consumer owned by this repo
+```
+
+A future phone companion may consume Gadgetbridge broadcasts and expose a convenient local API, but
+it must not become another BLE implementation.
 
 ---
 
 # Roadmap / project hand-off
 
-This section consolidates the development direction that previously lived across discussion,
-temporary hand-off notes, and multiple documentation files.
+The observation foundation is now largely built. The project is at the end of the M5.0b implementation
+phase, but M5.0b still requires current-head physical-watch closure.
+
+## Current milestone status
+
+| Milestone | Goal | Current status |
+|---|---|---|
+| M5.0a | observation contracts + shared provider-neutral manager | **Implemented + CI verified** |
+| M5.0b | continuous SensorManager observation | **Implementation/hardening complete + CI verified; hardware closure pending** |
+| M5.0c | continuous Health Services observation | **Not implemented** |
+| M5.0d | runtime registration + process-local EventBus integration | **Partially complete** |
+| M5.1 | Gadgetbridge-native activity bridge (`t:"act"`) | **Not implemented** |
+
+M5.0d is partial because observation capabilities are registered and consumed by the runtime, but the
+generic provider-neutral observation stream is not yet published through `DieselPlatform.events`.
+The public Diesel sensor-event path already exists separately through
+`PublicSensorSubscriptionController`.
+
+Immediate sequence:
+
+```text
+M5.0b physical-watch closure
+    -> M5.0c Health Services observation
+    -> M5.0d generic platform EventBus bridge
+    -> M5.1 Gadgetbridge t:"act" activity adapter
+```
+
+Do not implement Gadgetbridge activity acquisition as another sensor provider or another BLE stack.
+It should consume logical observation capabilities.
 
 ## Architectural invariants
 
@@ -1391,55 +1689,34 @@ Future work should remain reviewable and attributable:
 This keeps generic Diesel platform work reusable across Wear OS devices while deeper TicWatch
 integration remains optional.
 
-## Immediate hardware validation
+## Immediate hardware validation — M5.0b closure
 
-The highest-value next tests are logical API tests on the current APK.
+The open validation target is continuous observation, not another spot-read-only campaign.
+Spot reads have already been physically demonstrated on the TicWatch Pro 5.
 
-Start with:
+Use the exact current/newer CI APK and validate:
 
-```bash
-tools/diesel-adb   '{"cmd":"sensor.read","name":"accelerometer","args":{"timeoutMs":5000}}'
-```
+1. `sensor.subscribe` for accelerometer reaches ACTIVE and produces repeated advancing samples.
+2. An impossible internal cadence (for example 20 ms against a route previously observed around
+   `minDelayUs=200000`) reports requested/acquisition/configured/effective periods truthfully rather
+   than pretending hardware delivers 20 ms.
+3. Sensor timestamps and sequence advance and values are not a repeated stale cache.
+4. Screen-off behavior is measured and correlated with wake-up vs non-wakeup route type.
+5. `providerDroppedTotal`, `subscriptionDroppedTotal`, `transportDroppedTotal` and `allDroppedTotal`
+   are inspected independently while the Diesel v1 aliases keep their documented meanings.
+6. Explicit unsubscribe reaches CLOSED and releases the hardware listener.
+7. Lease expiry closes the subscription automatically.
+8. BLE disconnect/reconnect does not leave remote subscriptions half-open.
+9. Service stop/restart unregisters the old listener, retires the callback thread and does not create
+   duplicate streams.
+10. Subscribe/unsubscribe is repeated several times to catch listener/thread/runtime leaks.
+11. At least one second logical sensor such as `step_counter` is validated so closure is not
+    accelerometer-specific.
 
-Acceptance criteria:
-
-```text
-logical name only
-→ CapabilityRegistry
-→ provider selected internally
-→ real sensor event
-→ response contains providerId
-→ no routeId required
-```
-
-Repeat for:
-
-```text
-gyroscope
-magnetic_field
-light
-pressure
-ambient_temperature
-step_counter
-heart_rate
-```
-
-Then grant the Health Services permission, refresh provider state, and verify whether:
-
-```text
-sensor.heart_rate
-providerId = wear.health_services
-```
-
-is selected on the TicWatch Pro 5.
-
-Use:
-
-```bash
-tools/diesel-watch-sensor-test --all
-```
-
-for the exhaustive concrete-route campaign.
+M5.0b is complete when implementation and CI remain green and the physical campaign proves real
+subscription delivery, cadence reporting, unsubscribe/lease behavior, service cleanup and documents
+screen-off behavior. A hardware limitation such as non-wakeup delivery stopping during AP suspend is
+a valid result; completion does not require inventing a wakelock/vendor API just to hide it.
 
 ## Companion / complete phone-side response path
 
@@ -1503,30 +1780,46 @@ Potential next Health Services work:
 - never call vendor temperature data skin temperature without evidence;
 - never infer medical meaning from vendor PPG names or raw type numbers.
 
-## Streaming and subscriptions
+## Observation roadmap after M5.0b
 
-`sensor.read` is a bounded spot-read API. Long-lived sampling should eventually use explicit
-events and subscriptions rather than repeatedly invoking `sensor.read`.
+Long-lived observation is no longer a future design. The next work is provider and consumer expansion.
 
-The intended flow is:
+### M5.0c — Health Services continuous observation
 
-    provider callback
-        |
-        v
-    typed sensor sample
-        |
-        v
-    EventBus / sensor.sample
-        |
-        v
-    bounded subscription queue
-        |
-        v
-    local or remote consumer
+Add `sensor.observe.heart_rate` through `wear.health_services` at priority 20, keeping
+`android.sensor_manager` priority 10 as fallback where a usable observation route exists.
 
-A public streaming API must define subscription lifecycle, cancellation, bounded buffering,
-backpressure, rate policy, disconnect behavior, provider failover, and authorization before it is
-part of the stable protocol.
+Use a genuine continuous Health Services callback/streaming API rather than repeatedly invoking
+bounded `MeasureClient` spot measurements. Map provider outcomes into the existing observation
+contract (`Started`, `Sample`, `PermissionDenied`, `Unavailable`, `RegistrationRejected`, and source
+loss telemetry where applicable). Consumers must continue to request the logical capability rather
+than selecting the provider.
+
+Acceptance covers Health Services selection, SensorManager fallback, and return to the higher-priority
+provider when Health Services becomes usable again.
+
+### M5.0d — platform EventBus bridge
+
+Observation capability registration is already done. Remaining M5.0d work is to publish generic
+provider-neutral observation state/sample events through `DieselPlatform.events` for local UI,
+automation, scripting and future plugins. EventBus remains fan-out only; it does not own hardware
+registrations.
+
+### M5.1 — Gadgetbridge activity adapter
+
+After provider-neutral observation is validated, implement the Gadgetbridge/Bangle activity codec.
+Phone activity requests such as `{"t":"act","hrm":true,"stp":true,"int":10}` should open logical
+heart-rate/step observations. The adapter must never select SensorManager/Health Services/route IDs.
+Watch-to-phone `t:"act"` output is encoded from typed logical samples.
+
+This is an application-protocol adapter above the observation platform, not a second provider layer or
+physical transport.
+
+Android `TYPE_STEP_COUNTER` is cumulative since boot, so M5.1 must define explicit delta/history
+semantics instead of labeling raw cumulative data as daily steps.
+
+Android accelerometer values are in m/s^2; any conversion to Bangle/Gadgetbridge `g` units belongs in
+the codec layer, not in the provider's typed internal readings.
 
 ## Vendor/private sensors
 
