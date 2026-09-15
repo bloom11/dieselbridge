@@ -66,6 +66,10 @@ import org.aaustralian.dieselbridge.ble.ProbeStateHolder
 import org.aaustralian.dieselbridge.debug.DeveloperBuildInfoSource
 import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeProfile
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeRunner
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeSnapshot
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeStatus
 import org.aaustralian.dieselbridge.debug.SafePlatformTestResult
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
 import org.aaustralian.dieselbridge.debug.SafePlatformTestSpec
@@ -101,6 +105,7 @@ private enum class DiagnosticsPage {
     COMMANDS,
     COMMAND_DETAIL,
     TOOLS,
+    OBSERVATION_SMOKE,
     TEST_RESULT,
     MATRIX_RESULTS,
     MATRIX_ENTRY_DETAIL,
@@ -134,6 +139,9 @@ fun DiagnosticsScreen(
 
     val safeTestRunner by
         DeveloperRuntimeAccess.safeTestRunner.collectAsStateWithLifecycle()
+
+    val observationSmokeRunner by
+        DeveloperRuntimeAccess.observationSmokeRunner.collectAsStateWithLifecycle()
 
     val sensorMatrixExperiment by
         DeveloperRuntimeAccess.sensorMatrixExperiment.collectAsStateWithLifecycle()
@@ -230,6 +238,7 @@ fun DiagnosticsScreen(
                 page = DiagnosticsPage.SCAN_RESULTS
             }
 
+            DiagnosticsPage.OBSERVATION_SMOKE,
             DiagnosticsPage.TEST_RESULT,
             DiagnosticsPage.MATRIX_RESULTS,
             DiagnosticsPage.SCAN_RESULTS ->
@@ -335,6 +344,7 @@ fun DiagnosticsScreen(
                 DiagnosticsPage.TOOLS ->
                     ToolsScreen(
                         runner = safeTestRunner,
+                        observationSmokeRunner = observationSmokeRunner,
                         sensorMatrixExperiment = sensorMatrixExperiment,
                         developerRemoteAccessPolicy =
                             developerRemoteAccessPolicy,
@@ -371,8 +381,19 @@ fun DiagnosticsScreen(
                         onScanDetails = {
                             page = DiagnosticsPage.SCAN_RESULTS
                         },
+                        onObservationSmoke = {
+                            page = DiagnosticsPage.OBSERVATION_SMOKE
+                        },
                         onBack = {
                             page = DiagnosticsPage.OVERVIEW
+                        },
+                    )
+
+                DiagnosticsPage.OBSERVATION_SMOKE ->
+                    ObservationSmokeScreen(
+                        runner = observationSmokeRunner,
+                        onBack = {
+                            page = DiagnosticsPage.TOOLS
                         },
                     )
 
@@ -1218,6 +1239,7 @@ private fun RemoteDeveloperAccessControl(
 @Composable
 private fun ToolsScreen(
     runner: SafePlatformTestRunner?,
+    observationSmokeRunner: SensorObservationSmokeRunner?,
     sensorMatrixExperiment: SensorMatrixExperiment?,
     developerRemoteAccessPolicy: DeveloperRemoteAccessPolicy?,
     commandDispatcher: (suspend (DieselRequest) -> DieselCommandResult)?,
@@ -1236,6 +1258,7 @@ private fun ToolsScreen(
     onScanRunId: (String?) -> Unit,
     onScanResult: (DieselCommandResult) -> Unit,
     onScanDetails: () -> Unit,
+    onObservationSmoke: () -> Unit,
     onBack: () -> Unit,
 ) {
     val tests = runner?.specs().orEmpty()
@@ -1259,6 +1282,29 @@ private fun ToolsScreen(
     ) {
         RemoteDeveloperAccessControl(
             policy = developerRemoteAccessPolicy,
+        )
+
+        DiagnosticCard(
+            title = "OBSERVATION SMOKE",
+            primary =
+                if (observationSmokeRunner == null) {
+                    "Runner unavailable"
+                } else {
+                    "Hardware closure profiles"
+                },
+            secondary =
+                if (observationSmokeRunner == null) {
+                    "Continuous-sensor validation runtime is not attached"
+                } else {
+                    "Cadence · screen-off · sharing · lifecycle · step counter"
+                },
+            healthy = observationSmokeRunner != null,
+            onClick =
+                if (observationSmokeRunner == null) {
+                    null
+                } else {
+                    onObservationSmoke
+                },
         )
 
         val context = LocalContext.current
@@ -1458,6 +1504,207 @@ private fun ToolsScreen(
         }
     }
 }
+
+@Composable
+private fun ObservationSmokeScreen(
+    runner: SensorObservationSmokeRunner?,
+    onBack: () -> Unit,
+) {
+    DeveloperPage(
+        title = "Observation smoke",
+        subtitle = "M5.0b continuous-sensor hardware closure",
+        onBack = onBack,
+    ) {
+        if (runner == null) {
+            DiagnosticCard(
+                title = "RUNTIME",
+                primary = "Runner unavailable",
+                secondary = "DieselBridge service runtime is not attached",
+                healthy = false,
+            )
+        } else {
+            val snapshot by
+                runner.state.collectAsStateWithLifecycle()
+
+            val active =
+                snapshot?.status == SensorObservationSmokeStatus.RUNNING
+
+            if (snapshot == null) {
+                DiagnosticCard(
+                    title = "LAST RUN",
+                    primary = "No smoke run yet",
+                    secondary = "Choose one bounded profile below",
+                    healthy = true,
+                )
+            } else {
+                ObservationSmokeEvidence(
+                    snapshot = requireNotNull(snapshot),
+                )
+            }
+
+            if (active) {
+                val activeRunId = requireNotNull(snapshot).runId
+                NavigationChip(
+                    label = "CANCEL CURRENT RUN",
+                    onClick = {
+                        runner.cancel(activeRunId)
+                    },
+                )
+            }
+
+            SectionLabel("PROFILES")
+
+            SensorObservationSmokeProfile
+                .values()
+                .forEach { profile ->
+                    DiagnosticCard(
+                        title = profile.wireName.uppercase(),
+                        primary = observationSmokeProfileTitle(profile),
+                        secondary = observationSmokeProfileSummary(profile),
+                        healthy = !active,
+                        onClick =
+                            if (active) {
+                                null
+                            } else {
+                                {
+                                    runner.start(profile)
+                                }
+                            },
+                    )
+                }
+        }
+    }
+}
+
+@Composable
+private fun ObservationSmokeEvidence(
+    snapshot: SensorObservationSmokeSnapshot,
+) {
+    val healthy =
+        snapshot.status != SensorObservationSmokeStatus.FAILED &&
+            snapshot.status != SensorObservationSmokeStatus.CANCELLED
+
+    DiagnosticCard(
+        title = "LAST RUN",
+        primary = snapshot.status.name,
+        secondary = "${snapshot.runId} · ${snapshot.profile.wireName}",
+        healthy = healthy,
+    )
+
+    snapshot.detail?.let {
+        DetailText("Detail: $it")
+    }
+
+    DetailText(
+        "Target: ${snapshot.logicalId ?: "unknown"} · " +
+            "requested ${snapshot.requestedPeriodMs ?: "?"} ms",
+    )
+    DetailText(
+        "Provider: ${snapshot.providerId ?: "none"} · " +
+            "acquisition ${snapshot.acquisitionPeriodMs ?: "?"} ms",
+    )
+    DetailText(
+        "Provider cadence: configured ${snapshot.providerConfiguredPeriodMs ?: "?"} ms · " +
+            "effective ${snapshot.providerEffectivePeriodMs ?: "?"} ms",
+    )
+    DetailText(
+        "Observed interval: min ${snapshot.observedMinIntervalMs ?: "?"} · " +
+            "median ${snapshot.observedMedianIntervalMs ?: "?"} · " +
+            "max ${snapshot.observedMaxIntervalMs ?: "?"} ms",
+    )
+    DetailText(
+        "Samples: ${snapshot.sampleCount} · " +
+            "sequence ${snapshot.firstSequence ?: "?"}..${snapshot.lastSequence ?: "?"}",
+    )
+    DetailText(
+        "Sensor timestamp: ${snapshot.firstSensorTimestampNs ?: "?"}.." +
+            "${snapshot.lastSensorTimestampNs ?: "?"} ns",
+    )
+    DetailText(
+        "Monotonic errors: sequence ${snapshot.nonAdvancingSequenceCount} · " +
+            "timestamp ${snapshot.nonAdvancingTimestampCount}",
+    )
+    DetailText(
+        "Drops: provider ${snapshot.providerDroppedTotal} · " +
+            "subscription ${snapshot.subscriptionDroppedTotal}",
+    )
+    DetailText(
+        "Phases: " +
+            snapshot.phaseTransitions.joinToString(" → ").ifBlank { "none" },
+    )
+
+    if (snapshot.completedCycles > 0) {
+        DetailText("Lifecycle cycles: ${snapshot.completedCycles}")
+    }
+
+    if (snapshot.sharingInitialAcquisitionPeriodMs != null) {
+        DetailText(
+            "Sharing cadence: ${snapshot.sharingInitialAcquisitionPeriodMs} → " +
+                "${snapshot.sharingCombinedAcquisitionPeriodMs ?: "?"} → " +
+                "${snapshot.sharingRestoredAcquisitionPeriodMs ?: "?"} ms",
+        )
+    }
+
+    DetailText(
+        "Route: ${snapshot.sensorManagerRouteId ?: "not recorded"}",
+    )
+
+    if (snapshot.sensorManagerRouteId != null) {
+        DetailText(
+            "Route metadata: wakeUp=${snapshot.sensorManagerRouteWakeUp ?: "?"} · " +
+                "minDelay=${snapshot.sensorManagerRouteMinDelayUs ?: "?"} µs · " +
+                "mode=${snapshot.sensorManagerRouteReportingMode ?: "?"} · " +
+                "power=${snapshot.sensorManagerRoutePowerMilliAmps ?: "?"} mA",
+        )
+    }
+
+    DetailText(
+        "Last values: " +
+            snapshot.lastValues.joinToString().ifBlank { "none" },
+    )
+
+    if (snapshot.profile == SensorObservationSmokeProfile.SCREEN_OFF) {
+        DetailText(
+            "Screen-off interpretation: start the run, turn the display off, " +
+                "then inspect continuity and route wake-up metadata after 30 s.",
+        )
+    }
+}
+
+private fun observationSmokeProfileTitle(
+    profile: SensorObservationSmokeProfile,
+): String =
+    when (profile) {
+        SensorObservationSmokeProfile.BASIC -> "Accelerometer basic"
+        SensorObservationSmokeProfile.CADENCE -> "Accelerometer cadence clamp"
+        SensorObservationSmokeProfile.SCREEN_OFF -> "Screen-off continuity"
+        SensorObservationSmokeProfile.STEP_COUNTER -> "Step-counter observation"
+        SensorObservationSmokeProfile.SHARING -> "Shared runtime cadence"
+        SensorObservationSmokeProfile.LIFECYCLE -> "Repeated lifecycle"
+    }
+
+private fun observationSmokeProfileSummary(
+    profile: SensorObservationSmokeProfile,
+): String =
+    when (profile) {
+        SensorObservationSmokeProfile.BASIC ->
+            "250 ms · 12 samples · ACTIVE → CLOSED"
+
+        SensorObservationSmokeProfile.CADENCE ->
+            "Request 20 ms; verify SensorManager minDelay/configured cadence"
+
+        SensorObservationSmokeProfile.SCREEN_OFF ->
+            "30 s timed capture; turn the display off immediately after start"
+
+        SensorObservationSmokeProfile.STEP_COUNTER ->
+            "1 s request; walk during the run; cumulative/on-change sensor"
+
+        SensorObservationSmokeProfile.SHARING ->
+            "One runtime follows 1000 → 250 → 1000 ms consumer demand"
+
+        SensorObservationSmokeProfile.LIFECYCLE ->
+            "Five repeated open/sample/close cycles"
+    }
 
 private enum class ResultFilter {
     ALL,
