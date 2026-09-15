@@ -39,6 +39,9 @@ import org.aaustralian.dieselbridge.debug.SensorProbeStore
 import org.aaustralian.dieselbridge.debug.SensorScanRunner
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.SafePlatformTestRunner
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeRoute
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeRouteInspector
+import org.aaustralian.dieselbridge.debug.SensorObservationSmokeRunner
 import org.aaustralian.dieselbridge.debug.WatchDeveloperExportRegistry
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
@@ -51,9 +54,11 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesSource
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
+import org.aaustralian.dieselbridge.platform.sensor.SensorManagerLogicalRouteSelector
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerObservationDispatcher
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
 import org.aaustralian.dieselbridge.platform.sensor.sensorManagerObservationCapabilities
+import org.aaustralian.dieselbridge.platform.sensor.sensorManagerRequestedPeriodUs
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
 import org.aaustralian.dieselbridge.tile.MusicTileService
@@ -74,6 +79,9 @@ class DieselBridgeService : Service() {
 
     private var sensorObservationDispatcher:
         SensorManagerObservationDispatcher? = null
+
+    private var sensorObservationSmokeRunner:
+        SensorObservationSmokeRunner? = null
 
     /*
      * Lifecycle scope for Diesel platform routes/modules.
@@ -244,6 +252,44 @@ class DieselBridgeService : Service() {
 
         sensorObservationManager =
             observationManager
+
+        val observationSmokeRunner =
+            SensorObservationSmokeRunner(
+                observationManager = observationManager,
+                scope = sensorObservationScope,
+                routeInspector =
+                    SensorObservationSmokeRouteInspector {
+                            logicalId,
+                            requestedPeriodMs,
+                        ->
+                        val requestedPeriodUs =
+                            sensorManagerRequestedPeriodUs(
+                                requestedPeriodMs,
+                            )
+
+                        SensorManagerLogicalRouteSelector
+                            .selectForObservation(
+                                handles = sensorSource.snapshot(),
+                                logicalId = logicalId,
+                                requestedPeriodUs = requestedPeriodUs,
+                            )
+                            ?.route
+                            ?.let { route ->
+                                SensorObservationSmokeRoute(
+                                    routeId = route.descriptor.routeId.value,
+                                    wakeUp = route.inventory.wakeUp,
+                                    minDelayUs = route.inventory.minDelayUs,
+                                    reportingMode = route.inventory.reportingMode,
+                                    powerMilliAmps = route.inventory.powerMilliAmps,
+                                )
+                            }
+                    },
+            )
+
+        sensorObservationSmokeRunner = observationSmokeRunner
+        DeveloperRuntimeAccess.attachObservationSmokeRunner(
+            observationSmokeRunner,
+        )
 
         // Health Services is an optional higher-priority source. Register it as standby until
         // the watch reports support; the SensorManager provider remains the safe fallback.
@@ -435,6 +481,12 @@ class DieselBridgeService : Service() {
          * The cleanup coroutine itself keeps sensorObservationScope alive
          * until this ordering is complete.
          */
+        val observationSmokeRunnerToClose =
+            sensorObservationSmokeRunner
+
+        sensorObservationSmokeRunner = null
+        observationSmokeRunnerToClose?.close()
+
         val observationManagerToClose =
             sensorObservationManager
 

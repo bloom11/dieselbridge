@@ -49,6 +49,19 @@ internal object DeveloperRuntimeAccess {
         mutableSensorMatrixExperiment.value = experiment
     }
 
+    private val mutableObservationSmokeRunner =
+        MutableStateFlow<SensorObservationSmokeRunner?>(null)
+
+    val observationSmokeRunner:
+        StateFlow<SensorObservationSmokeRunner?> =
+        mutableObservationSmokeRunner.asStateFlow()
+
+    fun attachObservationSmokeRunner(
+        runner: SensorObservationSmokeRunner,
+    ) {
+        mutableObservationSmokeRunner.value = runner
+    }
+
     private val mutableSafeTestRunner =
         MutableStateFlow<SafePlatformTestRunner?>(null)
 
@@ -142,6 +155,7 @@ internal object DeveloperRuntimeAccess {
             mutableDeveloperRemoteAccessPolicy.value = null
             mutableSensorInventory.value = null
             mutableSafeTestRunner.value = null
+            mutableObservationSmokeRunner.value = null
             mutableSensorMatrixExperiment.value = null
             mutableSensorProbeStoreSnapshot.value = null
             mutableCommandDispatcher.value = null
