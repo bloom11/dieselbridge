@@ -699,8 +699,11 @@ internal class SensorObservationSmokeRunner(
 
     private inner class SampleAccumulator(
         private val runId: String,
+        private val trackMonotonicity: Boolean,
     ) {
         private val timestamps = mutableListOf<Long>()
+        private var previousSequence: Long? = null
+        private var previousTimestampNs: Long? = null
 
         fun recordState(state: SensorSubscriptionState) {
             updateSnapshot(runId) { current ->
@@ -753,12 +756,42 @@ internal class SensorObservationSmokeRunner(
                 if (sortedIntervals.isEmpty()) null
                 else sortedIntervals[sortedIntervals.size / 2]
 
+            val previousSequenceValue = previousSequence
+            val previousTimestampValue = previousTimestampNs
+            val sequenceDidNotAdvance =
+                trackMonotonicity &&
+                    previousSequenceValue != null &&
+                    sample.sequence <= previousSequenceValue
+            val timestampDidNotAdvance =
+                trackMonotonicity &&
+                    previousTimestampValue != null &&
+                    timestamp <= previousTimestampValue
+
+            if (trackMonotonicity) {
+                previousSequence = sample.sequence
+                previousTimestampNs = timestamp
+            }
+
             updateSnapshot(runId) { current ->
                 current.copy(
                     providerId = sample.reading.providerId,
                     sampleCount = current.sampleCount + 1,
+                    firstSequence =
+                        if (trackMonotonicity) {
+                            current.firstSequence ?: sample.sequence
+                        } else {
+                            current.firstSequence
+                        },
+                    lastSequence =
+                        if (trackMonotonicity) sample.sequence else current.lastSequence,
                     firstSensorTimestampNs = current.firstSensorTimestampNs ?: timestamp,
                     lastSensorTimestampNs = timestamp,
+                    nonAdvancingSequenceCount =
+                        current.nonAdvancingSequenceCount +
+                            if (sequenceDidNotAdvance) 1 else 0,
+                    nonAdvancingTimestampCount =
+                        current.nonAdvancingTimestampCount +
+                            if (timestampDidNotAdvance) 1 else 0,
                     observedMinIntervalMs = intervalsMs.minOrNull(),
                     observedMedianIntervalMs = median,
                     observedMaxIntervalMs = intervalsMs.maxOrNull(),
