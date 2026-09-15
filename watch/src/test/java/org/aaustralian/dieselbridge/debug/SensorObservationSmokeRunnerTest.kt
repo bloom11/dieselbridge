@@ -31,7 +31,7 @@ class SensorObservationSmokeRunnerTest {
     ) : DieselProvider
 
     private class FakeCapability(
-        private val logicalId: String,
+        override val logicalId: String,
         private val providerId: String,
         private val configuredPeriodMs: Long? = null,
         private val fixedTimestamp: Boolean = false,
