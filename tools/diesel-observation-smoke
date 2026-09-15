@@ -1,0 +1,752 @@
+#!/data/data/com.termux/files/usr/bin/python3
+# Drive the debug-only Diesel observation smoke runner over watch ADB.
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import uuid
+from typing import Any
+
+APP_ID = "io.github.bloom11.dieselbridge"
+ACTION = "org.aaustralian.dieselbridge.OBSERVATION_SMOKE"
+COMPONENT = (
+    "io.github.bloom11.dieselbridge/"
+    "org.aaustralian.dieselbridge.debug.DebugObservationSmokeReceiver"
+)
+TAG = "DieselObservationSmoke"
+
+PROFILES = (
+    "basic",
+    "cadence",
+    "screen_off",
+    "step_counter",
+    "sharing",
+    "lifecycle",
+)
+
+TERMINAL_STATUSES = {
+    "passed",
+    "completed",
+    "failed",
+    "cancelled",
+}
+
+# Give each bounded hardware profile enough time to reach the runner's
+# own terminal result. The helper must not cancel a legitimate slow
+# failure path before the runner can describe it.
+PROFILE_TIMEOUT_SECONDS = {
+    "basic": 25.0,
+    "cadence": 25.0,
+    "screen_off": 45.0,
+    "step_counter": 40.0,
+    "sharing": 55.0,
+    "lifecycle": 90.0,
+}
+
+
+class SmokeError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return (
+        dt.datetime.now(dt.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+    )
+
+
+def choose_serial(explicit: str | None) -> str:
+    if explicit:
+        return explicit
+
+    configured = os.environ.get("DIESEL_ADB_SERIAL")
+    if configured:
+        return configured
+
+    result = subprocess.run(
+        ["adb", "devices"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode:
+        raise SmokeError(
+            "adb devices failed:\n"
+            + result.stdout
+            + result.stderr
+        )
+
+    devices = []
+    for line in result.stdout.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) >= 2 and fields[1] == "device":
+            devices.append(fields[0])
+
+    if len(devices) != 1:
+        raise SmokeError(
+            "Expected exactly one connected ADB device; "
+            "set DIESEL_ADB_SERIAL or pass --serial.\n"
+            + result.stdout
+        )
+
+    return devices[0]
+
+
+def adb(
+    serial: str,
+    *args: str,
+    timeout: float = 15.0,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["adb", "-s", serial, *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def ensure_installed(serial: str) -> None:
+    result = adb(
+        serial,
+        "shell",
+        "pm",
+        "path",
+        APP_ID,
+    )
+    if (
+        result.returncode != 0
+        or not any(
+            line.startswith("package:")
+            for line in result.stdout.splitlines()
+        )
+    ):
+        raise SmokeError(
+            f"{APP_ID} is not installed on {serial}."
+        )
+
+
+def request_id() -> str:
+    return (
+        f"obs-{int(time.time())}-"
+        f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def read_response(
+    serial: str,
+    wanted_id: str,
+    wait_seconds: float = 5.0,
+) -> dict[str, Any]:
+    prefix = f"id={wanted_id} "
+    deadline = time.monotonic() + wait_seconds
+    last_log = ""
+
+    while time.monotonic() < deadline:
+        result = adb(
+            serial,
+            "logcat",
+            "-d",
+            "-v",
+            "raw",
+            "-s",
+            f"{TAG}:I",
+            "*:S",
+        )
+        last_log = result.stdout
+
+        for line in reversed(result.stdout.splitlines()):
+            if not line.startswith(prefix):
+                continue
+
+            raw = line[len(prefix):]
+            try:
+                response = json.loads(raw)
+            except json.JSONDecodeError as error:
+                raise SmokeError(
+                    "Matching receiver response was malformed JSON: "
+                    + raw
+                ) from error
+
+            if not isinstance(response, dict):
+                raise SmokeError(
+                    "Matching receiver response was not a JSON object."
+                )
+
+            return response
+
+        time.sleep(0.10)
+
+    diagnostic = "\n".join(
+        last_log.splitlines()[-20:]
+    )
+    raise SmokeError(
+        f"No {TAG} response for request {wanted_id}.\n"
+        "If the app was force-stopped, open DieselBridge once so "
+        "its foreground service can attach the runtime.\n"
+        f"Recent tag output:\n{diagnostic}"
+    )
+
+
+def send(
+    serial: str,
+    operation: str,
+    *,
+    profile: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    rid = request_id()
+
+    command = [
+        "shell",
+        "am",
+        "broadcast",
+        "--receiver-foreground",
+        "-a",
+        ACTION,
+        "-n",
+        COMPONENT,
+        "--es",
+        "requestId",
+        rid,
+        "--es",
+        "op",
+        operation,
+    ]
+
+    if profile is not None:
+        command += [
+            "--es",
+            "profile",
+            profile,
+        ]
+
+    if run_id is not None:
+        command += [
+            "--es",
+            "runId",
+            run_id,
+        ]
+
+    result = adb(
+        serial,
+        *command,
+    )
+    if result.returncode:
+        raise SmokeError(
+            "ADB broadcast failed:\n"
+            + result.stdout
+            + result.stderr
+        )
+
+    return read_response(
+        serial,
+        rid,
+    )
+
+
+def check_build(
+    response: dict[str, Any],
+    expected_sha: str | None,
+) -> None:
+    if expected_sha is None:
+        return
+
+    build = response.get("build")
+    actual = (
+        build.get("gitSha")
+        if isinstance(build, dict)
+        else None
+    )
+
+    if actual != expected_sha:
+        raise SmokeError(
+            "Installed APK build SHA mismatch: "
+            f"expected {expected_sha}, got {actual!r}."
+        )
+
+
+def verify_expected_build(
+    serial: str,
+    expected_sha: str | None,
+) -> None:
+    """Verify the installed APK before mutating smoke-runner state."""
+    if expected_sha is None:
+        return
+
+    response = send(
+        serial,
+        "status",
+    )
+    check_build(
+        response,
+        expected_sha,
+    )
+    require_ok(response)
+
+
+def require_ok(
+    response: dict[str, Any],
+) -> dict[str, Any]:
+    if response.get("ok") is not True:
+        raise SmokeError(
+            "Receiver returned an error:\n"
+            + json.dumps(
+                response,
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    return response
+
+
+def snapshot_status(
+    response: dict[str, Any],
+) -> str | None:
+    snapshot = response.get("snapshot")
+    if not isinstance(snapshot, dict):
+        return None
+
+    status = snapshot.get("status")
+    return status if isinstance(status, str) else None
+
+
+def default_output(
+    profile: str,
+) -> Path:
+    stamp = (
+        dt.datetime.now(dt.timezone.utc)
+        .strftime("%Y%m%dT%H%M%SZ")
+    )
+    return (
+        Path.home()
+        / "dieselbridge-observation-smoke"
+        / f"{stamp}-{profile}.json"
+    )
+
+
+def write_report(
+    path: Path,
+    report: dict[str, Any],
+) -> None:
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    path.write_text(
+        json.dumps(
+            report,
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(f"\nSaved evidence: {path}")
+
+
+def run_profile(
+    serial: str,
+    profile: str,
+    expected_sha: str | None,
+    output: Path,
+    poll_seconds: float,
+    run_timeout_seconds: float,
+) -> int:
+    print(f"Starting observation smoke profile: {profile}")
+
+    if profile == "screen_off":
+        print(
+            "SCREEN-OFF TEST: after the start response appears, "
+            "turn the watch display off and leave it off for at least "
+            "30 seconds. This helper deliberately performs no ADB polling "
+            "during that capture window."
+        )
+    elif profile == "step_counter":
+        print(
+            "STEP-COUNTER TEST: walk during the run so the on-change "
+            "counter has a chance to emit."
+        )
+
+    start = send(
+        serial,
+        "start",
+        profile=profile,
+    )
+    check_build(
+        start,
+        expected_sha,
+    )
+    require_ok(start)
+
+    run_id = start.get("runId")
+    if not isinstance(run_id, str) or not run_id:
+        raise SmokeError(
+            "start response contained no runId."
+        )
+
+    report: dict[str, Any] = {
+        "schemaVersion": 1,
+        "createdAtUtc": utc_now(),
+        "adbSerial": serial,
+        "profile": profile,
+        "runId": run_id,
+        "start": start,
+        "timeline": [],
+    }
+
+    print(
+        json.dumps(
+            start,
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+    deadline = (
+        time.monotonic()
+        + run_timeout_seconds
+    )
+
+    # Polling itself causes ADB traffic and can perturb a screen-off power
+    # experiment. Remain completely idle past the runner's 30 s capture.
+    if profile == "screen_off":
+        time.sleep(32.0)
+
+    final: dict[str, Any] | None = None
+
+    while time.monotonic() < deadline:
+        response = send(
+            serial,
+            "status",
+            run_id=run_id,
+        )
+        check_build(
+            response,
+            expected_sha,
+        )
+        require_ok(response)
+
+        report["timeline"].append(
+            {
+                "observedAtUtc": utc_now(),
+                "response": response,
+            }
+        )
+
+        status = snapshot_status(response)
+
+        snapshot = response.get("snapshot")
+        if isinstance(snapshot, dict):
+            phases = snapshot.get("phaseTransitions")
+            if isinstance(phases, list) and phases:
+                phase = phases[-1]
+            else:
+                phase = "?"
+            print(
+                "status="
+                f"{status or '?'} "
+                "samples="
+                f"{snapshot.get('sampleCount', '?')} "
+                "phase="
+                f"{phase}"
+            )
+
+        if status in TERMINAL_STATUSES:
+            final = response
+            break
+
+        time.sleep(poll_seconds)
+
+    if final is None:
+        report["timeoutAtUtc"] = utc_now()
+
+        try:
+            cancel_response = send(
+                serial,
+                "cancel",
+                run_id=run_id,
+            )
+            check_build(
+                cancel_response,
+                expected_sha,
+            )
+            report["timeoutCancel"] = cancel_response
+        except Exception as error:
+            report["timeoutCancelError"] = str(error)
+
+        write_report(
+            output,
+            report,
+        )
+        raise SmokeError(
+            f"Run {run_id} did not reach a terminal state within "
+            f"{run_timeout_seconds:g} seconds."
+        )
+
+    report["final"] = final
+    report["finishedAtUtc"] = utc_now()
+
+    write_report(
+        output,
+        report,
+    )
+
+    print(
+        "\nFinal response:\n"
+        + json.dumps(
+            final,
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+    status = snapshot_status(final)
+
+    if profile == "screen_off" and status == "completed":
+        print(
+            "\nNOTE: screen_off uses COMPLETED rather than PASSED. "
+            "Closure requires inspecting sample continuity, observed gaps, "
+            "and route wake-up metadata from the saved evidence."
+        )
+
+    return (
+        0
+        if status in {"passed", "completed"}
+        else 1
+    )
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(
+        description=(
+            "Control the debug-only Diesel observation smoke runner "
+            "over ADB and capture correlated JSON evidence."
+        )
+    )
+
+    result.add_argument(
+        "--serial",
+        help=(
+            "ADB serial; otherwise DIESEL_ADB_SERIAL or exactly one "
+            "connected device is required"
+        ),
+    )
+    result.add_argument(
+        "--expect-sha",
+        help=(
+            "fail if the installed APK BUILD_GIT_SHA does not exactly "
+            "match this commit SHA"
+        ),
+    )
+
+    commands = result.add_subparsers(
+        dest="command",
+        required=True,
+    )
+
+    start = commands.add_parser(
+        "start",
+        help="start one bounded smoke profile",
+    )
+    start.add_argument(
+        "profile",
+        choices=PROFILES,
+    )
+
+    status = commands.add_parser(
+        "status",
+        help="read the latest smoke snapshot",
+    )
+    status.add_argument(
+        "run_id",
+        nargs="?",
+    )
+
+    cancel = commands.add_parser(
+        "cancel",
+        help="cancel the exact active run",
+    )
+    cancel.add_argument(
+        "run_id",
+    )
+
+    run = commands.add_parser(
+        "run",
+        help="start, wait for terminal state, and save JSON evidence",
+    )
+    run.add_argument(
+        "profile",
+        choices=PROFILES,
+    )
+    run.add_argument(
+        "--output",
+        type=Path,
+        help="evidence JSON path",
+    )
+    run.add_argument(
+        "--poll-sec",
+        type=float,
+        default=0.5,
+        help="status polling period for non-screen-off profiles",
+    )
+    run.add_argument(
+        "--run-timeout-sec",
+        type=float,
+        default=None,
+        help=(
+            "overall wait before cancelling; defaults are profile-specific "
+            "(25..90 s)"
+        ),
+    )
+
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+
+    serial = choose_serial(args.serial)
+    ensure_installed(serial)
+
+    print(f"Watch: {serial}")
+
+    # Mutating operations must never run against the wrong APK when
+    # --expect-sha was supplied.
+    if args.command in {"start", "cancel", "run"}:
+        verify_expected_build(
+            serial,
+            args.expect_sha,
+        )
+
+    if args.command == "start":
+        response = send(
+            serial,
+            "start",
+            profile=args.profile,
+        )
+        check_build(
+            response,
+            args.expect_sha,
+        )
+        print(
+            json.dumps(
+                response,
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        require_ok(response)
+        return 0
+
+    if args.command == "status":
+        response = send(
+            serial,
+            "status",
+            run_id=args.run_id,
+        )
+        check_build(
+            response,
+            args.expect_sha,
+        )
+        print(
+            json.dumps(
+                response,
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        require_ok(response)
+        return 0
+
+    if args.command == "cancel":
+        response = send(
+            serial,
+            "cancel",
+            run_id=args.run_id,
+        )
+        check_build(
+            response,
+            args.expect_sha,
+        )
+        print(
+            json.dumps(
+                response,
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        require_ok(response)
+        return 0
+
+    if args.command == "run":
+        if args.poll_sec <= 0:
+            raise SmokeError(
+                "--poll-sec must be greater than zero."
+            )
+
+        run_timeout_seconds = (
+            args.run_timeout_sec
+            if args.run_timeout_sec is not None
+            else PROFILE_TIMEOUT_SECONDS[args.profile]
+        )
+
+        if run_timeout_seconds <= 0:
+            raise SmokeError(
+                "--run-timeout-sec must be greater than zero."
+            )
+
+        if (
+            args.profile == "screen_off"
+            and run_timeout_seconds < 35.0
+        ):
+            raise SmokeError(
+                "screen_off requires --run-timeout-sec >= 35 "
+                "because its capture lasts 30 seconds."
+            )
+
+        output = (
+            args.output.expanduser()
+            if args.output
+            else default_output(args.profile)
+        )
+
+        return run_profile(
+            serial=serial,
+            profile=args.profile,
+            expected_sha=args.expect_sha,
+            output=output,
+            poll_seconds=args.poll_sec,
+            run_timeout_seconds=run_timeout_seconds,
+        )
+
+    raise SmokeError(
+        f"Unsupported command: {args.command}"
+    )
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SmokeError as error:
+        print(
+            f"ERROR: {error}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    except subprocess.TimeoutExpired as error:
+        print(
+            f"ERROR: ADB command timed out: {error}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)

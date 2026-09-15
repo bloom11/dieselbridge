@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- DEBUG-ONLY overlay: adds the notification-inject receiver. Never present in release builds. -->
+<!-- DEBUG-ONLY overlay: ADB/developer receivers. Never present in release builds. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <receiver
@@ -7,6 +7,19 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="org.aaustralian.dieselbridge.INJECT" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            DEBUG-ONLY explicit ADB control surface for the service-owned
+            SensorObservationSmokeRunner. The receiver never owns sensors and
+            never enters the public Diesel protocol/BLE path.
+        -->
+        <receiver
+            android:name=".debug.DebugObservationSmokeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="org.aaustralian.dieselbridge.OBSERVATION_SMOKE" />
             </intent-filter>
         </receiver>
     </application>
