@@ -27,6 +27,7 @@ PROFILES = (
     "cadence",
     "screen_off",
     "step_counter",
+    "health_services_hr",
     "sharing",
     "lifecycle",
 )
@@ -46,6 +47,7 @@ PROFILE_TIMEOUT_SECONDS = {
     "cadence": 25.0,
     "screen_off": 45.0,
     "step_counter": 40.0,
+    "health_services_hr": 120.0,
     "sharing": 55.0,
     "lifecycle": 90.0,
 }
@@ -377,6 +379,12 @@ def run_profile(
             "STEP-COUNTER TEST: walk during the run so the on-change "
             "counter has a chance to emit."
         )
+    elif profile == "health_services_hr":
+        print(
+            "HEALTH-SERVICES HR TEST: keep the watch on your wrist. "
+            "This profile requires providerId=wear.health_services; "
+            "SensorManager fallback is a test failure."
+        )
 
     start = send(
         serial,
@@ -520,6 +528,14 @@ def run_profile(
             "and route wake-up metadata from the saved evidence."
         )
 
+    if profile == "health_services_hr" and status == "completed":
+        print(
+            "\nNOTE: Health Services reached ACTIVE but emitted no passive "
+            "HR sample in the bounded window. Registration is validated, "
+            "but HR sample delivery remains unproven."
+        )
+        return 1
+
     return (
         0
         if status in {"passed", "completed"}
@@ -606,7 +622,7 @@ def parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "overall wait before cancelling; defaults are profile-specific "
-            "(25..90 s)"
+            "(25..120 s)"
         ),
     )
 

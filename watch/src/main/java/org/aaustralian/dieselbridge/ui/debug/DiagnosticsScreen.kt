@@ -1679,6 +1679,7 @@ private fun observationSmokeProfileTitle(
         SensorObservationSmokeProfile.CADENCE -> "Accelerometer cadence clamp"
         SensorObservationSmokeProfile.SCREEN_OFF -> "Screen-off continuity"
         SensorObservationSmokeProfile.STEP_COUNTER -> "Step-counter observation"
+        SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> "Health Services HR"
         SensorObservationSmokeProfile.SHARING -> "Shared runtime cadence"
         SensorObservationSmokeProfile.LIFECYCLE -> "Repeated lifecycle"
     }
@@ -1698,6 +1699,9 @@ private fun observationSmokeProfileSummary(
 
         SensorObservationSmokeProfile.STEP_COUNTER ->
             "1 s request; walk during the run; cumulative/on-change sensor"
+
+        SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
+            "Require wear.health_services; wait up to 90 s for one passive HR sample"
 
         SensorObservationSmokeProfile.SHARING ->
             "One runtime follows 1000 → 250 → 1000 ms consumer demand"

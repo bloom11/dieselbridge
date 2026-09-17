@@ -3,6 +3,7 @@
 package org.aaustralian.dieselbridge.debug
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.provider.DieselProvider
+import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorCapabilityId
 import org.aaustralian.dieselbridge.platform.sensor.SensorReading
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapability
@@ -35,6 +37,7 @@ class SensorObservationSmokeRunnerTest {
         private val providerId: String,
         private val configuredPeriodMs: Long? = null,
         private val fixedTimestamp: Boolean = false,
+        private val emitSamples: Boolean = true,
     ) : SensorObservationCapability {
 
         override val capabilityId =
@@ -53,6 +56,10 @@ class SensorObservationSmokeRunnerTest {
                         configuredSamplePeriodMs = periodMs,
                     ),
                 )
+
+                if (!emitSamples) {
+                    awaitCancellation()
+                }
 
                 var sequence = 0L
 
@@ -413,4 +420,340 @@ class SensorObservationSmokeRunnerTest {
             runner.close()
             manager.close()
         }
+
+    @Test
+    fun healthServicesHrProfileRequiresExactProviderAndSample() =
+        runTest {
+            val registry = CapabilityRegistry()
+            val provider = FakeProvider("wear.health_services")
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = provider.providerId,
+                    ),
+                provider = provider,
+                priority = 20,
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry = registry,
+                    scope = this,
+                    monotonicMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            val runner =
+                SensorObservationSmokeRunner(
+                    observationManager = manager,
+                    scope = this,
+                    wallClockMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            runner.start(
+                SensorObservationSmokeProfile.HEALTH_SERVICES_HR,
+            )
+
+            advanceUntilIdle()
+
+            val result =
+                requireNotNull(
+                    runner.latest(),
+                )
+
+            assertEquals(
+                SensorObservationSmokeStatus.PASSED,
+                result.status,
+            )
+
+            assertEquals(
+                "wear.health_services",
+                result.providerId,
+            )
+
+            assertTrue(
+                result.sampleCount >= 1,
+            )
+
+            assertEquals(
+                "heart_rate",
+                result.logicalId,
+            )
+
+            assertTrue(
+                "closed" in result.phaseTransitions,
+            )
+
+            runner.close()
+            manager.close()
+        }
+
+    @Test
+    fun healthServicesHrProfileRejectsSensorManagerFallback() =
+        runTest {
+            val registry = CapabilityRegistry()
+            val provider = FakeProvider("android.sensor_manager")
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = provider.providerId,
+                    ),
+                provider = provider,
+                priority = 10,
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry = registry,
+                    scope = this,
+                    monotonicMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            val runner =
+                SensorObservationSmokeRunner(
+                    observationManager = manager,
+                    scope = this,
+                    wallClockMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            runner.start(
+                SensorObservationSmokeProfile.HEALTH_SERVICES_HR,
+            )
+
+            advanceUntilIdle()
+
+            val result =
+                requireNotNull(
+                    runner.latest(),
+                )
+
+            assertEquals(
+                SensorObservationSmokeStatus.FAILED,
+                result.status,
+            )
+
+            assertEquals(
+                "android.sensor_manager",
+                result.providerId,
+            )
+
+            assertTrue(
+                requireNotNull(
+                    result.detail,
+                ).contains(
+                    "Expected provider wear.health_services",
+                ),
+            )
+
+            runner.close()
+            manager.close()
+        }
+
+
+    @Test
+    fun healthServicesHrProfileRejectsFallbackAfterInitialActive() =
+        runTest {
+            val registry = CapabilityRegistry()
+
+            val healthServices =
+                FakeProvider(
+                    "wear.health_services",
+                )
+
+            val sensorManager =
+                FakeProvider(
+                    "android.sensor_manager",
+                )
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = healthServices.providerId,
+                        emitSamples = false,
+                    ),
+                provider = healthServices,
+                priority = 20,
+            )
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = sensorManager.providerId,
+                        emitSamples = false,
+                    ),
+                provider = sensorManager,
+                priority = 10,
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry = registry,
+                    scope = this,
+                    monotonicMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            val runner =
+                SensorObservationSmokeRunner(
+                    observationManager = manager,
+                    scope = this,
+                    wallClockMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            runner.start(
+                SensorObservationSmokeProfile.HEALTH_SERVICES_HR,
+            )
+
+            /*
+             * Let the priority-20 provider register and establish ACTIVE
+             * before simulating runtime Health Services failure.
+             */
+            testScheduler.runCurrent()
+
+            assertEquals(
+                "wear.health_services",
+                runner.latest()?.providerId,
+            )
+
+            registry.setAvailability(
+                capabilityId =
+                    SensorObservationCapabilityId
+                        .forLogical(
+                            "heart_rate",
+                        )
+                        .value,
+                providerId =
+                    healthServices.providerId,
+                availability =
+                    ProviderAvailability.UNAVAILABLE,
+                reason =
+                    "test_runtime_failure",
+            )
+
+            advanceUntilIdle()
+
+            val result =
+                requireNotNull(
+                    runner.latest(),
+                )
+
+            assertEquals(
+                SensorObservationSmokeStatus.FAILED,
+                result.status,
+            )
+
+            assertEquals(
+                "android.sensor_manager",
+                result.providerId,
+            )
+
+            assertTrue(
+                requireNotNull(
+                    result.detail,
+                ).contains(
+                    "left ACTIVE before a sample",
+                ),
+            )
+
+            assertTrue(
+                "closed" in result.phaseTransitions,
+            )
+
+            runner.close()
+            manager.close()
+        }
+
+    @Test
+    fun healthServicesHrProfileDistinguishesActiveWithoutSample() =
+        runTest {
+            val registry = CapabilityRegistry()
+            val provider = FakeProvider("wear.health_services")
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = provider.providerId,
+                        emitSamples = false,
+                    ),
+                provider = provider,
+                priority = 20,
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry = registry,
+                    scope = this,
+                    monotonicMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            val runner =
+                SensorObservationSmokeRunner(
+                    observationManager = manager,
+                    scope = this,
+                    wallClockMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            runner.start(
+                SensorObservationSmokeProfile.HEALTH_SERVICES_HR,
+            )
+
+            advanceUntilIdle()
+
+            val result =
+                requireNotNull(
+                    runner.latest(),
+                )
+
+            assertEquals(
+                SensorObservationSmokeStatus.COMPLETED,
+                result.status,
+            )
+
+            assertEquals(
+                "wear.health_services",
+                result.providerId,
+            )
+
+            assertEquals(
+                0,
+                result.sampleCount,
+            )
+
+            assertTrue(
+                requireNotNull(
+                    result.detail,
+                ).contains(
+                    "sample delivery is not",
+                ),
+            )
+
+            assertTrue(
+                "closed" in result.phaseTransitions,
+            )
+
+            runner.close()
+            manager.close()
+        }
+
 }

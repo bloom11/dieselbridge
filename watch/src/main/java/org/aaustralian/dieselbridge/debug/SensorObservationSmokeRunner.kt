@@ -3,6 +3,7 @@
 package org.aaustralian.dieselbridge.debug
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -29,6 +30,7 @@ internal enum class SensorObservationSmokeProfile(
     CADENCE("cadence"),
     SCREEN_OFF("screen_off"),
     STEP_COUNTER("step_counter"),
+    HEALTH_SERVICES_HR("health_services_hr"),
     SHARING("sharing"),
     LIFECYCLE("lifecycle"),
     ;
@@ -172,6 +174,8 @@ internal class SensorObservationSmokeRunner(
                                 runSingle(runId, "accelerometer", 250L, 1, 30_000L, true)
                             SensorObservationSmokeProfile.STEP_COUNTER ->
                                 runSingle(runId, "step_counter", 1_000L, 1, 30_000L, false)
+                            SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
+                                runHealthServicesHeartRate(runId)
                             SensorObservationSmokeProfile.SHARING ->
                                 runSharing(runId)
                             SensorObservationSmokeProfile.LIFECYCLE ->
@@ -366,6 +370,197 @@ internal class SensorObservationSmokeRunner(
                     "Observation produced real samples and closed cleanly",
                 )
         }
+    }
+
+
+    private suspend fun runHealthServicesHeartRate(
+        runId: String,
+    ) {
+        val logicalId =
+            "heart_rate"
+
+        val requestedPeriodMs =
+            1_000L
+
+        val accumulator =
+            SampleAccumulator(
+                runId = runId,
+                trackMonotonicity = true,
+            )
+
+        val client =
+            observationManager.openClient(
+                "developer-observation-health-services-hr-$runId",
+            )
+
+        var terminalStatus =
+            SensorObservationSmokeStatus.FAILED
+
+        var terminalDetail =
+            "Health Services HR smoke did not reach a terminal decision"
+
+        try {
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId = logicalId,
+                        periodMs = requestedPeriodMs,
+                        bufferPolicy = SensorBufferPolicy.Bounded(16),
+                    ),
+                )
+
+            coroutineScope {
+                val firstSample =
+                    CompletableDeferred<
+                        SensorSubscriptionSample
+                    >()
+
+                val stateJob =
+                    launch {
+                        subscription.state.collect {
+                            accumulator.recordState(it)
+                        }
+                    }
+
+                val sampleJob =
+                    launch {
+                        subscription.samples.collect { sample ->
+                            accumulator.recordSample(sample)
+                            firstSample.complete(sample)
+                        }
+                    }
+
+                try {
+                    val active =
+                        withTimeoutOrNull(
+                            HEALTH_SERVICES_ACTIVE_TIMEOUT_MS,
+                        ) {
+                            subscription.state.first {
+                                it.phase ==
+                                    SensorSubscriptionPhase.ACTIVE
+                            }
+                        }
+
+                    if (active == null) {
+                        accumulator.recordState(
+                            subscription.state.value,
+                        )
+
+                        terminalStatus =
+                            SensorObservationSmokeStatus.FAILED
+
+                        terminalDetail =
+                            "Health Services HR never reached ACTIVE. " +
+                            terminalStateDetail(
+                                requireNotNull(
+                                    snapshotFor(runId),
+                                ),
+                            )
+                    } else {
+                        accumulator.recordState(active)
+
+                        if (
+                            active.providerId !=
+                            HEALTH_SERVICES_PROVIDER_ID
+                        ) {
+                            terminalStatus =
+                                SensorObservationSmokeStatus.FAILED
+
+                            terminalDetail =
+                                "Expected provider " +
+                                "$HEALTH_SERVICES_PROVIDER_ID; active provider was " +
+                                "${active.providerId ?: "none"}"
+                        } else {
+                            val sample =
+                                withTimeoutOrNull(
+                                    HEALTH_SERVICES_SAMPLE_WINDOW_MS,
+                                ) {
+                                    firstSample.await()
+                                }
+
+                            if (sample == null) {
+                                val currentState =
+                                    subscription.state.value
+
+                                if (
+                                    currentState.phase !=
+                                    SensorSubscriptionPhase.ACTIVE ||
+                                    currentState.providerId !=
+                                    HEALTH_SERVICES_PROVIDER_ID
+                                ) {
+                                    terminalStatus =
+                                        SensorObservationSmokeStatus.FAILED
+
+                                    terminalDetail =
+                                        "Health Services HR left ACTIVE before a sample: " +
+                                        "phase=${currentState.phase.name.lowercase()}, " +
+                                        "provider=${currentState.providerId ?: "none"}, " +
+                                        "reason=${currentState.reason ?: "none"}"
+                                } else {
+                                    terminalStatus =
+                                        SensorObservationSmokeStatus.COMPLETED
+
+                                    terminalDetail =
+                                        "Health Services HR remained ACTIVE but emitted no " +
+                                        "heart-rate sample during the bounded passive window; " +
+                                        "registration is validated, sample delivery is not"
+                                }
+                            } else if (
+                                sample.reading.providerId !=
+                                HEALTH_SERVICES_PROVIDER_ID
+                            ) {
+                                terminalStatus =
+                                    SensorObservationSmokeStatus.FAILED
+
+                                terminalDetail =
+                                    "Heart-rate sample came from " +
+                                    "${sample.reading.providerId}, not " +
+                                    HEALTH_SERVICES_PROVIDER_ID
+                            } else {
+                                terminalStatus =
+                                    SensorObservationSmokeStatus.PASSED
+
+                                terminalDetail =
+                                    "Health Services passive HR reached ACTIVE and " +
+                                    "delivered a real heart-rate sample"
+                            }
+                        }
+                    }
+                } finally {
+                    subscription.close()
+                    accumulator.recordState(
+                        subscription.state.value,
+                    )
+                    sampleJob.cancel()
+                    stateJob.cancel()
+                }
+            }
+        } finally {
+            client.close()
+        }
+
+        val snapshot =
+            requireNotNull(
+                snapshotFor(runId),
+            )
+
+        if (
+            snapshot.phaseTransitions.lastOrNull() !=
+            SensorSubscriptionPhase.CLOSED.name.lowercase()
+        ) {
+            finish(
+                runId,
+                SensorObservationSmokeStatus.FAILED,
+                "Health Services HR subscription did not reach CLOSED",
+            )
+            return
+        }
+
+        finish(
+            runId,
+            terminalStatus,
+            terminalDetail,
+        )
     }
 
     private suspend fun runSharing(runId: String) {
@@ -808,6 +1003,7 @@ internal class SensorObservationSmokeRunner(
     private fun primaryLogicalId(profile: SensorObservationSmokeProfile): String =
         when (profile) {
             SensorObservationSmokeProfile.STEP_COUNTER -> "step_counter"
+            SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> "heart_rate"
             else -> "accelerometer"
         }
 
@@ -815,6 +1011,7 @@ internal class SensorObservationSmokeRunner(
         when (profile) {
             SensorObservationSmokeProfile.CADENCE -> 20L
             SensorObservationSmokeProfile.STEP_COUNTER -> 1_000L
+            SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> 1_000L
             SensorObservationSmokeProfile.SHARING -> 250L
             else -> 250L
         }
@@ -825,6 +1022,8 @@ internal class SensorObservationSmokeRunner(
                 "30 s timed capture: turn the watch display off after starting"
             SensorObservationSmokeProfile.STEP_COUNTER ->
                 "Walk while the test is running; TYPE_STEP_COUNTER is on-change/cumulative"
+            SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
+                "Require wear.health_services; wait for one passive HR sample"
             SensorObservationSmokeProfile.SHARING ->
                 "Validate one shared runtime across 1000 ms and 250 ms consumers"
             SensorObservationSmokeProfile.LIFECYCLE ->
@@ -838,6 +1037,15 @@ internal class SensorObservationSmokeRunner(
     private companion object {
         const val SENSOR_MANAGER_PROVIDER_ID =
             "android.sensor_manager"
+
+        const val HEALTH_SERVICES_PROVIDER_ID =
+            "wear.health_services"
+
+        const val HEALTH_SERVICES_ACTIVE_TIMEOUT_MS =
+            15_000L
+
+        const val HEALTH_SERVICES_SAMPLE_WINDOW_MS =
+            90_000L
 
         const val MAX_PHASE_TRANSITIONS = 16
         const val MAX_RECORDED_TIMESTAMPS = 256
