@@ -50,8 +50,10 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteProbe
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
+import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesObservationSource
 import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesSource
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
+import org.aaustralian.dieselbridge.platform.sensor.healthServicesObservationCapabilities
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerLogicalRouteSelector
@@ -59,6 +61,7 @@ import org.aaustralian.dieselbridge.platform.sensor.SensorManagerObservationDisp
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerProvider
 import org.aaustralian.dieselbridge.platform.sensor.sensorManagerObservationCapabilities
 import org.aaustralian.dieselbridge.platform.sensor.sensorManagerRequestedPeriodUs
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.sensor.SensorMatrixExperiment
 import org.aaustralian.dieselbridge.tile.MusicTileService
@@ -291,10 +294,11 @@ class DieselBridgeService : Service() {
             observationSmokeRunner,
         )
 
-        // Health Services is an optional higher-priority source. Register it as standby until
-        // the watch reports support; the SensorManager provider remains the safe fallback.
+        // Health Services is optional and higher priority. Keep spot MeasureClient reads and
+        // passive observation independently selectable; SensorManager remains the fallback.
         val healthServicesSource = AndroidHealthServicesSource(applicationContext)
         val healthServicesProvider = HealthServicesProvider(healthServicesSource)
+
         healthServicesProvider.capabilities().forEach { capability ->
             platform.capabilities.register(
                 capability = capability,
@@ -303,23 +307,111 @@ class DieselBridgeService : Service() {
                 initialAvailability = ProviderAvailability.UNAVAILABLE,
             )
         }
+
+        fun markHealthServicesObservationUnavailable(
+            logicalId: String,
+            reason: String,
+        ) {
+            platform.capabilities.setAvailability(
+                SensorObservationCapabilityId.forLogical(logicalId).value,
+                healthServicesProvider.providerId,
+                ProviderAvailability.UNAVAILABLE,
+                reason,
+            )
+        }
+
+        val healthServicesObservationSource =
+            AndroidHealthServicesObservationSource(
+                context = applicationContext,
+                onPermissionLost = { logicalId ->
+                    markHealthServicesObservationUnavailable(
+                        logicalId,
+                        "permission_lost",
+                    )
+                },
+                onRegistrationFailure = { logicalId, _ ->
+                    markHealthServicesObservationUnavailable(
+                        logicalId,
+                        "registration_failed",
+                    )
+                },
+            )
+
+        val healthServicesObservationCapabilityList =
+            healthServicesObservationCapabilities(
+                healthServicesObservationSource,
+            )
+
+        healthServicesObservationCapabilityList.forEach { capability ->
+            platform.capabilities.register(
+                capability = capability,
+                provider = healthServicesProvider,
+                priority = 20,
+                initialAvailability = ProviderAvailability.UNAVAILABLE,
+            )
+        }
+
         val refreshHealthServicesAvailability: suspend () -> Unit = {
             healthServicesProvider.capabilities().forEach { capability ->
-                val logicalId = capability.capabilityId.value.removePrefix("sensor.")
-                val available = runCatching {
-                    healthServicesSource.hasRequiredPermission(logicalId) &&
-                        healthServicesSource.supports(logicalId)
-                }.getOrDefault(false)
+                val logicalId =
+                    capability.capabilityId.value.removePrefix("sensor.")
+
+                val available =
+                    runCatching {
+                        healthServicesSource.hasRequiredPermission(logicalId) &&
+                            healthServicesSource.supports(logicalId)
+                    }.getOrDefault(false)
+
                 platform.capabilities.setAvailability(
                     capability.id,
                     healthServicesProvider.providerId,
-                    if (available) ProviderAvailability.AVAILABLE else ProviderAvailability.UNAVAILABLE,
-                    if (available) null else "unsupported_or_permission_not_granted",
+                    if (available) {
+                        ProviderAvailability.AVAILABLE
+                    } else {
+                        ProviderAvailability.UNAVAILABLE
+                    },
+                    if (available) {
+                        null
+                    } else {
+                        "unsupported_or_permission_not_granted"
+                    },
+                )
+            }
+
+            healthServicesObservationCapabilityList.forEach { capability ->
+                val logicalId = capability.logicalId
+
+                val available =
+                    runCatching {
+                        healthServicesObservationSource
+                            .hasRequiredPermission(logicalId) &&
+                            healthServicesObservationSource
+                                .supports(logicalId)
+                    }.getOrDefault(false)
+
+                platform.capabilities.setAvailability(
+                    capability.id,
+                    healthServicesProvider.providerId,
+                    if (available) {
+                        ProviderAvailability.AVAILABLE
+                    } else {
+                        ProviderAvailability.UNAVAILABLE
+                    },
+                    if (available) {
+                        null
+                    } else {
+                        "unsupported_or_permission_not_granted"
+                    },
                 )
             }
         }
-        platformScope.launch { refreshHealthServicesAvailability() }
-        DeveloperRuntimeAccess.attachHealthServicesRefresh(refreshHealthServicesAvailability)
+
+        platformScope.launch {
+            refreshHealthServicesAvailability()
+        }
+        DeveloperRuntimeAccess.attachHealthServicesRefresh(
+            refreshHealthServicesAvailability,
+        )
 
         platform.capabilities.register(
             capability = vibrationProvider,
