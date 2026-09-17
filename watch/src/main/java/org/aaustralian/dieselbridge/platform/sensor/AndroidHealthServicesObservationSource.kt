@@ -211,6 +211,11 @@ internal class AndroidHealthServicesObservationSource(
                     )
                     .build()
 
+            val registrationAttempted =
+                AtomicBoolean(
+                    false,
+                )
+
             try {
                 callbackFlow {
                     val ingress =
@@ -276,6 +281,13 @@ internal class AndroidHealthServicesObservationSource(
                                     failure !=
                                     null
                                 ) {
+                                    runCatching {
+                                        onRegistrationFailure(
+                                            logicalId,
+                                            failure,
+                                        )
+                                    }
+
                                     close(
                                         HealthServicesObservationRegistrationException(
                                             message =
@@ -359,8 +371,17 @@ internal class AndroidHealthServicesObservationSource(
                                 }
 
                                 if (
-                                    permissionLost.get()
+                                    permissionLost
+                                        .getAndSet(
+                                            false,
+                                        )
                                 ) {
+                                    runCatching {
+                                        onPermissionLost(
+                                            logicalId,
+                                        )
+                                    }
+
                                     send(
                                         HealthServicesObservationSourceUpdate
                                             .PermissionLost(
@@ -402,13 +423,6 @@ internal class AndroidHealthServicesObservationSource(
                                         throwable,
                                     )
 
-                                runCatching {
-                                    onRegistrationFailure(
-                                        logicalId,
-                                        throwable,
-                                    )
-                                }
-
                                 wakeSignal
                                     .trySend(
                                         Unit,
@@ -419,12 +433,6 @@ internal class AndroidHealthServicesObservationSource(
                                 permissionLost.set(
                                     true,
                                 )
-
-                                runCatching {
-                                    onPermissionLost(
-                                        logicalId,
-                                    )
-                                }
 
                                 wakeSignal
                                     .trySend(
@@ -470,6 +478,11 @@ internal class AndroidHealthServicesObservationSource(
                         }
 
                     try {
+                        registrationAttempted
+                            .set(
+                                true,
+                            )
+
                         passiveClient
                             .setPassiveListenerCallback(
                                 config,
@@ -484,13 +497,6 @@ internal class AndroidHealthServicesObservationSource(
                                 null,
                                 error,
                             )
-
-                        runCatching {
-                            onRegistrationFailure(
-                                logicalId,
-                                error,
-                            )
-                        }
 
                         wakeSignal
                             .trySend(
@@ -522,16 +528,20 @@ internal class AndroidHealthServicesObservationSource(
                  * until explicitly cleared. Complete bounded cleanup even when
                  * the collecting coroutine was cancelled.
                  */
-                withContext(
-                    NonCancellable,
+                if (
+                    registrationAttempted.get()
                 ) {
-                    runCatching {
-                        withTimeout(
-                            CLEAR_TIMEOUT_MS,
-                        ) {
-                            passiveClient
-                                .clearPassiveListenerCallbackAsync()
-                                .awaitFuture()
+                    withContext(
+                        NonCancellable,
+                    ) {
+                        runCatching {
+                            withTimeout(
+                                CLEAR_TIMEOUT_MS,
+                            ) {
+                                passiveClient
+                                    .clearPassiveListenerCallbackAsync()
+                                    .awaitFuture()
+                            }
                         }
                     }
                 }
