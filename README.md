@@ -68,9 +68,10 @@ The project still compiles against SDK 36.
 
 The current development architecture is materially newer than the original PixelBridge-style
 notification bridge. The active branch contains a generic Diesel protocol engine, a platform
-capability registry, public logical sensor reads, developer-only exact sensor diagnostics, a
-Health Services provider, bounded sensor experiments, developer power controls, build provenance,
-and Termux/ADB hardware-test tooling.
+capability registry, public logical sensor reads and bounded subscriptions, provider-neutral
+continuous observation, SensorManager and Health Services observation providers, developer-only
+exact sensor diagnostics, bounded sensor experiments and observation smoke campaigns, developer
+power controls, build provenance, and Termux/ADB hardware-test tooling.
 
 The repository intentionally contains only the Wear OS application. The phone side is stock,
 unmodified Gadgetbridge.
@@ -110,12 +111,16 @@ The current development branch additionally provides:
 - public logical `sensor.read`;
 - public bounded `sensor.matrix`;
 - public bounded `sensor.experiment`;
+- public bounded `sensor.subscribe` / `sensor.unsubscribe` / `sensor.subscriptions`;
+- provider-neutral shared continuous observation with per-consumer bounded queues and cadence;
 - process-visible `sensor.list`;
 - exact developer route probe;
 - asynchronous bounded whole-watch route scanning;
-- SensorManager provider;
-- optional Health Services heart-rate provider;
+- SensorManager spot-read and continuous-observation provider;
+- Health Services spot heart-rate provider through `MeasureClient`;
+- Health Services passive heart-rate observation through `PassiveMonitoringClient`;
 - automatic provider priority/failover through `CapabilityRegistry`;
+- developer observation smoke runner, watch UI and debug ADB harness;
 - developer battery/electrical readings;
 - 24-hour foreground-usage snapshot where Android grants usage access;
 - DieselBridge app power modes.
@@ -153,7 +158,7 @@ The current internal topology is:
                    |                         |
              SensorManager             Health Services
               priority 10               priority 20
-             spot + observe              spot HR today
+             spot + observe          spot + passive HR observe
                    |
                    v
           SensorObservationManager
@@ -1016,7 +1021,8 @@ campaign succeeds.
 
 # Health Services
 
-The current branch contains an optional Wear OS Health Services provider.
+The current branch contains an optional Wear OS Health Services provider with separate spot-read and
+continuous-observation paths.
 
 Provider ID:
 
@@ -1024,14 +1030,26 @@ Provider ID:
 wear.health_services
 ```
 
-Current implemented logical capability:
+Implemented logical capabilities:
 
 ```text
 sensor.heart_rate
+sensor.observe.heart_rate
 ```
 
-The current provider performs bounded on-demand spot measurements through Health Services
-`MeasureClient`. It is not yet the old branch's passive always-on health collector.
+The two paths deliberately use different Health Services APIs:
+
+```text
+sensor.heart_rate
+    -> Health Services MeasureClient
+    -> bounded on-demand spot measurement
+
+sensor.observe.heart_rate
+    -> Health Services PassiveMonitoringClient
+    -> PassiveListenerCallback
+    -> bounded provider ingress
+    -> provider-neutral SensorObservationUpdate
+```
 
 Provider priorities are currently:
 
@@ -1040,28 +1058,44 @@ Health Services      20
 SensorManager        10
 ```
 
-Health Services starts as unavailable and becomes selectable only when:
+Health Services starts unavailable and becomes selectable only when the required permission is
+granted and the watch reports support for the requested measurement/observation type. The developer
+UI can request heart-rate permission and explicitly refresh Health Services availability.
 
-- the required permission is granted; and
-- the watch reports support for the requested measurement.
+For passive heart-rate observation, Health Services owns the physical acquisition cadence.
+`preferredSamplePeriodMs` is therefore a consumer delivery preference, not a promise that Health
+Services was configured to that period. The provider reports configured/effective acquisition
+periods as unknown rather than inventing values.
 
-The developer UI can request heart-rate permission and refresh provider availability afterwards.
+The Android passive adapter has an explicit 64-sample drop-oldest ingress queue. Callback threads do
+not block; provider-side loss is propagated through the common source-drop accounting. Registration
+or the first data callback maps to `Started`; heart-rate data maps to ordinary typed
+`SensorReading` values with provider ID `wear.health_services`.
 
-If Health Services is unavailable, the ordinary SensorManager implementation remains the lower
-priority fallback when one exists.
+Runtime permission loss or passive-registration failure marks the Health Services observation binding
+`UNAVAILABLE`. Because `SensorObservationManager` follows `CapabilityRegistry.observeActive()`,
+an already-owned logical subscription can move to the lower-priority SensorManager observation
+provider when a usable fallback exists.
+
+There is currently **no autonomous periodic re-probe** that promotes Health Services again after such
+a runtime failure. Availability is refreshed during service setup and through the explicit
+developer/runtime refresh path. Automatic recovery/re-promotion is tracked separately as M5.0c2.
+
+Passive callback registration is app-global in Health Services, so cancellation performs bounded
+non-cancellable cleanup through `clearPassiveListenerCallbackAsync()` before the provider session is
+retired.
 
 ## Steps and passive health
 
 `step_counter` currently remains part of the standard logical sensor surface, with SensorManager as
 the implemented normal source.
 
-An older historical `Health` branch experimented with passive Health Services heart-rate and daily
-step monitoring. That code is useful design evidence for future passive/streaming health support,
-but it is **not** the behavior of the current `feature/diesel-platform` Health Services provider.
+Passive Health Services heart rate is implemented. Passive Health Services steps, daily/history
+semantics and a broader passive-health state model are **not** implemented yet. The older historical
+`Health` branch remains useful design evidence for those later capabilities, but its architecture
+was not merged directly into the current provider-neutral runtime.
 
-Do not document passive Health Services steps as currently implemented.
-
----
+Do not document raw Android `TYPE_STEP_COUNTER` as daily steps: it remains cumulative since boot.
 
 # Developer sensor diagnostics
 
@@ -1158,7 +1192,7 @@ permission or rejection evidence, timestamp/accuracy, and a bounded prefix of ra
 
 # Hardware test tooling
 
-Three repository tools support phone/Termux-driven validation.
+Four repository tools support phone/Termux-driven validation.
 
 ## `tools/diesel-adb`
 
@@ -1210,6 +1244,52 @@ This can take substantially longer than the 60-second in-watch scanner and is in
 exhaustive empirical mapping.
 
 Reports are normally written outside the repository under the user's home directory.
+
+## `tools/diesel-observation-smoke`
+
+This debug-build helper drives the service-owned provider-neutral observation smoke runner over ADB
+and saves correlated JSON evidence. It talks to a debug-only broadcast receiver; it does not depend
+on the BLE request/response path.
+
+Supported bounded profiles are:
+
+```text
+basic
+cadence
+screen_off
+step_counter
+health_services_hr
+sharing
+lifecycle
+```
+
+The profiles validate distinct runtime contracts:
+
+- `basic`: real accelerometer samples, advancing sequence/timestamps, ACTIVE -> CLOSED;
+- `cadence`: an internal 20 ms request and truthful SensorManager min-delay clamping;
+- `screen_off`: a 30-second capture with no ADB polling during the measurement window;
+- `step_counter`: real on-change cumulative step-counter delivery while walking;
+- `health_services_hr`: requires `wear.health_services`, reaches ACTIVE, waits for a passive HR
+  sample and treats SensorManager fallback as failure;
+- `sharing`: proves one shared acquisition follows 1000 -> 250 -> 1000 ms consumer demand;
+- `lifecycle`: repeats five subscribe/sample/close cycles.
+
+Typical exact-build use:
+
+```bash
+tools/diesel-observation-smoke \
+  --expect-sha <full-installed-build-sha> \
+  run health_services_hr
+```
+
+The helper verifies the installed APK SHA before mutating smoke-runner state when `--expect-sha` is
+provided. Reports are written under `~/dieselbridge-observation-smoke/` by default unless
+`--output` is supplied.
+
+`screen_off` intentionally reports `completed` rather than claiming pass/fail for power behavior;
+the saved evidence must be interpreted using sample continuity, observed gaps and route wake-up
+metadata. `health_services_hr` only passes when a real sample from `wear.health_services` is
+observed; reaching ACTIVE without a sample is recorded as incomplete proof.
 
 ## `tools/diesel-ci-watch-install`
 
@@ -1368,7 +1448,11 @@ The project has tests covering major pieces of the Diesel platform, including:
 - Diesel event encoding and Gadgetbridge event transport;
 - shared sensor observation runtime;
 - SensorManager observation route selection;
-- Health Services provider seam;
+- observation smoke-runner profiles, cadence/sharing/lifecycle semantics and terminal-state logic;
+- Health Services spot-read provider seam;
+- Health Services passive-observation capability mapping;
+- Health Services passive Android source, bounded ingress, registration/permission failure mapping
+  and cleanup lifecycle;
 - developer export;
 - developer sensor probes;
 - bounded safe tests.
@@ -1502,8 +1586,12 @@ The newer current branch additionally contains:
 - Diesel unsolicited event envelopes and bounded Gadgetbridge event transport;
 - shared logical sensor observation runtime with SensorManager observation capabilities;
 - automatic SensorManager provider selection;
-- Health Services heart-rate provider;
-- Health Services priority/fallback integration;
+- Health Services spot heart-rate provider;
+- Health Services passive `sensor.observe.heart_rate` provider;
+- Health Services priority/fallback integration on runtime permission/registration failure;
+- service-owned observation smoke runner with developer UI and debug ADB control;
+- observation smoke profiles for basic sampling, cadence, screen-off, step counter, provider sharing,
+  lifecycle and Health Services HR;
 - asynchronous developer sensor scan;
 - exhaustive Termux route-test helper;
 - expanded developer sensor UI;
@@ -1512,28 +1600,67 @@ The newer current branch additionally contains:
 These should only be called current-head **hardware verified** after running them on the physical
 watch build corresponding to the current Git SHA.
 
+## Health Services passive HR hardware proof
+
+Four committed TicWatch Pro 5 runs physically validated the new passive heart-rate path on the exact
+runtime build:
+
+```text
+runtime SHA   861bc4a4d8d04575af250a8b01f520b3b9457378
+versionName   1.0.0-dev.21
+versionCode   26
+CI run        35272142702
+provider      wear.health_services
+profile       health_services_hr
+```
+
+All four runs reached:
+
+```text
+waiting_for_provider -> starting -> active -> closed
+```
+
+and each delivered one real Health Services heart-rate sample. The recorded values were 75, 76, 85
+and 86 bpm. Provider and subscription drop counters were zero in all four runs.
+
+The raw reports are committed under:
+
+```text
+evidence/ticwatch-pro-5/2026-09-17-861bc4a-health-services-hr-01.json
+evidence/ticwatch-pro-5/2026-09-17-861bc4a-health-services-hr-02.json
+evidence/ticwatch-pro-5/2026-09-17-861bc4a-health-services-hr-03.json
+evidence/ticwatch-pro-5/2026-09-17-861bc4a-health-services-hr-04.json
+```
+
+Repository commit `77703921f704975f5a0b8b87dbd31942b2424a2b` adds those evidence files. It
+must not be described as the SHA of the physically tested APK: the installed/tested runtime was
+`861bc4a4d8d04575af250a8b01f520b3b9457378`.
+
 ---
 
 ## Current observation baseline
 
-At the time of this documentation refresh the hardened observation baseline is:
+This documentation synchronization is based on `feature/diesel-platform` repository state
+`77703921f704975f5a0b8b87dbd31942b2424a2b`, whose parent runtime commit
+`861bc4a4d8d04575af250a8b01f520b3b9457378` is the exact build used for the committed Health
+Services HR hardware campaign.
+
+The distinction is intentional:
 
 ```text
-branch   feature/diesel-platform
-git SHA  9298fe3adef47e6c7cbb9108c112f6d78043e837
+861bc4a...   application/runtime code physically tested on TicWatch Pro 5
+7770392...   repository commit that records the resulting evidence files
 ```
 
-The exact-SHA CI run passed unit tests, debug APK assembly, signing-certificate verification and
-artifact upload. That establishes implementation/CI proof, not current-head hardware proof.
+The September 14 logical-sensor campaign remains valid hardware evidence for SensorManager spot reads
+for accelerometer, gyroscope, magnetic field, light, pressure, ambient temperature and step counter.
+Heart-rate attempts in that earlier SensorManager campaign timed out.
 
-Earlier hardware evidence remains valid historical evidence. In particular, the September 14
-logical-sensor campaign proved real TicWatch Pro 5 SensorManager reads for accelerometer, gyroscope,
-magnetic field, light, pressure, ambient temperature and step counter, while heart-rate attempts in
-that campaign timed out.
+M5.0b1 SensorManager continuous observation is implemented and CI verified, but its dedicated
+continuous-observation hardware closure campaign is still pending. The smoke runner and
+`tools/diesel-observation-smoke` already provide the required campaign tooling.
 
-The repository evidence files remain the source of truth for those physical runs.
-
----
+The repository evidence files remain the source of truth for physical runs.
 
 # Current limitations
 
@@ -1580,12 +1707,14 @@ compatibility strategy.
 - No FIFO/max-delay batching policy exists yet.
 - SensorManager provider ingress is fixed at 64 samples with drop-oldest freshness behavior.
 - Final provider-loss telemetry has a narrow cancellation race accepted as a diagnostic edge.
+- A Health Services passive registration/permission failure can demote the provider and allow
+  SensorManager fallback, but there is no autonomous periodic re-probe/re-promotion yet.
 - Android `TYPE_STEP_COUNTER` is still raw cumulative-since-boot data, not daily/history semantics.
 
 ## Not yet implemented
 
 ```text
-Health Services continuous heart-rate observation
+automatic Health Services recovery/re-promotion after runtime failure
 generic observation -> DieselEventBus bridge
 Gadgetbridge-native t:"act" HR/step adapter
 Gadgetbridge step delta/history semantics
@@ -1615,32 +1744,51 @@ it must not become another BLE implementation.
 
 # Roadmap / project hand-off
 
-The observation foundation is now largely built. The project is at the end of the M5.0b implementation
-phase, but M5.0b still requires current-head physical-watch closure.
+The provider-neutral observation foundation is implemented. The remaining work is now split into
+separately demonstrable implementation, hardware-closure and consumer-integration steps so that a
+milestone cannot be marked complete by code alone when physical proof is still missing.
 
 ## Current milestone status
 
 | Milestone | Goal | Current status |
 |---|---|---|
-| M5.0a | observation contracts + shared provider-neutral manager | **Implemented + CI verified** |
-| M5.0b | continuous SensorManager observation | **Implementation/hardening complete + CI verified; hardware closure pending** |
-| M5.0c | continuous Health Services observation | **Not implemented** |
-| M5.0d | runtime registration + process-local EventBus integration | **Partially complete** |
-| M5.1 | Gadgetbridge-native activity bridge (`t:"act"`) | **Not implemented** |
+| M5.0a | provider-neutral observation contracts + shared manager | **Implemented + CI verified** |
+| M5.0b1 | SensorManager continuous observation implementation | **Implemented + CI verified** |
+| M5.0b2 | SensorManager physical-watch closure campaign | **Pending hardware campaign; tooling implemented** |
+| M5.0c1 | Health Services passive continuous HR | **Implemented + CI + TicWatch Pro 5 hardware verified** |
+| M5.0c2 | automatic Health Services recovery/re-promotion after runtime failure | **Pending** |
+| M5.0d1 | typed process-local sensor observation events | **Next** |
+| M5.0d2 | externally owned subscription -> `DieselEventBus` bridge | **Next** |
+| M5.0d3 | bounded real-watch EventBus proof | **Next** |
+| M5.1a | Gadgetbridge `t:"act"` request/session ownership | **Planned** |
+| M5.1b | native activity HR output + shared Bangle line transport | **Planned** |
+| M5.1c | step-counter delta/session semantics | **Planned** |
+| M5.1d | stock-Gadgetbridge activity hardware proof | **Planned** |
+| M5.2a | `StateStore` | **Planned** |
+| M5.2b | `ActionDispatcher` | **Planned** |
+| M5.2c | `ModuleManager` / module lifecycle | **Planned** |
+| M6 | real Android Clock alarm synchronization | **Planned** |
+| M7 | scripting / local module API | **Planned** |
+| M8 | APK provider/plugin IPC | **Planned** |
+| M9 | health/history expansion | **Planned** |
+| M10 | vendor/TicWatch-specific providers + ULP display research | **Planned** |
 
-M5.0d is partial because observation capabilities are registered and consumed by the runtime, but the
-generic provider-neutral observation stream is not yet published through `DieselPlatform.events`.
-The public Diesel sensor-event path already exists separately through
-`PublicSensorSubscriptionController`.
+M5.0c1 is complete because the passive Health Services path is implemented, CI-tested and backed by
+four physical TicWatch Pro 5 runs. M5.0c2 is deliberately separate: runtime demotion/fallback exists,
+but automatic future re-probing and promotion does not.
 
 Immediate sequence:
 
 ```text
-M5.0b physical-watch closure
-    -> M5.0c Health Services observation
-    -> M5.0d generic platform EventBus bridge
-    -> M5.1 Gadgetbridge t:"act" activity adapter
+M5.0b2 SensorManager physical-watch closure
+    -> M5.0d1 typed observation events
+    -> M5.0d2 explicit subscription -> EventBus bridge
+    -> M5.0d3 real-watch EventBus smoke proof
+    -> M5.1 Gadgetbridge t:"act"
 ```
+
+M5.0c2 remains open but does not block M5.0d/M5.1 unless physical testing shows transient Health
+Services loss is common enough to require recovery first.
 
 Do not implement Gadgetbridge activity acquisition as another sensor provider or another BLE stack.
 It should consume logical observation capabilities.
@@ -1769,10 +1917,10 @@ Desired future work:
 
 Potential next Health Services work:
 
-- evaluate passive background heart-rate/steps separately from bounded `sensor.read`;
-- reuse the old `Health` branch only as design evidence;
-- avoid forcing passive semantics into the spot-read API;
-- add historical/streaming capability types when required;
+- extend passive Health Services beyond the current heart-rate observation where supported;
+- evaluate passive steps and define daily/history semantics separately from raw
+  `TYPE_STEP_COUNTER`;
+- add historical/streaming capability types when a consumer actually requires them;
 - investigate SpO2 only when a valid provider and repeatable hardware evidence exist;
 - investigate RR/RRI only when a valid provider and repeatable hardware evidence exist;
 - add activity/fall capabilities only after their semantics are established;
@@ -1782,44 +1930,164 @@ Potential next Health Services work:
 
 ## Observation roadmap after M5.0b
 
-Long-lived observation is no longer a future design. The next work is provider and consumer expansion.
+Long-lived observation is now a working provider-neutral runtime with both SensorManager and Health
+Services providers. The next work adds a typed local distribution layer and then consumes it from the
+Gadgetbridge activity protocol.
 
-### M5.0c — Health Services continuous observation
+### M5.0c1 — Health Services passive continuous HR — complete
 
-Add `sensor.observe.heart_rate` through `wear.health_services` at priority 20, keeping
-`android.sensor_manager` priority 10 as fallback where a usable observation route exists.
+`sensor.observe.heart_rate` is registered through `wear.health_services` at priority 20 with
+`android.sensor_manager` priority 10 as fallback. The implementation uses
+`PassiveMonitoringClient`/`PassiveListenerCallback`, maps provider lifecycle into the common
+observation contract, has bounded source ingress/loss accounting and has physical TicWatch Pro 5
+proof at runtime SHA `861bc4a4...`.
 
-Use a genuine continuous Health Services callback/streaming API rather than repeatedly invoking
-bounded `MeasureClient` spot measurements. Map provider outcomes into the existing observation
-contract (`Started`, `Sample`, `PermissionDenied`, `Unavailable`, `RegistrationRejected`, and source
-loss telemetry where applicable). Consumers must continue to request the logical capability rather
-than selecting the provider.
+### M5.0c2 — automatic Health Services recovery/re-promotion — pending
 
-Acceptance covers Health Services selection, SensorManager fallback, and return to the higher-priority
-provider when Health Services becomes usable again.
+Runtime permission loss or passive-registration failure marks the Health Services observation binding
+unavailable, which lets `CapabilityRegistry` select a SensorManager fallback. What is still missing
+is autonomous future re-probing that can make Health Services available again after a transient
+runtime failure.
 
-### M5.0d — platform EventBus bridge
+The existing explicit availability refresh remains valid; M5.0c2 should add recovery without turning
+a failed provider into an uncontrolled polling loop.
 
-Observation capability registration is already done. Remaining M5.0d work is to publish generic
-provider-neutral observation state/sample events through `DieselPlatform.events` for local UI,
-automation, scripting and future plugins. EventBus remains fan-out only; it does not own hardware
-registrations.
+### M5.0d1 — typed process-local observation events
+
+Add typed platform events, approximately:
+
+```text
+SensorObservationStateEvent(
+    state: SensorSubscriptionState,
+    timestampMs: Long,
+)
+
+SensorObservationSampleEvent(
+    subscriptionId: Long,
+    sample: SensorSubscriptionSample,
+    timestampMs: Long,
+)
+```
+
+They implement the existing `platform.event.DieselEvent`. Keep the typed
+`SensorSubscriptionSample`/`SensorReading` structure rather than duplicating values into a generic
+map.
+
+`SensorReading.timestampNanos` remains the sensor/provider timestamp. `DieselEvent.timestampMs`
+is the wall-clock publication time; the two clocks must not be conflated.
+
+### M5.0d2 — explicit subscription -> EventBus bridge
+
+Do **not** refactor `PublicSensorSubscriptionController` into the process-local EventBus. The remote
+path owns leases and BLE-transport drop accounting that local consumers should not inherit.
+
+The EventBus bridge should consume an already caller-owned `SensorSubscription`:
+
+```text
+local module
+    |
+    | owns
+    v
+SensorObservationClient
+    |
+    v
+SensorSubscription
+    |
+    +--------------------+
+    |                    |
+    v                    v
+SensorObservation     external owner
+EventBridge
+    |
+    v
+DieselPlatform.events
+    |
+    +--> UI
+    +--> automation
+    +--> scripting
+    +--> future plugins
+```
+
+The EventBus must remain a distribution layer, not a hardware-resource owner. The bridge should use
+suspending `events.emit(event)` rather than introduce a new unaccounted `tryEmit()` loss layer.
+Slow local consumers can then backpressure the already bounded subscription queue, whose loss is
+measured by the observation system.
+
+`SensorSubscription.samples` is intentionally single-consumer. Attaching a subscription to the
+EventBus makes the bridge that subscription's sample consumer. Another local direct consumer should
+open another logical subscription; `SensorObservationManager` will still share the underlying
+provider acquisition.
+
+Closing a bridge registration cancels only forwarding jobs. It must not close the
+`SensorSubscription`; the caller owns that lifecycle.
+
+### M5.0d3 — bounded real-watch EventBus proof
+
+Extend the existing smoke framework with an `event_bus` profile:
+
+```text
+open accelerometer logical subscription
+    -> attach to DieselPlatform.events
+    -> observe typed state event
+    -> reach ACTIVE
+    -> observe typed sample event
+    -> verify advancing real sensor timestamp/value
+    -> detach EventBus forwarding
+    -> close subscription
+    -> verify CLOSED
+```
+
+This closes M5.0d with physical proof of the new layer rather than only re-testing the observation
+manager below it.
 
 ### M5.1 — Gadgetbridge activity adapter
 
-After provider-neutral observation is validated, implement the Gadgetbridge/Bangle activity codec.
-Phone activity requests such as `{"t":"act","hrm":true,"stp":true,"int":10}` should open logical
-heart-rate/step observations. The adapter must never select SensorManager/Health Services/route IDs.
-Watch-to-phone `t:"act"` output is encoded from typed logical samples.
+M5.1 should remain an application-protocol adapter above the observation platform:
 
-This is an application-protocol adapter above the observation platform, not a second provider layer or
-physical transport.
+```text
+Gadgetbridge
+{"t":"act","hrm":true,"stp":true,"int":10}
+                ↓
+Gb activity adapter
+                ↓
+SensorObservationClient "gadgetbridge-activity"
+                ↓
+logical heart_rate / step_counter subscriptions
+                ↓
+provider selection remains automatic
+                ↓
+typed observation events
+                ↓
+activity codec
+                ↓
+{"t":"act", ...}
+                ↓
+existing BLE/NUS physical connection
+```
 
-Android `TYPE_STEP_COUNTER` is cumulative since boot, so M5.1 must define explicit delta/history
-semantics instead of labeling raw cumulative data as daily steps.
+M5.1a owns request/session lifetime. M5.1b adds HR output and a small shared physical line seam such
+as `BangleLineTransport.sendLine()`; Diesel response/event transports remain Diesel-specific.
+M5.1c defines step-counter session deltas from an explicit baseline instead of publishing Android's
+cumulative-since-boot value as today's steps. M5.1d closes the milestone with stock-Gadgetbridge
+hardware proof.
 
-Android accelerometer values are in m/s^2; any conversion to Bangle/Gadgetbridge `g` units belongs in
-the codec layer, not in the provider's typed internal readings.
+Android accelerometer values remain m/s^2 internally; any conversion to Bangle/Gadgetbridge `g`
+units belongs in the protocol codec layer.
+
+### M5.2 — Diesel runtime core
+
+After M5.1, add the general runtime abstractions only where real consumers now require them:
+
+```text
+M5.2a StateStore
+M5.2b ActionDispatcher
+M5.2c ModuleManager / lifecycle
+```
+
+`DieselEventBus` is intentionally ephemeral (`replay=0`); current state belongs in a future
+`StateStore`, not in EventBus replay. Cross-module actions should converge on
+`ActionDispatcher` once alarm/activity/plugin work creates enough pressure, and service construction
+should move toward `ModuleManager` only when those modules exist.
 
 ## Vendor/private sensors
 
@@ -1938,12 +2206,13 @@ It contains a separate early health abstraction with:
 - SensorManager step counter converted to local-day steps;
 - API-version factory selection.
 
-The current platform did not merge that architecture directly. Instead it uses the newer
-`CapabilityRegistry` provider model and currently implements Health Services as a bounded
-heart-rate spot-measurement provider.
+The current platform did not merge that architecture directly. It uses the newer
+`CapabilityRegistry` and provider-neutral observation runtime. The active branch now independently
+implements both bounded Health Services spot heart-rate reads and passive Health Services heart-rate
+observation; passive steps/daily-history behavior from the old branch is still only reference
+material.
 
-The old branch remains useful research/reference material, especially for a future passive health
-layer.
+The old branch remains useful research/reference material for broader passive health/history work.
 
 ---
 
