@@ -7,6 +7,7 @@ import org.aaustralian.dieselbridge.platform.capability.BatteryRoute
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
 import org.aaustralian.dieselbridge.platform.event.DieselEventBus
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 
 /**
  * Process-local Diesel runtime context.
@@ -23,6 +24,18 @@ class DieselPlatform(
     val capabilities =
         CapabilityRegistry(
             diagnostics = diagnostics,
+        )
+
+    /**
+     * Process-local adapter for publishing caller-owned sensor subscriptions.
+     *
+     * The bridge owns no sensor client, provider or hardware registration.
+     * Consumers explicitly attach subscriptions using their own lifecycle
+     * scope.
+     */
+    val sensorObservationEvents =
+        SensorObservationEventBridge(
+            events = events,
         )
 
     /**
