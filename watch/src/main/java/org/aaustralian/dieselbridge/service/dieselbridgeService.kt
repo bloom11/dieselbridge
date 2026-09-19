@@ -260,6 +260,8 @@ class DieselBridgeService : Service() {
             SensorObservationSmokeRunner(
                 observationManager = observationManager,
                 scope = sensorObservationScope,
+                eventBus = platform.events,
+                eventBridge = platform.sensorObservationEvents,
                 routeInspector =
                     SensorObservationSmokeRouteInspector {
                             logicalId,

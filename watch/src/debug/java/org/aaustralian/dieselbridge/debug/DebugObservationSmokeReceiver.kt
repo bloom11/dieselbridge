@@ -318,6 +318,22 @@ class DebugObservationSmokeReceiver : BroadcastReceiver() {
                 subscriptionDroppedTotal,
             )
             put(
+                "eventStateCount",
+                eventStateCount,
+            )
+            put(
+                "eventSampleCount",
+                eventSampleCount,
+            )
+            put(
+                "eventClosedSeen",
+                eventClosedSeen,
+            )
+            put(
+                "eventSamplesAfterClosed",
+                eventSamplesAfterClosed,
+            )
+            put(
                 "phaseTransitions",
                 JSONArray().apply {
                     phaseTransitions.forEach {

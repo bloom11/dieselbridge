@@ -1296,7 +1296,7 @@ private fun ToolsScreen(
                 if (observationSmokeRunner == null) {
                     "Continuous-sensor validation runtime is not attached"
                 } else {
-                    "Cadence · screen-off · sharing · lifecycle · step counter"
+                    "Cadence · EventBus · screen-off · sharing · lifecycle · step counter"
                 },
             healthy = observationSmokeRunner != null,
             onClick =
@@ -1512,7 +1512,7 @@ private fun ObservationSmokeScreen(
 ) {
     DeveloperPage(
         title = "Observation smoke",
-        subtitle = "M5.0b continuous-sensor hardware closure",
+        subtitle = "Continuous observation hardware validation",
         onBack = onBack,
     ) {
         if (runner == null) {
@@ -1663,6 +1663,15 @@ private fun ObservationSmokeEvidence(
             snapshot.lastValues.joinToString().ifBlank { "none" },
     )
 
+    if (snapshot.profile == SensorObservationSmokeProfile.EVENT_BUS) {
+        DetailText(
+            "EventBus: states ${snapshot.eventStateCount} · " +
+                "samples ${snapshot.eventSampleCount} · " +
+                "closed ${snapshot.eventClosedSeen} · " +
+                "after-closed ${snapshot.eventSamplesAfterClosed}",
+        )
+    }
+
     if (snapshot.profile == SensorObservationSmokeProfile.SCREEN_OFF) {
         DetailText(
             "Screen-off interpretation: start the run, turn the display off, " +
@@ -1680,6 +1689,7 @@ private fun observationSmokeProfileTitle(
         SensorObservationSmokeProfile.SCREEN_OFF -> "Screen-off continuity"
         SensorObservationSmokeProfile.STEP_COUNTER -> "Step-counter observation"
         SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> "Health Services HR"
+        SensorObservationSmokeProfile.EVENT_BUS -> "Process-local EventBus"
         SensorObservationSmokeProfile.SHARING -> "Shared runtime cadence"
         SensorObservationSmokeProfile.LIFECYCLE -> "Repeated lifecycle"
     }
@@ -1702,6 +1712,9 @@ private fun observationSmokeProfileSummary(
 
         SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
             "Require wear.health_services; wait up to 90 s for one passive HR sample"
+
+        SensorObservationSmokeProfile.EVENT_BUS ->
+            "Real accelerometer ACTIVE/sample/CLOSED through DieselPlatform.events"
 
         SensorObservationSmokeProfile.SHARING ->
             "One runtime follows 1000 → 250 → 1000 ms consumer demand"

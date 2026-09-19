@@ -10,12 +10,14 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.platform.event.DieselEventBus
 import org.aaustralian.dieselbridge.platform.provider.DieselProvider
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
 import org.aaustralian.dieselbridge.platform.sensor.SensorCapabilityId
 import org.aaustralian.dieselbridge.platform.sensor.SensorReading
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapability
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationOptions
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationUpdate
@@ -750,6 +752,131 @@ class SensorObservationSmokeRunnerTest {
 
             assertTrue(
                 "closed" in result.phaseTransitions,
+            )
+
+            runner.close()
+            manager.close()
+        }
+
+
+    @Test
+    fun eventBusProfilePublishesTypedEventsAndCloses() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val provider =
+                FakeProvider(
+                    "fake.sensor_manager",
+                )
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId =
+                            "accelerometer",
+                        providerId =
+                            provider.providerId,
+                    ),
+                provider =
+                    provider,
+                priority =
+                    10,
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry =
+                        registry,
+                    scope =
+                        this,
+                    monotonicMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            val eventBus =
+                DieselEventBus()
+
+            val runner =
+                SensorObservationSmokeRunner(
+                    observationManager =
+                        manager,
+                    scope =
+                        this,
+                    eventBus =
+                        eventBus,
+                    eventBridge =
+                        SensorObservationEventBridge(
+                            events =
+                                eventBus,
+                            wallClockMs = {
+                                testScheduler.currentTime
+                            },
+                        ),
+                    wallClockMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            runner.start(
+                SensorObservationSmokeProfile
+                    .EVENT_BUS,
+            )
+
+            advanceUntilIdle()
+
+            val result =
+                requireNotNull(
+                    runner.latest(),
+                )
+
+            assertEquals(
+                SensorObservationSmokeStatus
+                    .PASSED,
+                result.status,
+            )
+
+            assertTrue(
+                result.eventStateCount >= 2,
+            )
+
+            assertTrue(
+                result.eventSampleCount >= 3,
+            )
+
+            assertTrue(
+                result.eventClosedSeen,
+            )
+
+            assertEquals(
+                0,
+                result.eventSamplesAfterClosed,
+            )
+
+            assertTrue(
+                result.sampleCount >= 3,
+            )
+
+            assertEquals(
+                0,
+                result.nonAdvancingSequenceCount,
+            )
+
+            assertEquals(
+                0,
+                result.nonAdvancingTimestampCount,
+            )
+
+            assertTrue(
+                "active" in
+                    result.phaseTransitions,
+            )
+
+            assertEquals(
+                "closed",
+                result.phaseTransitions
+                    .lastOrNull(),
             )
 
             runner.close()

@@ -28,6 +28,7 @@ PROFILES = (
     "screen_off",
     "step_counter",
     "health_services_hr",
+    "event_bus",
     "sharing",
     "lifecycle",
 )
@@ -48,6 +49,7 @@ PROFILE_TIMEOUT_SECONDS = {
     "screen_off": 45.0,
     "step_counter": 40.0,
     "health_services_hr": 120.0,
+    "event_bus": 35.0,
     "sharing": 55.0,
     "lifecycle": 90.0,
 }
@@ -384,6 +386,11 @@ def run_profile(
             "HEALTH-SERVICES HR TEST: keep the watch on your wrist. "
             "This profile requires providerId=wear.health_services; "
             "SensorManager fallback is a test failure."
+        )
+    elif profile == "event_bus":
+        print(
+            "EVENT-BUS TEST: validates real accelerometer ACTIVE/sample/CLOSED "
+            "publication through DieselPlatform.events. No user action is required."
         )
 
     start = send(

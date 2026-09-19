@@ -15,7 +15,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.aaustralian.dieselbridge.platform.event.DieselEventBus
+import org.aaustralian.dieselbridge.platform.event.SensorObservationSampleEvent
+import org.aaustralian.dieselbridge.platform.event.SensorObservationStateEvent
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorBufferPolicy
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventRegistration
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscription
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscriptionPhase
@@ -31,6 +36,7 @@ internal enum class SensorObservationSmokeProfile(
     SCREEN_OFF("screen_off"),
     STEP_COUNTER("step_counter"),
     HEALTH_SERVICES_HR("health_services_hr"),
+    EVENT_BUS("event_bus"),
     SHARING("sharing"),
     LIFECYCLE("lifecycle"),
     ;
@@ -91,6 +97,10 @@ internal data class SensorObservationSmokeSnapshot(
     val observedMaxIntervalMs: Long? = null,
     val providerDroppedTotal: Long = 0L,
     val subscriptionDroppedTotal: Long = 0L,
+    val eventStateCount: Int = 0,
+    val eventSampleCount: Int = 0,
+    val eventClosedSeen: Boolean = false,
+    val eventSamplesAfterClosed: Int = 0,
     val phaseTransitions: List<String> = emptyList(),
     val lastValues: List<Float> = emptyList(),
     val completedCycles: Int = 0,
@@ -114,6 +124,11 @@ internal data class SensorObservationSmokeSnapshot(
 internal class SensorObservationSmokeRunner(
     private val observationManager: SensorObservationManager,
     scope: CoroutineScope,
+    private val eventBus: DieselEventBus = DieselEventBus(),
+    private val eventBridge: SensorObservationEventBridge =
+        SensorObservationEventBridge(
+            events = eventBus,
+        ),
     private val routeInspector: SensorObservationSmokeRouteInspector =
         SensorObservationSmokeRouteInspector { _, _ -> null },
     private val wallClockMs: () -> Long = { System.currentTimeMillis() },
@@ -176,6 +191,8 @@ internal class SensorObservationSmokeRunner(
                                 runSingle(runId, "step_counter", 1_000L, 1, 30_000L, false)
                             SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
                                 runHealthServicesHeartRate(runId)
+                            SensorObservationSmokeProfile.EVENT_BUS ->
+                                runEventBus(runId)
                             SensorObservationSmokeProfile.SHARING ->
                                 runSharing(runId)
                             SensorObservationSmokeProfile.LIFECYCLE ->
@@ -561,6 +578,354 @@ internal class SensorObservationSmokeRunner(
             terminalStatus,
             terminalDetail,
         )
+    }
+
+
+    private suspend fun runEventBus(
+        runId: String,
+    ) {
+        val logicalId =
+            "accelerometer"
+
+        val requestedPeriodMs =
+            250L
+
+        recordRoute(
+            runId,
+            logicalId,
+            requestedPeriodMs,
+        )
+
+        val accumulator =
+            SampleAccumulator(
+                runId = runId,
+                trackMonotonicity = true,
+            )
+
+        val client =
+            observationManager.openClient(
+                "developer-observation-event-bus-$runId",
+            )
+
+        var registration:
+            SensorObservationEventRegistration? =
+            null
+
+        var failureDetail:
+            String? =
+            null
+
+        try {
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId = logicalId,
+                        periodMs = requestedPeriodMs,
+                        bufferPolicy = SensorBufferPolicy.Bounded(16),
+                    ),
+                )
+
+            coroutineScope {
+                val activeSeen =
+                    CompletableDeferred<Unit>()
+
+                val sampleTargetSeen =
+                    CompletableDeferred<Unit>()
+
+                val closedSeen =
+                    CompletableDeferred<Unit>()
+
+                var closedObserved =
+                    false
+
+                var eventSamples =
+                    0
+
+                /*
+                 * DieselEventBus has replay=0. Subscribe first so the initial
+                 * StateFlow value emitted by the bridge cannot be lost.
+                 */
+                val eventJob =
+                    launch(
+                        start = CoroutineStart.UNDISPATCHED,
+                    ) {
+                        eventBus.events.collect { event ->
+                            when (event) {
+                                is SensorObservationStateEvent -> {
+                                    if (
+                                        event.subscriptionId !=
+                                            subscription.id
+                                    ) {
+                                        return@collect
+                                    }
+
+                                    updateSnapshot(runId) {
+                                        it.copy(
+                                            eventStateCount =
+                                                it.eventStateCount + 1,
+                                            eventClosedSeen =
+                                                it.eventClosedSeen ||
+                                                    event.state.phase ==
+                                                    SensorSubscriptionPhase.CLOSED,
+                                        )
+                                    }
+
+                                    accumulator.recordState(
+                                        event.state,
+                                    )
+
+                                    if (
+                                        event.state.phase ==
+                                            SensorSubscriptionPhase.ACTIVE
+                                    ) {
+                                        activeSeen.complete(Unit)
+                                    }
+
+                                    if (
+                                        event.state.phase ==
+                                            SensorSubscriptionPhase.CLOSED
+                                    ) {
+                                        closedObserved =
+                                            true
+                                        closedSeen.complete(Unit)
+                                    }
+                                }
+
+                                is SensorObservationSampleEvent -> {
+                                    if (
+                                        event.subscriptionId !=
+                                            subscription.id
+                                    ) {
+                                        return@collect
+                                    }
+
+                                    eventSamples++
+
+                                    val afterClosed =
+                                        closedObserved
+
+                                    updateSnapshot(runId) {
+                                        it.copy(
+                                            eventSampleCount =
+                                                eventSamples,
+                                            eventSamplesAfterClosed =
+                                                it.eventSamplesAfterClosed +
+                                                    if (afterClosed) 1 else 0,
+                                        )
+                                    }
+
+                                    if (!afterClosed) {
+                                        /*
+                                         * Deliberately consume samples only
+                                         * from EventBus in this profile.
+                                         */
+                                        accumulator.recordSample(
+                                            event.sample,
+                                        )
+
+                                        if (
+                                            eventSamples >=
+                                                EVENT_BUS_TARGET_SAMPLES
+                                        ) {
+                                            sampleTargetSeen.complete(Unit)
+                                        }
+                                    }
+                                }
+
+                                else ->
+                                    Unit
+                            }
+                        }
+                    }
+
+                try {
+                    registration =
+                        eventBridge.attach(
+                            subscription =
+                                subscription,
+                            scope =
+                                this,
+                        )
+
+                    val active =
+                        withTimeoutOrNull(
+                            EVENT_BUS_ACTIVE_TIMEOUT_MS,
+                        ) {
+                            activeSeen.await()
+                            true
+                        } ?: false
+
+                    if (!active) {
+                        failureDetail =
+                            "EventBus did not publish ACTIVE within the bounded window"
+                    }
+
+                    if (failureDetail == null) {
+                        val samples =
+                            withTimeoutOrNull(
+                                EVENT_BUS_SAMPLE_TIMEOUT_MS,
+                            ) {
+                                sampleTargetSeen.await()
+                                true
+                            } ?: false
+
+                        if (!samples) {
+                            failureDetail =
+                                "EventBus did not publish " +
+                                "$EVENT_BUS_TARGET_SAMPLES accelerometer samples " +
+                                "within the bounded window"
+                        }
+                    }
+
+                    /*
+                     * Subscription lifetime remains caller-owned. Closing it
+                     * must yield terminal CLOSED through EventBus.
+                     */
+                    subscription.close()
+
+                    val closed =
+                        withTimeoutOrNull(
+                            EVENT_BUS_CLOSED_TIMEOUT_MS,
+                        ) {
+                            closedSeen.await()
+                            true
+                        } ?: false
+
+                    if (
+                        !closed &&
+                        failureDetail == null
+                    ) {
+                        failureDetail =
+                            "EventBus did not publish terminal CLOSED"
+                    }
+
+                    withTimeoutOrNull(
+                        EVENT_BUS_CLOSED_TIMEOUT_MS,
+                    ) {
+                        registration?.join()
+                    }
+
+                    /*
+                     * Keep the collector alive briefly after CLOSED to catch
+                     * a regression that leaks a queued sample past terminal
+                     * state.
+                     */
+                    kotlinx.coroutines.delay(
+                        EVENT_BUS_POST_CLOSED_QUIET_MS,
+                    )
+                } finally {
+                    if (!subscription.isClosed) {
+                        subscription.close()
+                    }
+
+                    registration?.close()
+
+                    withTimeoutOrNull(
+                        EVENT_BUS_CLOSED_TIMEOUT_MS,
+                    ) {
+                        registration?.join()
+                    }
+
+                    eventJob.cancel()
+                }
+            }
+        } finally {
+            client.close()
+        }
+
+        val snapshot =
+            requireNotNull(
+                snapshotFor(runId),
+            )
+
+        when {
+            failureDetail != null ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    requireNotNull(failureDetail),
+                )
+
+            snapshot.eventStateCount < 2 ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "Expected multiple typed EventBus state events; " +
+                        "received ${snapshot.eventStateCount}",
+                )
+
+            snapshot.eventSampleCount <
+                EVENT_BUS_TARGET_SAMPLES ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "Expected at least $EVENT_BUS_TARGET_SAMPLES typed " +
+                        "EventBus sample events; received ${snapshot.eventSampleCount}",
+                )
+
+            !snapshot.eventClosedSeen ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "Terminal CLOSED was not observed on EventBus",
+                )
+
+            snapshot.eventSamplesAfterClosed != 0 ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "EventBus published ${snapshot.eventSamplesAfterClosed} " +
+                        "sample event(s) after terminal CLOSED",
+                )
+
+            snapshot.phaseTransitions.none {
+                it ==
+                    SensorSubscriptionPhase.ACTIVE
+                        .name
+                        .lowercase()
+            } ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "EventBus subscription never reached ACTIVE",
+                )
+
+            snapshot.phaseTransitions.lastOrNull() !=
+                SensorSubscriptionPhase.CLOSED
+                    .name
+                    .lowercase() ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "EventBus state stream did not terminate at CLOSED",
+                )
+
+            snapshot.sampleCount <
+                EVENT_BUS_TARGET_SAMPLES ||
+                snapshot.nonAdvancingSequenceCount > 0 ||
+                snapshot.nonAdvancingTimestampCount > 0 ||
+                snapshot.firstSequence ==
+                snapshot.lastSequence ||
+                snapshot.firstSensorTimestampNs ==
+                snapshot.lastSensorTimestampNs ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "EventBus samples did not advance cleanly: " +
+                        "samples=${snapshot.sampleCount}, " +
+                        "sequenceErrors=${snapshot.nonAdvancingSequenceCount}, " +
+                        "timestampErrors=${snapshot.nonAdvancingTimestampCount}",
+                )
+
+            else ->
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.PASSED,
+                    "EventBus published typed ACTIVE/sample/CLOSED events " +
+                        "for a real accelerometer subscription with no " +
+                        "sample after terminal CLOSED",
+                )
+        }
     }
 
     private suspend fun runSharing(runId: String) {
@@ -1024,6 +1389,8 @@ internal class SensorObservationSmokeRunner(
                 "Walk while the test is running; TYPE_STEP_COUNTER is on-change/cumulative"
             SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
                 "Require wear.health_services; wait for one passive HR sample"
+            SensorObservationSmokeProfile.EVENT_BUS ->
+                "Publish real accelerometer ACTIVE/sample/CLOSED through DieselEventBus"
             SensorObservationSmokeProfile.SHARING ->
                 "Validate one shared runtime across 1000 ms and 250 ms consumers"
             SensorObservationSmokeProfile.LIFECYCLE ->
@@ -1046,6 +1413,21 @@ internal class SensorObservationSmokeRunner(
 
         const val HEALTH_SERVICES_SAMPLE_WINDOW_MS =
             90_000L
+
+        const val EVENT_BUS_TARGET_SAMPLES =
+            3
+
+        const val EVENT_BUS_ACTIVE_TIMEOUT_MS =
+            7_500L
+
+        const val EVENT_BUS_SAMPLE_TIMEOUT_MS =
+            15_000L
+
+        const val EVENT_BUS_CLOSED_TIMEOUT_MS =
+            5_000L
+
+        const val EVENT_BUS_POST_CLOSED_QUIET_MS =
+            500L
 
         const val MAX_PHASE_TRANSITIONS = 16
         const val MAX_RECORDED_TIMESTAMPS = 256
