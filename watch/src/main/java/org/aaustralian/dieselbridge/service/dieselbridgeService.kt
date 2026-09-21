@@ -465,6 +465,7 @@ class DieselBridgeService : Service() {
                 sensorObservationManager =
                     observationManager,
                 sensorObservationEventBridge = platform.sensorObservationEvents,
+                sensorObservationEventBus = platform.events,
                 additionalCommandModules = listOf(
                     DeveloperSensorProbeCommandModule(
                         authorization = developerRemoteAccessPolicy,

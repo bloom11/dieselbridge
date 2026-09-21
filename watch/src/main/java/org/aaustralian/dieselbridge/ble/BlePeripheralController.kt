@@ -17,11 +17,13 @@ import org.aaustralian.dieselbridge.debug.DeveloperExportCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperExportRegistry
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.WatchDeveloperCommandRuntime
+import org.aaustralian.dieselbridge.integration.gadgetbridge.BangleLineTransport
 import org.aaustralian.dieselbridge.integration.gadgetbridge.GadgetbridgeActivitySessionController
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
+import org.aaustralian.dieselbridge.platform.event.DieselEventBus
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
@@ -67,6 +69,7 @@ class BlePeripheralController(
     private val sensorObservationManager:
         SensorObservationManager? = null,
     private val sensorObservationEventBridge: SensorObservationEventBridge? = null,
+    private val sensorObservationEventBus: DieselEventBus? = null,
     additionalCommandModules: List<DieselCommandModule> = emptyList(),
 ) {
     private var advertiser: NusAdvertiser? = null
@@ -75,22 +78,27 @@ class BlePeripheralController(
     private val notifier =
         WatchNotifier(context)
 
+    private val bangleLineTransport =
+        BangleLineTransport {
+                line,
+            ->
+            gattServer
+                ?.sendLine(line)
+                ?: false
+        }
+
     private val dieselResponseTransport =
         GadgetbridgeDieselResponseTransport(
-            sendLine = { line ->
-                gattServer
-                    ?.sendLine(line)
-                    ?: false
-            },
+            sendLine =
+                bangleLineTransport::
+                    sendLine,
         )
 
     private val dieselEventTransport =
         GadgetbridgeDieselEventTransport(
-            sendLine = { line ->
-                gattServer
-                    ?.sendLine(line)
-                    ?: false
-            },
+            sendLine =
+                bangleLineTransport::
+                    sendLine,
         )
 
     private val publicSensorSubscriptionController =
@@ -109,13 +117,26 @@ class BlePeripheralController(
             }
 
     private val activitySession =
-        if (sensorObservationManager != null && sensorObservationEventBridge != null) {
+        if (
+            sensorObservationManager != null &&
+            sensorObservationEventBridge != null &&
+            sensorObservationEventBus != null
+        ) {
             GadgetbridgeActivitySessionController(
-                manager = sensorObservationManager,
-                bridge = sensorObservationEventBridge,
-                scope = protocolScope,
+                manager =
+                    sensorObservationManager,
+                bridge =
+                    sensorObservationEventBridge,
+                eventBus =
+                    sensorObservationEventBus,
+                transport =
+                    bangleLineTransport,
+                scope =
+                    protocolScope,
             )
-        } else null
+        } else {
+            null
+        }
 
     private val dieselCommandRegistry =
         DieselCommandRegistry(
@@ -281,7 +302,7 @@ class BlePeripheralController(
      */
     fun sendAction(id: Long, action: String, reply: String?): Boolean {
         val line = GbProtocol.encodeAction(id, action, reply)
-        val sent = gattServer?.sendLine(line) ?: false
+        val sent = bangleLineTransport.sendLine(line)
         Log.i(TAG, "action TX: $line (sent=$sent)")
         ProbeStateHolder.log("action $action #$id (sent=$sent)")
         if (action == NotificationActions.ACTION_DISMISS) {
@@ -304,7 +325,12 @@ class BlePeripheralController(
 
     /** Watch -> phone: ask Gadgetbridge to ring the phone (findPhone). */
     fun sendFindPhone(active: Boolean): Boolean {
-        val sent = gattServer?.sendLine(GbProtocol.encodeFindPhone(active)) ?: false
+        val sent =
+            bangleLineTransport.sendLine(
+                GbProtocol.encodeFindPhone(
+                    active,
+                ),
+            )
         Log.i(TAG, "findPhone TX: active=$active (sent=$sent)")
         return sent
     }
@@ -312,7 +338,7 @@ class BlePeripheralController(
     /** Watch -> phone: telephony action (accept / reject / ignore / end). */
     fun sendCall(action: String): Boolean {
         val line = GbProtocol.encodeCall(action)
-        val sent = gattServer?.sendLine(line) ?: false
+        val sent = bangleLineTransport.sendLine(line)
         Log.i(TAG, "call TX: $line (sent=$sent)")
         ProbeStateHolder.log("call $action (sent=$sent)")
         return sent
@@ -321,7 +347,7 @@ class BlePeripheralController(
     /** Watch -> phone: music control (play / pause / next / previous / volumeup / volumedown). */
     fun sendMusic(cmd: String): Boolean {
         val line = GbProtocol.encodeMusic(cmd)
-        val sent = gattServer?.sendLine(line) ?: false
+        val sent = bangleLineTransport.sendLine(line)
         Log.i(TAG, "music TX: $cmd (sent=$sent)")
         ProbeStateHolder.log("music $cmd (sent=$sent)")
         return sent
@@ -627,10 +653,26 @@ class BlePeripheralController(
     }
 
     private fun sendVer(): Boolean =
-        gattServer?.sendLine(GbProtocol.encodeVer(BuildConfig.VERSION_NAME, Build.MODEL ?: Build.PRODUCT)) ?: false
+        bangleLineTransport.sendLine(
+            GbProtocol.encodeVer(
+                BuildConfig.VERSION_NAME,
+                Build.MODEL
+                    ?: Build.PRODUCT,
+            ),
+        )
 
-    private fun sendStatus(bat: Int, volt: Double, chg: Int): Boolean =
-        gattServer?.sendLine(GbProtocol.encodeStatus(bat, volt, chg)) ?: false
+    private fun sendStatus(
+        bat: Int,
+        volt: Double,
+        chg: Int,
+    ): Boolean =
+        bangleLineTransport.sendLine(
+            GbProtocol.encodeStatus(
+                bat,
+                volt,
+                chg,
+            ),
+        )
 
     /** Pushes a synchronous snapshot from the currently selected battery provider. */
     private fun pushBatteryStatus(): Boolean {
