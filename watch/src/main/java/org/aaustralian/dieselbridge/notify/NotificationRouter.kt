@@ -27,6 +27,7 @@ class NotificationRouter(
         (DieselRequest) -> Unit = {},
     private val onInvalidDieselRequest:
         (DieselInvalidRequest) -> Unit = {},
+    private val onActivityControl: (GbMessage.ActivityControl) -> Unit = {},
 ) {
 
     fun handle(line: String): GbMessage? {
@@ -66,6 +67,7 @@ class NotificationRouter(
             is GbMessage.MusicInfo -> MusicStore.onInfo(msg.artist, msg.album, msg.track, msg.durMs)
             is GbMessage.MusicState -> MusicStore.onState(msg.state, msg.position)
             is GbMessage.CannedResponses -> CannedResponsesStore.set(msg.list)
+            is GbMessage.ActivityControl -> onActivityControl(msg)
             is GbMessage.DieselRequestMessage ->
                 onDieselRequest(
                     msg.request,

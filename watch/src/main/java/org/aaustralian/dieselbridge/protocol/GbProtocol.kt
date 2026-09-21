@@ -45,6 +45,15 @@ sealed interface GbMessage {
     /** `{"t":"canned_responses_sync","d":[{"text":…}]}` — reply suggestions from the phone. */
     data class CannedResponses(val list: List<String>) : GbMessage
 
+    /** Incoming phone control, interval is report seconds, not sensor cadence. */
+    data class ActivityControl(
+        val heartRate: Boolean,
+        val steps: Boolean,
+        val intervalSeconds: Int,
+    ) : GbMessage {
+        val enabled: Boolean get() = heartRate || steps
+    }
+
     /**
      * Successfully decoded Diesel protocol request.
      *
@@ -177,6 +186,9 @@ object GbProtocol {
                         ),
                     )
 
+                "act" ->
+                    parseActivityControl(o)
+
                 "diesel" ->
                     decodeParsedDiesel(
                         json = json,
@@ -296,6 +308,17 @@ object GbProtocol {
             put("t", "music")
             put("n", cmd)
         }.toString()
+
+    /** Reject malformed flags rather than coercing strings/numbers to booleans. */
+    private fun parseActivityControl(o: JSONObject): GbMessage.ActivityControl? {
+        val hrm = o.opt("hrm") as? Boolean ?: return null
+        val steps = o.opt("stp") as? Boolean ?: return null
+        val raw = o.opt("int") as? Number ?: return null
+        val seconds = raw.toInt()
+        if (raw.toDouble() != seconds.toDouble()) return null
+        if (seconds !in (if (hrm || steps) 1 else 0)..3600) return null
+        return GbMessage.ActivityControl(hrm, steps, seconds)
+    }
 
     private fun parseCanned(o: JSONObject): List<String> {
         val d: JSONArray = o.optJSONArray("d") ?: return emptyList()

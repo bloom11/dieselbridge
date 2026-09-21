@@ -35,6 +35,23 @@ class GbProtocolTest {
     }
 
     @Test
+    fun activityControlsAreStrictAndIndependent() {
+        assertEquals(GbMessage.ActivityControl(true, false, 10),
+            GbProtocol.parseLine("""GB({"t":"act","hrm":true,"stp":false,"int":10})"""))
+        assertEquals(GbMessage.ActivityControl(false, false, 0),
+            GbProtocol.parseLine("""{"t":"act","hrm":false,"stp":false,"int":0}"""))
+        listOf(
+            """{"t":"act","hrm":"true","stp":true,"int":10}""",
+            """{"t":"act","hrm":true,"stp":1,"int":10}""",
+            """{"t":"act","hrm":true,"stp":true,"int":0}""",
+            """{"t":"act","hrm":true,"stp":true,"int":3601}""",
+            """{"t":"act","hrm":true,"stp":true,"int":1.5}""",
+            """{"t":"act","hrm":true,"stp":true,"int":"10"}""",
+            """{"t":"act","hrm":true,"int":10}""",
+        ).forEach { assertNull(GbProtocol.parseLine(it)) }
+    }
+
+    @Test
     fun unknownTypeIsOther() {
         assertEquals(GbMessage.Other("is_gps_active"), GbProtocol.parseLine("""{"t":"is_gps_active"}"""))
     }

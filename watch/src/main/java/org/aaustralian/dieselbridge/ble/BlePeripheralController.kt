@@ -17,11 +17,13 @@ import org.aaustralian.dieselbridge.debug.DeveloperExportCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperExportRegistry
 import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.WatchDeveloperCommandRuntime
+import org.aaustralian.dieselbridge.integration.gadgetbridge.GadgetbridgeActivitySessionController
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteCatalog
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.sensor.PublicSensorSubscriptionController
 import org.aaustralian.dieselbridge.sensor.SensorCommandModule
@@ -64,6 +66,7 @@ class BlePeripheralController(
         DeveloperExportRegistry,
     private val sensorObservationManager:
         SensorObservationManager? = null,
+    private val sensorObservationEventBridge: SensorObservationEventBridge? = null,
     additionalCommandModules: List<DieselCommandModule> = emptyList(),
 ) {
     private var advertiser: NusAdvertiser? = null
@@ -104,6 +107,15 @@ class BlePeripheralController(
                         protocolScope,
                 )
             }
+
+    private val activitySession =
+        if (sensorObservationManager != null && sensorObservationEventBridge != null) {
+            GadgetbridgeActivitySessionController(
+                manager = sensorObservationManager,
+                bridge = sensorObservationEventBridge,
+                scope = protocolScope,
+            )
+        } else null
 
     private val dieselCommandRegistry =
         DieselCommandRegistry(
@@ -181,6 +193,9 @@ class BlePeripheralController(
                 ::handleDieselRequest,
             onInvalidDieselRequest =
                 ::handleInvalidDieselRequest,
+            onActivityControl = { control ->
+                if (gattServer?.connectedDevice != null) activitySession?.apply(control)
+            },
         )
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.
@@ -231,6 +246,7 @@ class BlePeripheralController(
     }
 
     fun stop() {
+        activitySession?.disable("ble_transport_stopped")
         publicSensorSubscriptionController
             ?.closeAll(
                 reason =
@@ -253,6 +269,7 @@ class BlePeripheralController(
      */
     fun shutdown() {
         stop()
+        activitySession?.close()
         publicSensorSubscriptionController
             ?.close()
     }
@@ -553,6 +570,8 @@ class BlePeripheralController(
             is GbMessage.MusicInfo -> ProbeStateHolder.log("musicinfo " + (msg.track ?: ""))
             is GbMessage.MusicState -> ProbeStateHolder.log("musicstate " + msg.state)
             is GbMessage.CannedResponses -> ProbeStateHolder.log("canned x" + msg.list.size)
+            is GbMessage.ActivityControl -> ProbeStateHolder.log(
+                "activity control hrm=${msg.heartRate} stp=${msg.steps} int=${msg.intervalSeconds}")
             is GbMessage.DieselRequestMessage ->
                 ProbeStateHolder.log(
                     buildString {
@@ -844,6 +863,7 @@ class BlePeripheralController(
                     reason =
                         "ble_disconnected",
                 )
+            activitySession?.disable("ble_disconnected")
         }
 
         lastCentralConnected =
