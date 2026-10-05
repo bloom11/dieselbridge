@@ -8,6 +8,8 @@ import org.aaustralian.dieselbridge.platform.capability.BatteryRoute
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
 import org.aaustralian.dieselbridge.platform.event.DieselEventBus
+import org.aaustralian.dieselbridge.platform.module.DieselModuleContext
+import org.aaustralian.dieselbridge.platform.module.DieselModuleManager
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.state.DieselStateStore
 
@@ -28,6 +30,17 @@ class DieselPlatform(
     val capabilities =
         CapabilityRegistry(
             diagnostics = diagnostics,
+        )
+
+    val modules =
+        DieselModuleManager(
+            context =
+                DieselModuleContext(
+                    capabilities = capabilities,
+                    events = events,
+                    states = states,
+                    actions = actions,
+                ),
         )
 
     /**
