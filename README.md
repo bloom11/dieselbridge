@@ -1731,7 +1731,6 @@ stable public vendor/private sensor semantics
 Android Clock alarm synchronization
 Espruino/Bangle runtime hosted by DieselBridge
 native APK provider/plugin SDK
-ModuleManager
 Wi-Fi Diesel transport
 TicWatch Pro 5 secondary low-power display API
 privileged per-app battery attribution
@@ -1768,7 +1767,7 @@ milestone cannot be marked complete by code alone when physical proof is still m
 | M5.1d | stock-Gadgetbridge activity hardware proof | **Hardware proof in progress; runtime `14339ee3`** |
 | M5.2a | `StateStore` | **Implemented + CI verified + concurrency hardened (`01141174`, run `37365030829`)** |
 | M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
-| M5.2c | `ModuleManager` / module lifecycle | **Planned** |
+| M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
 | M6 | real Android Clock alarm synchronization | **Planned** |
 | M7 | scripting / local module API | **Planned** |
 | M8 | APK provider/plugin IPC | **Planned** |
@@ -1779,11 +1778,15 @@ M5.0c1 is complete because the passive Health Services path is implemented, CI-t
 four physical TicWatch Pro 5 runs. M5.0c2 is deliberately separate: runtime demotion/fallback exists,
 but automatic future re-probing and promotion does not.
 
-Immediate runtime-core development sequence:
+The M5.2 runtime-core primitives are now implemented and CI-verified. Before unrelated feature work,
+incrementally migrate existing process-global UI state/action ownership through those primitives,
+starting with the isolated companion music path. This is integration hardening of M5.2, not a new
+roadmap milestone.
+
+The next numbered product milestone remains:
 
 ```text
-M5.2c ModuleManager / lifecycle
-    -> M6 Android Clock alarm synchronization
+M6 Android Clock alarm synchronization
 ```
 
 M5.1d exact-SHA Gadgetbridge activity hardware closeout, M5.0b2 SensorManager physical closure and
@@ -2099,11 +2102,20 @@ explicit failed action results while coroutine cancellation propagates normally.
 dispatch does not claim an action ID/type, and the dispatcher performs no provider arbitration or
 hidden queueing.
 
+M5.2c provides deterministic process-local module lifecycle ownership through `DieselModule`,
+`DieselModuleContext` and `DieselModuleManager`, all owned from `DieselPlatform`. Module start/stop
+mutations are serialized, successful starts define deterministic reverse shutdown order, failed
+starts receive best-effort cleanup, batch start rolls back only modules started by that call, and a
+module whose stop fails remains tracked rather than falsely appearing released. The module context
+contains only logical platform primitives (`CapabilityRegistry`, `DieselEventBus`, `StateStore` and
+`ActionDispatcher`); Android/service/transport dependencies remain explicit module constructor
+dependencies.
+
 Do not create a new process-global service locator merely to migrate existing UI stores/actions.
-Production domains should move into `StateStore` and `ActionDispatcher` only when their owners and
-consumers can receive the platform route through explicit lifecycle wiring. The existing
-`NotificationActions` callbacks therefore remain temporary compatibility debt until M5.2c introduces
-`ModuleManager` and real modules can own registrations deterministically.
+Production domains should now move incrementally into `StateStore` and `ActionDispatcher` through
+real `DieselModule` ownership. The existing `NotificationActions` callbacks and `MusicStore`
+singleton remain temporary compatibility debt; the smallest next migration is the companion music
+path before notification/find/call callbacks are removed.
 
 ## Vendor/private sensors
 
