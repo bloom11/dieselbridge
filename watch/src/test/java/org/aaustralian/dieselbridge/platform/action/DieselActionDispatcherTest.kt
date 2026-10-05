@@ -42,12 +42,12 @@ class DieselActionDispatcherTest {
                             id =
                                 key.id,
                             inputClass =
-                                java.lang.Integer::class.java,
+                                CharSequence::class.java,
                             outputClass =
-                                java.lang.Integer::class.java,
+                                CharSequence::class.java,
                         ),
                     input =
-                        7,
+                        "before-registration",
                 ),
             )
 
@@ -195,7 +195,7 @@ class DieselActionDispatcherTest {
                 id =
                     key.id,
                 inputClass =
-                    java.lang.Integer::class.java,
+                    CharSequence::class.java,
                 outputClass =
                     String::class.java,
             )
