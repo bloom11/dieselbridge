@@ -9,7 +9,7 @@ a generic versioned command protocol, developer diagnostics, logical sensor capa
 automatic provider selection, bounded hardware experiments, Health Services integration, power
 controls, and tooling for real-watch validation.
 
-The current active development line is `feature/diesel-platform`.
+The current active development line is `feature/diesel-runtime-core`.
 
 ---
 
@@ -45,7 +45,7 @@ The current active development line is `feature/diesel-platform`.
 
 # Project status
 
-Current development build configuration on `feature/diesel-platform`:
+Current development build configuration on `feature/diesel-runtime-core`:
 
 ```text
 namespace       org.aaustralian.dieselbridge
@@ -359,7 +359,7 @@ For this project, GitHub Actions is the canonical compile/unit-test environment.
 ```bash
 git clone https://github.com/bloom11/dieselbridge.git
 cd dieselbridge
-git switch feature/diesel-platform
+git switch feature/diesel-runtime-core
 ```
 
 ## Build
@@ -1731,7 +1731,6 @@ stable public vendor/private sensor semantics
 Android Clock alarm synchronization
 Espruino/Bangle runtime hosted by DieselBridge
 native APK provider/plugin SDK
-ActionDispatcher
 ModuleManager
 Wi-Fi Diesel transport
 TicWatch Pro 5 secondary low-power display API
@@ -1767,8 +1766,8 @@ milestone cannot be marked complete by code alone when physical proof is still m
 | M5.1b | native activity HR output + shared Bangle line transport | **Implemented + CI verified** |
 | M5.1c | step-counter delta/session semantics | **Implemented + CI verified** |
 | M5.1d | stock-Gadgetbridge activity hardware proof | **Hardware proof in progress; runtime `14339ee3`** |
-| M5.2a | `StateStore` | **Implemented + CI verified (`4f1d5677`, run `37362827627`)** |
-| M5.2b | `ActionDispatcher` | **Planned** |
+| M5.2a | `StateStore` | **Implemented + CI verified + concurrency hardened (`01141174`, run `37365030829`)** |
+| M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
 | M5.2c | `ModuleManager` / module lifecycle | **Planned** |
 | M6 | real Android Clock alarm synchronization | **Planned** |
 | M7 | scripting / local module API | **Planned** |
@@ -1780,19 +1779,17 @@ M5.0c1 is complete because the passive Health Services path is implemented, CI-t
 four physical TicWatch Pro 5 runs. M5.0c2 is deliberately separate: runtime demotion/fallback exists,
 but automatic future re-probing and promotion does not.
 
-Immediate development sequence:
+Immediate runtime-core development sequence:
 
 ```text
-M5.1d exact-SHA activity hardware closeout
-    -> M5.2a StateStore
-    -> M5.2b ActionDispatcher
-    -> M5.2c ModuleManager / lifecycle
+M5.2c ModuleManager / lifecycle
     -> M6 Android Clock alarm synchronization
 ```
 
-M5.0b2 SensorManager physical closure and M5.0c2 Health Services autonomous recovery remain
-independent open validation/resilience work. They should be prioritized if physical evidence exposes
-a blocking hardware or recovery problem, but they do not redefine the runtime-core layering.
+M5.1d exact-SHA Gadgetbridge activity hardware closeout, M5.0b2 SensorManager physical closure and
+M5.0c2 Health Services autonomous recovery remain independent open validation/resilience work. They
+should be prioritized if physical evidence exposes a blocking hardware or recovery problem, but they
+do not redefine the runtime-core layering.
 
 Do not implement Gadgetbridge activity acquisition as another sensor provider or another BLE stack.
 It should consume logical observation capabilities.
@@ -2088,18 +2085,25 @@ M5.2b ActionDispatcher
 M5.2c ModuleManager / lifecycle
 ```
 
-M5.2a starts with a typed process-local `StateStore` owned by `DieselPlatform`. A logical state key
+M5.2a provides a typed process-local `StateStore` owned by `DieselPlatform`. A logical state key
 has at most one active publisher, observers keep a stable `StateFlow` across publisher replacement,
 owner shutdown clears its current value, and stale publisher handles cannot overwrite a replacement.
 `StateStore` is current truth only: it is not an event queue, a provider selector or a history
-database. Protocol-specific telemetry must not become a generic platform contract merely because it
-can be stored.
+database. Its ownership/revision contracts are also covered by concurrent race tests.
 
-Do not create a new process-global service locator just to migrate existing UI stores. Production
-domains should move into `StateStore` when their owner and consumers can receive the platform route
-through explicit lifecycle wiring. `ActionDispatcher` should replace mutable cross-component action
-callbacks only in M5.2b, and service construction should move toward `ModuleManager` only in M5.2c
-when real modules exist to own.
+M5.2b provides a typed process-local `ActionDispatcher` owned by `DieselPlatform`. A logical action
+ID has at most one active handler with persistent input/output type identity. Dispatch snapshots the
+current handler under the dispatcher lock and executes it outside that lock; closing a registration
+blocks future calls but does not cancel an invocation already in flight. Handler exceptions become
+explicit failed action results while coroutine cancellation propagates normally. An unavailable
+dispatch does not claim an action ID/type, and the dispatcher performs no provider arbitration or
+hidden queueing.
+
+Do not create a new process-global service locator merely to migrate existing UI stores/actions.
+Production domains should move into `StateStore` and `ActionDispatcher` only when their owners and
+consumers can receive the platform route through explicit lifecycle wiring. The existing
+`NotificationActions` callbacks therefore remain temporary compatibility debt until M5.2c introduces
+`ModuleManager` and real modules can own registrations deterministically.
 
 ## Vendor/private sensors
 
