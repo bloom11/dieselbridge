@@ -684,6 +684,125 @@ class SensorObservationEventBridgeTest {
         }
 
     @Test
+    fun terminalClosedStateNeverRegressesToNonClosedState() =
+        runTest {
+            repeat(
+                32,
+            ) {
+                val eventBus =
+                    DieselEventBus()
+
+                val bridge =
+                    SensorObservationEventBridge(
+                        events =
+                            eventBus,
+                        wallClockMs = {
+                            4_750L
+                        },
+                    )
+
+                val subscription =
+                    FakeSubscription(
+                        initialState =
+                            state(
+                                phase =
+                                    SensorSubscriptionPhase
+                                        .WAITING_FOR_PROVIDER,
+                            ),
+                    )
+
+                val received =
+                    mutableListOf<
+                        DieselEvent
+                    >()
+
+                val collector =
+                    launch {
+                        eventBus
+                            .events
+                            .collect {
+                                received +=
+                                    it
+                            }
+                    }
+
+                runCurrent()
+
+                val registration =
+                    bridge.attach(
+                        subscription =
+                            subscription,
+                        scope =
+                            this,
+                    )
+
+                runCurrent()
+
+                subscription.updateState(
+                    state(
+                        phase =
+                            SensorSubscriptionPhase
+                                .ACTIVE,
+                        providerId =
+                            "wear.health_services",
+                    ),
+                )
+
+                subscription.emitSample(
+                    sample(),
+                )
+
+                subscription.updateState(
+                    state(
+                        phase =
+                            SensorSubscriptionPhase
+                                .CLOSED,
+                        providerId =
+                            "wear.health_services",
+                    ),
+                )
+
+                runCurrent()
+                registration.join()
+
+                val statePhases =
+                    received
+                        .filterIsInstance<
+                            SensorObservationStateEvent
+                        >()
+                        .map {
+                            it.state.phase
+                        }
+
+                val closedIndex =
+                    statePhases.indexOf(
+                        SensorSubscriptionPhase
+                            .CLOSED,
+                    )
+
+                assertTrue(
+                    closedIndex >=
+                        0,
+                )
+
+                assertTrue(
+                    statePhases
+                        .drop(
+                            closedIndex +
+                                1,
+                        )
+                        .all {
+                            it ==
+                                SensorSubscriptionPhase
+                                    .CLOSED
+                        },
+                )
+
+                collector.cancel()
+            }
+        }
+
+    @Test
     fun cancellingCallerScopeStopsForwardingWithoutClosingSubscription() =
         runTest {
             val eventBus =

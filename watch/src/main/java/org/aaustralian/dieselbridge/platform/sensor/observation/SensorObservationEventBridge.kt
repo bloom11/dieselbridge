@@ -71,28 +71,44 @@ class SensorObservationEventBridge(
             SensorSubscriptionState? =
             null
 
-        suspend fun publishStateIfNeeded(
-            state: SensorSubscriptionState,
-        ) {
-            publicationMutex.withLock {
-                if (
-                    lastPublishedState ==
-                        state
-                ) {
-                    return@withLock
-                }
+        /*
+         * Always read StateFlow while holding the publication mutex.
+         *
+         * The state collector may have been resumed for an older value and
+         * then wait behind the sample collector. Publishing that captured
+         * value after a newer state was already published could regress
+         * EventBus lifecycle order (for example CLOSED -> ACTIVE).
+         */
+        suspend fun publishCurrentStateIfNeededLocked():
+            SensorSubscriptionState {
+            val currentState =
+                subscription
+                    .state
+                    .value
 
+            if (
+                lastPublishedState !=
+                    currentState
+            ) {
                 events.emit(
                     SensorObservationStateEvent(
                         timestampMs =
                             wallClockMs(),
                         state =
-                            state,
+                            currentState,
                     ),
                 )
 
                 lastPublishedState =
-                    state
+                    currentState
+            }
+
+            return currentState
+        }
+
+        suspend fun publishCurrentStateIfNeeded() {
+            publicationMutex.withLock {
+                publishCurrentStateIfNeededLocked()
             }
         }
 
@@ -101,26 +117,7 @@ class SensorObservationEventBridge(
         ) {
             publicationMutex.withLock {
                 val currentState =
-                    subscription
-                        .state
-                        .value
-
-                if (
-                    lastPublishedState !=
-                        currentState
-                ) {
-                    events.emit(
-                        SensorObservationStateEvent(
-                            timestampMs =
-                                wallClockMs(),
-                            state =
-                                currentState,
-                        ),
-                    )
-
-                    lastPublishedState =
-                        currentState
-                }
+                    publishCurrentStateIfNeededLocked()
 
                 /*
                  * CLOSED is terminal on the EventBus. SensorSubscription closes
@@ -179,11 +176,7 @@ class SensorObservationEventBridge(
                         subscription
                             .state
                             .onEach {
-                                    state,
-                                ->
-                                publishStateIfNeeded(
-                                    state,
-                                )
+                                publishCurrentStateIfNeeded()
                             }
                             .takeWhile {
                                     state,
