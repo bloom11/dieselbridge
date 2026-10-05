@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import java.util.Base64
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.StateFlow
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
@@ -137,6 +138,11 @@ class BlePeripheralController(
         } else {
             null
         }
+
+    /** Read-only state exposure for debug proof tooling. */
+    internal val gadgetbridgeActivityState:
+        StateFlow<GadgetbridgeActivitySessionController.Snapshot>?
+        get() = activitySession?.state
 
     private val dieselCommandRegistry =
         DieselCommandRegistry(

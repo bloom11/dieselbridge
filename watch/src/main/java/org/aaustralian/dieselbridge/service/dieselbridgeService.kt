@@ -483,6 +483,9 @@ class DieselBridgeService : Service() {
             )
 
         controller = bleController
+        DeveloperRuntimeAccess.attachGadgetbridgeActivityState(
+            bleController.gadgetbridgeActivityState,
+        )
         DeveloperRuntimeAccess.attachCommandDispatcher(bleController::dispatchFromDeveloperUi)
 
         /*

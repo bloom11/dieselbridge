@@ -5,6 +5,7 @@ package org.aaustralian.dieselbridge.debug
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.aaustralian.dieselbridge.integration.gadgetbridge.GadgetbridgeActivitySessionController
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.sensor.SensorInventory
 import org.aaustralian.dieselbridge.protocol.DieselCommandSpec
@@ -60,6 +61,20 @@ internal object DeveloperRuntimeAccess {
         runner: SensorObservationSmokeRunner,
     ) {
         mutableObservationSmokeRunner.value = runner
+    }
+
+    /* Read-only reference to the service-owned Gadgetbridge activity state. */
+    private val mutableGadgetbridgeActivityState =
+        MutableStateFlow<StateFlow<GadgetbridgeActivitySessionController.Snapshot>?>(null)
+
+    val gadgetbridgeActivityState:
+        StateFlow<StateFlow<GadgetbridgeActivitySessionController.Snapshot>?> =
+        mutableGadgetbridgeActivityState.asStateFlow()
+
+    fun attachGadgetbridgeActivityState(
+        state: StateFlow<GadgetbridgeActivitySessionController.Snapshot>?,
+    ) {
+        mutableGadgetbridgeActivityState.value = state
     }
 
     private val mutableSafeTestRunner =
@@ -156,6 +171,7 @@ internal object DeveloperRuntimeAccess {
             mutableSensorInventory.value = null
             mutableSafeTestRunner.value = null
             mutableObservationSmokeRunner.value = null
+            mutableGadgetbridgeActivityState.value = null
             mutableSensorMatrixExperiment.value = null
             mutableSensorProbeStoreSnapshot.value = null
             mutableCommandDispatcher.value = null

@@ -1,0 +1,70 @@
+#!/data/data/com.termux/files/usr/bin/python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+
+ACTION = "org.aaustralian.dieselbridge.GADGETBRIDGE_ACTIVITY_STATUS"
+COMPONENT = "io.github.bloom11.dieselbridge/org.aaustralian.dieselbridge.debug.DebugGadgetbridgeActivityReceiver"
+TAG = "DieselGbActivityProof"
+
+class ProofError(RuntimeError):
+    pass
+
+def choose_serial(explicit):
+    if explicit:
+        return explicit
+    if os.environ.get("DIESEL_ADB_SERIAL"):
+        return os.environ["DIESEL_ADB_SERIAL"]
+    p = subprocess.run(["adb", "devices"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    devices = [line.split()[0] for line in p.stdout.splitlines()[1:] if len(line.split()) >= 2 and line.split()[1] == "device"]
+    if len(devices) != 1:
+        raise ProofError("Expected exactly one connected watch; set DIESEL_ADB_SERIAL or --serial")
+    return devices[0]
+
+def adb(serial, *args):
+    return subprocess.run(["adb", "-s", serial, *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+
+def status(serial):
+    rid = f"gbact-{int(time.time())}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    p = adb(serial, "shell", "am", "broadcast", "--receiver-foreground", "-a", ACTION, "-n", COMPONENT, "--es", "requestId", rid)
+    if p.returncode:
+        raise ProofError(p.stdout + p.stderr)
+    prefix = f"id={rid} "
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        logs = adb(serial, "logcat", "-d", "-v", "raw", "-s", f"{TAG}:I", "*:S")
+        for line in reversed(logs.stdout.splitlines()):
+            if line.startswith(prefix):
+                return json.loads(line[len(prefix):])
+        time.sleep(0.1)
+    raise ProofError("No correlated debug status response; open DieselBridge once")
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--serial")
+    ap.add_argument("--watch", type=float, default=0)
+    ap.add_argument("--interval", type=float, default=1)
+    args = ap.parse_args()
+    serial = choose_serial(args.serial)
+    if args.watch <= 0:
+        print(json.dumps(status(serial), indent=2, sort_keys=True))
+        return
+    deadline = time.monotonic() + args.watch
+    while True:
+        print(json.dumps(status(serial), sort_keys=True), flush=True)
+        if time.monotonic() >= deadline:
+            return
+        time.sleep(max(0.1, args.interval))
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ProofError, json.JSONDecodeError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        raise SystemExit(1)

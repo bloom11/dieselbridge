@@ -22,5 +22,14 @@
                 <action android:name="org.aaustralian.dieselbridge.OBSERVATION_SMOKE" />
             </intent-filter>
         </receiver>
+
+        <!-- DEBUG-only and read-only: stock Gadgetbridge still owns t:"act" control. -->
+        <receiver
+            android:name=".debug.DebugGadgetbridgeActivityReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="org.aaustralian.dieselbridge.GADGETBRIDGE_ACTIVITY_STATUS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
