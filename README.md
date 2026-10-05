@@ -1767,7 +1767,7 @@ milestone cannot be marked complete by code alone when physical proof is still m
 | M5.1b | native activity HR output + shared Bangle line transport | **Implemented + CI verified** |
 | M5.1c | step-counter delta/session semantics | **Implemented + CI verified** |
 | M5.1d | stock-Gadgetbridge activity hardware proof | **Hardware proof in progress; runtime `14339ee3`** |
-| M5.2a | `StateStore` | **Implemented on branch; CI pending** |
+| M5.2a | `StateStore` | **Implemented + CI verified (`4f1d5677`, run `37362827627`)** |
 | M5.2b | `ActionDispatcher` | **Planned** |
 | M5.2c | `ModuleManager` / module lifecycle | **Planned** |
 | M6 | real Android Clock alarm synchronization | **Planned** |
