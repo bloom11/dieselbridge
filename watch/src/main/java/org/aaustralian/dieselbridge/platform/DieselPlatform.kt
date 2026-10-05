@@ -3,6 +3,7 @@
 package org.aaustralian.dieselbridge.platform
 
 import kotlinx.coroutines.CoroutineScope
+import org.aaustralian.dieselbridge.platform.action.DieselActionDispatcher
 import org.aaustralian.dieselbridge.platform.capability.BatteryRoute
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
@@ -22,6 +23,7 @@ class DieselPlatform(
     val diagnostics: PlatformDiagnostics = PlatformDiagnostics(),
     val events: DieselEventBus = DieselEventBus(),
     val states: DieselStateStore = DieselStateStore(),
+    val actions: DieselActionDispatcher = DieselActionDispatcher(),
 ) {
     val capabilities =
         CapabilityRegistry(
