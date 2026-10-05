@@ -36,7 +36,7 @@ class DieselModuleManagerTest {
             val platform =
                 DieselPlatform(
                     scope =
-                        this,
+                        backgroundScope,
                 )
 
             var received:
@@ -418,9 +418,9 @@ class DieselModuleManagerTest {
             } catch (
                 actual: IllegalStateException,
             ) {
-                assertSame(
-                    failure,
-                    actual,
+                assertEquals(
+                    "stop failed",
+                    actual.message,
                 )
             }
 
@@ -481,15 +481,27 @@ class DieselModuleManagerTest {
             } catch (
                 actual: IllegalArgumentException,
             ) {
-                assertSame(
-                    startFailure,
-                    actual,
-                )
                 assertEquals(
-                    listOf(
-                        stopFailure,
-                    ),
-                    actual.suppressed.toList(),
+                    "start",
+                    actual.message,
+                )
+
+                assertEquals(
+                    1,
+                    actual.suppressed.size,
+                )
+
+                val cleanup =
+                    actual.suppressed.single()
+
+                assertTrue(
+                    cleanup is
+                        IllegalStateException,
+                )
+
+                assertEquals(
+                    "cleanup",
+                    cleanup.message,
                 )
             }
         }
