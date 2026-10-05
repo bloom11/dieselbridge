@@ -262,12 +262,14 @@ The service intentionally does not use an unbounded `runBlocking` wait on Androi
 
 ## Process-local EventBus
 
-`DieselPlatform` already owns a process-local `DieselEventBus` intended for future native UI,
-automation, scripting and plugins. The generic observation-to-EventBus bridge is not yet complete;
-current remote sensor events are produced by `PublicSensorSubscriptionController` and sent through
-`GadgetbridgeDieselEventTransport`.
+`DieselPlatform` owns a process-local `DieselEventBus` intended for native UI, automation,
+scripting and plugins. Caller-owned sensor subscriptions can be attached through
+`SensorObservationEventBridge`; that bridge forwards typed lifecycle/sample events without opening,
+selecting or closing the underlying provider resource.
 
-The EventBus is a distribution mechanism, not a hardware-resource owner.
+The EventBus is a distribution mechanism, not a hardware-resource owner. It remains intentionally
+ephemeral (`replay=0`); current state belongs in `StateStore`, while durable historical data belongs
+in a separate future history layer.
 
 ## Shared physical line output
 
@@ -1312,8 +1314,12 @@ It:
 
 Typical use after committing and pushing:
 
-    cd ~/dieselbridge
-    tools/diesel-ci-watch-install
+    cd /path/to/your/dieselbridge-checkout
+    ./tools/diesel-ci-watch-install
+
+The helper resolves both ordinary clones and linked Git worktrees. When invoked from outside a
+checkout, set `DIESEL_REPO_ROOT=/path/to/checkout`. `DIESEL_BUILD_ROOT` can override the artifact
+destination; the project workspace defaults to `~/dieselbridge-project/artifacts/builds`.
 
 Required phone-side commands are `git`, `gh`, `adb`, and `find`.
 
@@ -1638,9 +1644,9 @@ must not be described as the SHA of the physically tested APK: the installed/tes
 
 ---
 
-## Current observation baseline
+## Observation hardware evidence baseline
 
-This documentation synchronization is based on `feature/diesel-platform` repository state
+The committed Health Services evidence synchronization below is based on `feature/diesel-platform` repository state
 `77703921f704975f5a0b8b87dbd31942b2424a2b`, whose parent runtime commit
 `861bc4a4d8d04575af250a8b01f520b3b9457378` is the exact build used for the committed Health
 Services HR hardware campaign.
@@ -1715,9 +1721,7 @@ compatibility strategy.
 
 ```text
 automatic Health Services recovery/re-promotion after runtime failure
-generic observation -> DieselEventBus bridge
-Gadgetbridge-native t:"act" HR/step adapter
-Gadgetbridge step delta/history semantics
+Gadgetbridge historical activity/actfetch semantics
 passive health/history platform
 sleep/activity classification
 VO2 max platform
@@ -1727,7 +1731,6 @@ stable public vendor/private sensor semantics
 Android Clock alarm synchronization
 Espruino/Bangle runtime hosted by DieselBridge
 native APK provider/plugin SDK
-StateStore
 ActionDispatcher
 ModuleManager
 Wi-Fi Diesel transport
@@ -1757,14 +1760,14 @@ milestone cannot be marked complete by code alone when physical proof is still m
 | M5.0b2 | SensorManager physical-watch closure campaign | **Pending hardware campaign; tooling implemented** |
 | M5.0c1 | Health Services passive continuous HR | **Implemented + CI + TicWatch Pro 5 hardware verified** |
 | M5.0c2 | automatic Health Services recovery/re-promotion after runtime failure | **Pending** |
-| M5.0d1 | typed process-local sensor observation events | **Next** |
-| M5.0d2 | externally owned subscription -> `DieselEventBus` bridge | **Next** |
-| M5.0d3 | bounded real-watch EventBus proof | **Next** |
-| M5.1a | Gadgetbridge `t:"act"` request/session ownership | **Planned** |
-| M5.1b | native activity HR output + shared Bangle line transport | **Planned** |
-| M5.1c | step-counter delta/session semantics | **Planned** |
-| M5.1d | stock-Gadgetbridge activity hardware proof | **Planned** |
-| M5.2a | `StateStore` | **Planned** |
+| M5.0d1 | typed process-local sensor observation events | **Implemented + CI verified** |
+| M5.0d2 | externally owned subscription -> `DieselEventBus` bridge | **Implemented + CI verified** |
+| M5.0d3 | bounded real-watch EventBus proof | **Implemented + CI + TicWatch Pro 5 hardware verified** |
+| M5.1a | Gadgetbridge `t:"act"` request/session ownership | **Implemented + CI verified** |
+| M5.1b | native activity HR output + shared Bangle line transport | **Implemented + CI verified** |
+| M5.1c | step-counter delta/session semantics | **Implemented + CI verified** |
+| M5.1d | stock-Gadgetbridge activity hardware proof | **Hardware proof in progress; runtime `14339ee3`** |
+| M5.2a | `StateStore` | **Implemented on branch; CI pending** |
 | M5.2b | `ActionDispatcher` | **Planned** |
 | M5.2c | `ModuleManager` / module lifecycle | **Planned** |
 | M6 | real Android Clock alarm synchronization | **Planned** |
@@ -1777,18 +1780,19 @@ M5.0c1 is complete because the passive Health Services path is implemented, CI-t
 four physical TicWatch Pro 5 runs. M5.0c2 is deliberately separate: runtime demotion/fallback exists,
 but automatic future re-probing and promotion does not.
 
-Immediate sequence:
+Immediate development sequence:
 
 ```text
-M5.0b2 SensorManager physical-watch closure
-    -> M5.0d1 typed observation events
-    -> M5.0d2 explicit subscription -> EventBus bridge
-    -> M5.0d3 real-watch EventBus smoke proof
-    -> M5.1 Gadgetbridge t:"act"
+M5.1d exact-SHA activity hardware closeout
+    -> M5.2a StateStore
+    -> M5.2b ActionDispatcher
+    -> M5.2c ModuleManager / lifecycle
+    -> M6 Android Clock alarm synchronization
 ```
 
-M5.0c2 remains open but does not block M5.0d/M5.1 unless physical testing shows transient Health
-Services loss is common enough to require recovery first.
+M5.0b2 SensorManager physical closure and M5.0c2 Health Services autonomous recovery remain
+independent open validation/resilience work. They should be prioritized if physical evidence exposes
+a blocking hardware or recovery problem, but they do not redefine the runtime-core layering.
 
 Do not implement Gadgetbridge activity acquisition as another sensor provider or another BLE stack.
 It should consume logical observation capabilities.
@@ -2076,7 +2080,7 @@ units belongs in the protocol codec layer.
 
 ### M5.2 — Diesel runtime core
 
-After M5.1, add the general runtime abstractions only where real consumers now require them:
+After M5.1, add the general runtime abstractions only where real consumers require them:
 
 ```text
 M5.2a StateStore
@@ -2084,10 +2088,18 @@ M5.2b ActionDispatcher
 M5.2c ModuleManager / lifecycle
 ```
 
-`DieselEventBus` is intentionally ephemeral (`replay=0`); current state belongs in a future
-`StateStore`, not in EventBus replay. Cross-module actions should converge on
-`ActionDispatcher` once alarm/activity/plugin work creates enough pressure, and service construction
-should move toward `ModuleManager` only when those modules exist.
+M5.2a starts with a typed process-local `StateStore` owned by `DieselPlatform`. A logical state key
+has at most one active publisher, observers keep a stable `StateFlow` across publisher replacement,
+owner shutdown clears its current value, and stale publisher handles cannot overwrite a replacement.
+`StateStore` is current truth only: it is not an event queue, a provider selector or a history
+database. Protocol-specific telemetry must not become a generic platform contract merely because it
+can be stored.
+
+Do not create a new process-global service locator just to migrate existing UI stores. Production
+domains should move into `StateStore` when their owner and consumers can receive the platform route
+through explicit lifecycle wiring. `ActionDispatcher` should replace mutable cross-component action
+callbacks only in M5.2b, and service construction should move toward `ModuleManager` only in M5.2c
+when real modules exist to own.
 
 ## Vendor/private sensors
 

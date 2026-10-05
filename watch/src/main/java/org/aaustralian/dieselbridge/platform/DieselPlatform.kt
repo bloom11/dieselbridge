@@ -8,6 +8,7 @@ import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
 import org.aaustralian.dieselbridge.platform.diagnostic.PlatformDiagnostics
 import org.aaustralian.dieselbridge.platform.event.DieselEventBus
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
+import org.aaustralian.dieselbridge.platform.state.DieselStateStore
 
 /**
  * Process-local Diesel runtime context.
@@ -20,6 +21,7 @@ class DieselPlatform(
     scope: CoroutineScope,
     val diagnostics: PlatformDiagnostics = PlatformDiagnostics(),
     val events: DieselEventBus = DieselEventBus(),
+    val states: DieselStateStore = DieselStateStore(),
 ) {
     val capabilities =
         CapabilityRegistry(

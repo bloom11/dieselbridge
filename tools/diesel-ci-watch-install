@@ -6,22 +6,37 @@ diesel_ci_watch_download_install() {
   ARTIFACT="dieselbridge-bloom-debug"
   PACKAGE="io.github.bloom11.dieselbridge"
 
-  ROOT="$(
-    cd "$(dirname "$0")/.." 2>/dev/null &&
-      pwd
-  )"
+  ROOT=""
 
-  # If the script was downloaded outside the repo (for example ~/storage/downloads),
-  # fall back to the normal Termux repo location.
-  if [ -z "$ROOT" ] ||
-     [ ! -d "$ROOT/.git" ]; then
-    ROOT="$HOME/dieselbridge"
+  # Prefer an explicit checkout, then the checkout containing this script,
+  # then the caller's current checkout. git rev-parse supports both ordinary
+  # clones (.git directory) and linked worktrees (.git file).
+  if [ -n "${DIESEL_REPO_ROOT:-}" ]; then
+    ROOT="$(git -C "$DIESEL_REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
   fi
 
-  if [ ! -d "$ROOT/.git" ]; then
-    echo "ERROR: DieselBridge repo not found."
-    echo "Expected:"
-    echo "  $HOME/dieselbridge"
+  if [ -z "$ROOT" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+    ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  fi
+
+  if [ -z "$ROOT" ]; then
+    ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
+  fi
+
+  if [ -z "$ROOT" ]; then
+    for CANDIDATE in "$HOME/dieselbridge-project/repo" "$HOME/dieselbridge"; do
+      if git -C "$CANDIDATE" rev-parse --show-toplevel >/dev/null 2>&1; then
+        ROOT="$(git -C "$CANDIDATE" rev-parse --show-toplevel)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$ROOT" ]; then
+    echo "ERROR: DieselBridge repo/worktree not found."
+    echo "Run this tool from a DieselBridge checkout or set:"
+    echo "  DIESEL_REPO_ROOT=/path/to/checkout"
     return 1
   fi
 
@@ -182,7 +197,13 @@ diesel_ci_watch_download_install() {
       "URL      : \(.url)"
     '
 
-  BUILD_ROOT="$HOME/dieselbridge-builds"
+  if [ -n "${DIESEL_BUILD_ROOT:-}" ]; then
+    BUILD_ROOT="$DIESEL_BUILD_ROOT"
+  elif [ -d "$HOME/dieselbridge-project/artifacts" ]; then
+    BUILD_ROOT="$HOME/dieselbridge-project/artifacts/builds"
+  else
+    BUILD_ROOT="$HOME/dieselbridge-builds"
+  fi
   BUILD_DIR="$BUILD_ROOT/${SHORT}-run-${RUN_ID}"
 
   printf '\n===== DOWNLOAD APK =====\n'
@@ -428,8 +449,8 @@ diesel_ci_watch_download_install() {
   echo "Watch APK installed successfully."
   echo
   echo "Next useful test:"
-  echo "  cd ~/dieselbridge"
-  echo "  tools/diesel-adb '{\"cmd\":\"debug.build.info\"}'"
+  echo "  cd $ROOT"
+  echo "  ./tools/diesel-adb '{\"cmd\":\"debug.build.info\"}'"
 
   return 0
 }
