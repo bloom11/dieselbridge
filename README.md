@@ -1778,12 +1778,13 @@ M5.0c1 is complete because the passive Health Services path is implemented, CI-t
 four physical TicWatch Pro 5 runs. M5.0c2 is deliberately separate: runtime demotion/fallback exists,
 but automatic future re-probing and promotion does not.
 
-The M5.2 runtime-core primitives are now implemented and CI-verified. Before unrelated feature work,
-incrementally migrate existing process-global UI state/action ownership through those primitives,
-starting with the isolated companion music path. This is integration hardening of M5.2, not a new
-roadmap milestone.
+The M5.2 runtime-core primitives are now implemented and CI-verified. Existing original DieselBridge
+UI/action/state components remain valid compatibility code and do not need migration solely for
+architectural consistency. New functionality should use the runtime-core primitives where they fit,
+and existing components should migrate only when a concrete new consumer, lifecycle requirement or
+feature change justifies touching them.
 
-The next numbered product milestone remains:
+The next numbered product milestone is:
 
 ```text
 M6 Android Clock alarm synchronization
@@ -2112,10 +2113,12 @@ contains only logical platform primitives (`CapabilityRegistry`, `DieselEventBus
 dependencies.
 
 Do not create a new process-global service locator merely to migrate existing UI stores/actions.
-Production domains should now move incrementally into `StateStore` and `ActionDispatcher` through
-real `DieselModule` ownership. The existing `NotificationActions` callbacks and `MusicStore`
-singleton remain temporary compatibility debt; the smallest next migration is the companion music
-path before notification/find/call callbacks are removed.
+The original `NotificationActions`, `MusicStore` and similar DieselBridge components may remain in
+place while they continue to serve their existing consumers correctly. They are not mandatory
+runtime-core migration work. Move an existing domain into `StateStore`, `ActionDispatcher` or
+`DieselModule` ownership only when a concrete requirement benefits from the shared abstraction, such
+as a second consumer, scripting/plugin access, explicit lifecycle ownership or a feature change that
+already requires modifying that domain.
 
 ## Vendor/private sensors
 
