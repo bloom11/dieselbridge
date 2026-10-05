@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.aaustralian.dieselbridge.integration.gadgetbridge
 
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -33,8 +35,8 @@ import org.aaustralian.dieselbridge.protocol.GbMessage
  * controller owns only its logical subscriptions, EventBus forwarding and
  * outbound reporting lifecycle.
  *
- * M5.1b reports HR. Step subscriptions may already exist, but cumulative
- * counter delta semantics are deliberately deferred to M5.1c.
+ * Heart rate uses the latest valid sample. Android's cumulative step counter
+ * is converted into report-interval deltas and is never published directly.
  */
 class GadgetbridgeActivitySessionController(
     private val manager: SensorObservationManager,
@@ -57,6 +59,13 @@ class GadgetbridgeActivitySessionController(
         val latestHeartRateBpm: Int? = null,
         val heartRateProviderId: String? = null,
         val lastHeartRateSensorTimestampNs: Long? = null,
+        val stepProviderId: String? = null,
+        val stepBaselineRaw: Long? = null,
+        val latestStepCounterRaw: Long? = null,
+        val pendingStepDelta: Int = 0,
+        val lastStepSensorTimestampNs: Long? = null,
+        val stepDomainResetCount: Long = 0L,
+        val lastReportStepDelta: Int? = null,
         val reportsAttempted: Long = 0L,
         val reportsQueued: Long = 0L,
         val reportsRejected: Long = 0L,
@@ -116,6 +125,9 @@ class GadgetbridgeActivitySessionController(
         Job? =
         null
 
+    private val stepTracker =
+        StepCounterDeltaTracker()
+
     private var closed =
         false
 
@@ -172,6 +184,11 @@ class GadgetbridgeActivitySessionController(
                     ?.subscription
                     ?.id
 
+            val previousStepId =
+                steps
+                    ?.subscription
+                    ?.id
+
             try {
                 val owner =
                     client
@@ -194,6 +211,7 @@ class GadgetbridgeActivitySessionController(
                     steps?.release()
                     steps =
                         null
+                    stepTracker.reset()
                 }
 
                 if (
@@ -211,6 +229,8 @@ class GadgetbridgeActivitySessionController(
                     control.steps &&
                     steps == null
                 ) {
+                    stepTracker.reset()
+
                     steps =
                         open(
                             owner,
@@ -226,6 +246,25 @@ class GadgetbridgeActivitySessionController(
                 val heartRateWasReopened =
                     currentHeartRateId !=
                         previousHeartRateId
+
+                val currentStepId =
+                    steps
+                        ?.subscription
+                        ?.id
+
+                val stepWasReopened =
+                    currentStepId !=
+                        previousStepId
+
+                if (
+                    control.steps &&
+                    stepWasReopened
+                ) {
+                    stepTracker.reset()
+                }
+
+                val stepState =
+                    stepTracker.snapshot()
 
                 val base =
                     if (newSession) {
@@ -280,6 +319,34 @@ class GadgetbridgeActivitySessionController(
                             } else {
                                 null
                             },
+                        stepProviderId =
+                            stepState.providerId,
+                        stepBaselineRaw =
+                            stepState.baselineRaw,
+                        latestStepCounterRaw =
+                            stepState.latestRaw,
+                        pendingStepDelta =
+                            stepState.pendingDelta,
+                        lastStepSensorTimestampNs =
+                            if (
+                                control.steps &&
+                                !stepWasReopened
+                            ) {
+                                base.lastStepSensorTimestampNs
+                            } else {
+                                null
+                            },
+                        stepDomainResetCount =
+                            stepState.domainResetCount,
+                        lastReportStepDelta =
+                            if (
+                                control.steps &&
+                                !stepWasReopened
+                            ) {
+                                base.lastReportStepDelta
+                            } else {
+                                null
+                            },
                         lastStopReason =
                             null,
                         lastError =
@@ -287,23 +354,15 @@ class GadgetbridgeActivitySessionController(
                     )
 
                 val restartReporting =
-                    control.heartRate &&
-                        (
-                            reportJob?.isActive !=
-                                true ||
-                                !previous.heartRateRequested ||
-                                previous.intervalSeconds !=
-                                control.intervalSeconds
-                        )
+                    reportJob?.isActive !=
+                        true ||
+                        previous.intervalSeconds !=
+                        control.intervalSeconds
 
-                when {
-                    !control.heartRate ->
-                        stopReportingLocked()
-
-                    restartReporting ->
-                        startReportingLocked(
-                            control.intervalSeconds,
-                        )
+                if (restartReporting) {
+                    startReportingLocked(
+                        control.intervalSeconds,
+                    )
                 }
 
                 true
@@ -376,86 +435,192 @@ class GadgetbridgeActivitySessionController(
                 hr
                     ?.subscription
                     ?.id
-                    ?: return
+
+            val stepId =
+                steps
+                    ?.subscription
+                    ?.id
 
             when (event) {
                 is SensorObservationStateEvent -> {
-                    if (
-                        event.subscriptionId !=
-                        heartRateId
+                    when (
+                        event.subscriptionId
                     ) {
-                        return
-                    }
+                        heartRateId ->
+                            event
+                                .state
+                                .providerId
+                                ?.let {
+                                    providerId ->
+                                    mutableState.value =
+                                        mutableState.value.copy(
+                                            heartRateProviderId =
+                                                providerId,
+                                        )
+                                }
 
-                    event
-                        .state
-                        .providerId
-                        ?.let {
-                            providerId ->
-                            mutableState.value =
-                                mutableState.value.copy(
-                                    heartRateProviderId =
-                                        providerId,
-                                )
-                        }
+                        stepId ->
+                            event
+                                .state
+                                .providerId
+                                ?.let {
+                                    providerId ->
+                                    publishStepState(
+                                        stepTracker
+                                            .observeProvider(
+                                                providerId,
+                                            ),
+                                    )
+                                }
+                    }
                 }
 
                 is SensorObservationSampleEvent -> {
-                    if (
-                        event.subscriptionId !=
-                            heartRateId ||
-                        event.logicalId !=
-                            "heart_rate"
-                    ) {
-                        return
+                    when {
+                        event.subscriptionId ==
+                            heartRateId &&
+                            event.logicalId ==
+                            "heart_rate" ->
+                            recordHeartRate(
+                                event,
+                            )
+
+                        event.subscriptionId ==
+                            stepId &&
+                            event.logicalId ==
+                            "step_counter" ->
+                            recordStepCounter(
+                                event,
+                            )
                     }
-
-                    val raw =
-                        event
-                            .sample
-                            .reading
-                            .values
-                            .firstOrNull()
-                            ?: return
-
-                    if (
-                        !raw.isFinite() ||
-                        raw <= 0F
-                    ) {
-                        return
-                    }
-
-                    val bpm =
-                        raw
-                            .roundToInt()
-
-                    if (
-                        bpm <= 0
-                    ) {
-                        return
-                    }
-
-                    mutableState.value =
-                        mutableState.value.copy(
-                            latestHeartRateBpm =
-                                bpm,
-                            heartRateProviderId =
-                                event
-                                    .sample
-                                    .reading
-                                    .providerId,
-                            lastHeartRateSensorTimestampNs =
-                                event
-                                    .sample
-                                    .reading
-                                    .timestampNanos,
-                        )
                 }
 
                 else ->
                     Unit
             }
         }
+    }
+
+    private fun recordHeartRate(
+        event: SensorObservationSampleEvent,
+    ) {
+        val raw =
+            event
+                .sample
+                .reading
+                .values
+                .firstOrNull()
+                ?: return
+
+        if (
+            !raw.isFinite() ||
+            raw <= 0F
+        ) {
+            return
+        }
+
+        val bpm =
+            raw
+                .roundToInt()
+
+        if (
+            bpm <= 0
+        ) {
+            return
+        }
+
+        mutableState.value =
+            mutableState.value.copy(
+                latestHeartRateBpm =
+                    bpm,
+                heartRateProviderId =
+                    event
+                        .sample
+                        .reading
+                        .providerId,
+                lastHeartRateSensorTimestampNs =
+                    event
+                        .sample
+                        .reading
+                        .timestampNanos,
+            )
+    }
+
+    private fun recordStepCounter(
+        event: SensorObservationSampleEvent,
+    ) {
+        val raw =
+            event
+                .sample
+                .reading
+                .values
+                .firstOrNull()
+                ?: return
+
+        if (
+            !raw.isFinite() ||
+            raw < 0F ||
+            raw.toDouble() >
+            Long.MAX_VALUE.toDouble()
+        ) {
+            return
+        }
+
+        val rounded =
+            raw.roundToLong()
+
+        if (
+            abs(
+                raw.toDouble() -
+                    rounded.toDouble(),
+            ) >
+            STEP_COUNTER_INTEGER_TOLERANCE
+        ) {
+            return
+        }
+
+        publishStepState(
+            stepTracker
+                .observeSample(
+                    sampleProviderId =
+                        event
+                            .sample
+                            .reading
+                            .providerId,
+                    rawCounter =
+                        rounded,
+                ),
+            sensorTimestampNs =
+                event
+                    .sample
+                    .reading
+                    .timestampNanos,
+        )
+    }
+
+    private fun publishStepState(
+        stepState:
+            StepCounterDeltaTracker.State,
+        sensorTimestampNs: Long? =
+            mutableState
+                .value
+                .lastStepSensorTimestampNs,
+    ) {
+        mutableState.value =
+            mutableState.value.copy(
+                stepProviderId =
+                    stepState.providerId,
+                stepBaselineRaw =
+                    stepState.baselineRaw,
+                latestStepCounterRaw =
+                    stepState.latestRaw,
+                pendingStepDelta =
+                    stepState.pendingDelta,
+                lastStepSensorTimestampNs =
+                    sensorTimestampNs,
+                stepDomainResetCount =
+                    stepState.domainResetCount,
+            )
     }
 
     private fun startReportingLocked(
@@ -497,8 +662,7 @@ class GadgetbridgeActivitySessionController(
         synchronized(lock) {
             if (
                 closed ||
-                !mutableState.value.enabled ||
-                !mutableState.value.heartRateRequested
+                !mutableState.value.enabled
             ) {
                 return
             }
@@ -509,13 +673,31 @@ class GadgetbridgeActivitySessionController(
             val now =
                 wallClockMs()
 
+            val stepDelta =
+                if (
+                    current.stepsRequested
+                ) {
+                    stepTracker
+                        .pendingDelta()
+                } else {
+                    0
+                }
+
             val line =
                 GadgetbridgeActivityCodec
                     .encodeRealtime(
                         timestampMs =
                             now,
                         heartRateBpm =
-                            current.latestHeartRateBpm,
+                            if (
+                                current.heartRateRequested
+                            ) {
+                                current.latestHeartRateBpm
+                            } else {
+                                null
+                            },
+                        stepDelta =
+                            stepDelta,
                     )
 
             val queued =
@@ -523,8 +705,40 @@ class GadgetbridgeActivitySessionController(
                     line,
                 )
 
+            val stepState =
+                if (
+                    queued &&
+                    current.stepsRequested
+                ) {
+                    stepTracker
+                        .acknowledgeQueued(
+                            stepDelta,
+                        )
+                } else {
+                    stepTracker
+                        .snapshot()
+                }
+
             mutableState.value =
                 current.copy(
+                    stepProviderId =
+                        stepState.providerId,
+                    stepBaselineRaw =
+                        stepState.baselineRaw,
+                    latestStepCounterRaw =
+                        stepState.latestRaw,
+                    pendingStepDelta =
+                        stepState.pendingDelta,
+                    stepDomainResetCount =
+                        stepState.domainResetCount,
+                    lastReportStepDelta =
+                        if (
+                            current.stepsRequested
+                        ) {
+                            stepDelta
+                        } else {
+                            null
+                        },
                     reportsAttempted =
                         current.reportsAttempted +
                             1L,
@@ -607,6 +821,20 @@ class GadgetbridgeActivitySessionController(
                     null,
                 stepSubscriptionId =
                     null,
+                stepProviderId =
+                    null,
+                stepBaselineRaw =
+                    null,
+                latestStepCounterRaw =
+                    null,
+                pendingStepDelta =
+                    0,
+                lastStepSensorTimestampNs =
+                    null,
+                stepDomainResetCount =
+                    0L,
+                lastReportStepDelta =
+                    null,
                 lastStopReason =
                     reason,
             )
@@ -621,6 +849,8 @@ class GadgetbridgeActivitySessionController(
         steps =
             null
 
+        stepTracker.reset()
+
         client?.close()
         client =
             null
@@ -629,5 +859,8 @@ class GadgetbridgeActivitySessionController(
     private companion object {
         const val OBSERVATION_PERIOD_MS =
             1_000L
+
+        const val STEP_COUNTER_INTEGER_TOLERANCE =
+            0.001
     }
 }

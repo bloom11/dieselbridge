@@ -8,7 +8,8 @@ import org.json.JSONObject
  * Bangle.js/Gadgetbridge realtime activity wire codec.
  *
  * rt=1 keeps these reports in the realtime path rather than historical
- * activity storage. M5.1c will supply the step delta.
+ * activity storage. `stp` is an interval delta, never Android's cumulative
+ * TYPE_STEP_COUNTER value.
  */
 object GadgetbridgeActivityCodec {
 
