@@ -67,14 +67,37 @@ intentional legacy target behavior choice; it does **not** mean the application 
 The project still compiles against SDK 36.
 
 The current development architecture is materially newer than the original PixelBridge-style
-notification bridge. The active branch contains a generic Diesel protocol engine, a platform
-capability registry, public logical sensor reads and bounded subscriptions, provider-neutral
-continuous observation, SensorManager and Health Services observation providers, developer-only
-exact sensor diagnostics, bounded sensor experiments and observation smoke campaigns, developer
-power controls, build provenance, and Termux/ADB hardware-test tooling.
+notification bridge. The active branch contains a generic Diesel protocol engine, logical capability
+routing, provider-neutral continuous observation, a typed process-local EventBus, typed current-state
+ownership, typed logical actions, deterministic module lifecycle ownership, SensorManager and Health
+Services providers, the Gadgetbridge activity adapter, developer diagnostics, build provenance, and
+Termux/ADB hardware-test tooling.
 
-The repository intentionally contains only the Wear OS application. The phone side is stock,
-unmodified Gadgetbridge.
+## Core platform milestone reached
+
+The process-local Diesel runtime core is now implemented and CI-verified. Its stable center is:
+
+```text
+CapabilityRegistry          logical capability/provider selection
+SensorObservationManager    shared logical continuous observation
+DieselEventBus              ephemeral typed event distribution
+DieselStateStore            typed current truth with publisher ownership
+DieselActionDispatcher      typed logical action routing
+DieselModuleManager         deterministic module lifecycle
+Diesel protocol             bounded/versioned external command/event envelopes
+```
+
+This is the boundary that future higher layers should consume. JavaScript/Espruino, external Wear APK
+IPC, a phone-side Diesel client/gateway and future vendor modules should be adapters around the same
+logical platform rather than parallel architectures that bypass it.
+
+"Core complete" does **not** mean every validation or product milestone is complete. M5.0b2
+SensorManager physical closure, M5.0c2 Health Services autonomous recovery and M5.1d exact-SHA
+Gadgetbridge activity hardware closure remain independent open work. M6 and later product layers are
+also still planned.
+
+The repository currently contains only the Wear OS application. The phone BLE owner remains stock,
+unmodified Gadgetbridge; no DieselBridge-owned phone BLE stack exists.
 
 ---
 
@@ -120,6 +143,12 @@ The current development branch additionally provides:
 - Health Services spot heart-rate provider through `MeasureClient`;
 - Health Services passive heart-rate observation through `PassiveMonitoringClient`;
 - automatic provider priority/failover through `CapabilityRegistry`;
+- typed process-local `DieselEventBus` plus caller-owned observation-to-event bridging;
+- native Gadgetbridge `t:"act"` session ownership with provider-neutral heart-rate and step output;
+- shared `BangleLineTransport` physical-line seam for non-Diesel Gadgetbridge protocol adapters;
+- typed process-local `DieselStateStore` for current truth with exclusive publisher ownership;
+- typed process-local `DieselActionDispatcher` with exclusive logical-handler ownership;
+- deterministic `DieselModuleManager` lifecycle and explicit `DieselModuleContext`;
 - developer observation smoke runner, watch UI and debug ADB harness;
 - developer battery/electrical readings;
 - 24-hour foreground-usage snapshot where Android grants usage access;
@@ -141,42 +170,45 @@ physical transport            BLE/NUS today, other transports later
 The current internal topology is:
 
 ```text
-                              CONSUMERS
+                                  CONSUMERS
 
-              Watch UI        Diesel protocol       future local APIs
-                 \                 |                       /
-                  \                |                      /
-                   +----------- Diesel Platform --------+
-                               |        |        |
-                      CapabilityRegistry |   DieselEventBus
-                               |         |    (process-local)
-                               |         |
-                   logical capability    |
-                   provider selection    |
-                               |
-                   +-----------+-------------+
-                   |                         |
-             SensorManager             Health Services
-              priority 10               priority 20
-             spot + observe          spot + passive HR observe
-                   |
-                   v
-          SensorObservationManager
-          one runtime / logical sensor
-          fastest requested acquisition cadence
-          individual bounded consumer queues
-                   |
-                   +--> local consumers
-                   |
-                   +--> PublicSensorSubscriptionController
-                                  |
-                           Diesel event envelope
-                                  |
-                    GadgetbridgeDieselEventTransport
-                                  |
-                        bounded NUS line sender
-                                  |
-                         stock Gadgetbridge
+           Watch UI        Diesel protocol       future JS       future APK IPC
+              \                 |                   |                 /
+               +----------------+-------------------+----------------+
+                                    |
+                              Diesel Platform
+                                    |
+          +-------------------------+--------------------------+
+          |             |             |            |           |
+   CapabilityRegistry  EventBus   StateStore   Actions   ModuleManager
+          |          (ephemeral)   (current)   (logical)  (lifecycle)
+          |
+   logical capability/provider selection
+          |
+          +----------------------+----------------------+
+          |                                             |
+    SensorManager                                  Health Services
+     priority 10                                    priority 20
+    spot + observe                               spot + passive HR
+          |
+          +---------------------+
+                                |
+                     SensorObservationManager
+                     one runtime / logical sensor
+                     fastest acquisition cadence
+                     bounded per-consumer queues
+                                |
+                 +--------------+----------------+
+                 |                               |
+           local consumers        PublicSensorSubscriptionController
+                                                 |
+                                          Diesel event envelope
+                                                 |
+                                   GadgetbridgeDieselEventTransport
+                                                 |
+                                       bounded NUS line sender
+                                                 |
+                                        stock Gadgetbridge
 ```
 
 ## Architectural boundaries
@@ -270,6 +302,24 @@ selecting or closing the underlying provider resource.
 The EventBus is a distribution mechanism, not a hardware-resource owner. It remains intentionally
 ephemeral (`replay=0`); current state belongs in `StateStore`, while durable historical data belongs
 in a separate future history layer.
+
+## Process-local runtime core
+
+`DieselPlatform` now owns the complementary process-local primitives needed above provider routing:
+
+```text
+StateStore        current typed truth; one active publisher per logical state key
+ActionDispatcher typed logical actions; one active handler per logical action ID
+ModuleManager     deterministic start/stop ownership for real application modules
+```
+
+`StateStore` is not history, `ActionDispatcher` is not provider arbitration, and `ModuleManager` is
+not a service locator or dependency-injection framework. Android/service/transport dependencies stay
+explicit constructor dependencies of concrete modules.
+
+These primitives deliberately remain process-local. Exposing them to JavaScript, another Wear APK or
+a phone application requires a boundary adapter with its own versioning, serialization, permissions
+and lifecycle rules.
 
 ## Shared physical line output
 
@@ -1459,6 +1509,11 @@ The project has tests covering major pieces of the Diesel platform, including:
 - Health Services passive-observation capability mapping;
 - Health Services passive Android source, bounded ingress, registration/permission failure mapping
   and cleanup lifecycle;
+- typed process-local observation events and EventBus bridging;
+- Gadgetbridge activity session ownership, HR reporting, step deltas and ordering;
+- `DieselStateStore` ownership, replacement and concurrent race contracts;
+- `DieselActionDispatcher` ownership, type identity, cancellation and in-flight behavior;
+- `DieselModuleManager` ordering, rollback, cleanup and serialized lifecycle behavior;
 - developer export;
 - developer sensor probes;
 - bounded safe tests.
@@ -1601,10 +1656,16 @@ The newer current branch additionally contains:
 - asynchronous developer sensor scan;
 - exhaustive Termux route-test helper;
 - expanded developer sensor UI;
-- power/battery developer tooling.
+- power/battery developer tooling;
+- typed process-local sensor observation events and EventBus forwarding;
+- Gadgetbridge activity request/session handling with native HR and step-delta output;
+- `DieselStateStore`, including concurrency-hardening tests;
+- `DieselActionDispatcher`;
+- `DieselModuleManager` and explicit module context/lifecycle.
 
-These should only be called current-head **hardware verified** after running them on the physical
-watch build corresponding to the current Git SHA.
+The M5.2 runtime-core milestone is therefore **implemented + CI verified**. That is a software
+architecture milestone; it does not upgrade unrelated open hardware campaigns to hardware-verified
+status. Physical claims remain tied to the exact APK/SHA used for each recorded campaign.
 
 ## Health Services passive HR hardware proof
 
@@ -1728,14 +1789,16 @@ VO2 max platform
 validated SpO2/RR/RRI providers
 Mobvoi/private capability provider
 stable public vendor/private sensor semantics
-Android Clock alarm synchronization
-Espruino/Bangle runtime hosted by DieselBridge
-native APK provider/plugin SDK
+real Android next-alarm synchronization
+stable higher-layer Diesel state/action/event API vocabulary and discovery surface
+Espruino/JavaScript runtime, bindings and resource policy
+external Wear APK consumer API and provider/plugin IPC
+cross-process authorization/versioning/subscription policy for scripts and external APKs
 Wi-Fi Diesel transport
 TicWatch Pro 5 secondary low-power display API
 privileged per-app battery attribution
 hidden vendor power-management controls
-full phone-side end-to-end Diesel response consumer owned by this repo
+full repo-owned phone-side Diesel request/response gateway/consumer
 ```
 
 A future phone companion may consume Gadgetbridge broadcasts and expose a convenient local API, but
@@ -1745,9 +1808,11 @@ it must not become another BLE implementation.
 
 # Roadmap / project hand-off
 
-The provider-neutral observation foundation is implemented. The remaining work is now split into
-separately demonstrable implementation, hardware-closure and consumer-integration steps so that a
-milestone cannot be marked complete by code alone when physical proof is still missing.
+The provider-neutral observation foundation and the process-local Diesel runtime core are implemented
+and CI-verified. This is the current architecture milestone: future product surfaces should extend
+the stable center rather than introduce another platform core. Remaining work is split into product
+features, higher-layer exposure, hardware closure and resilience so that CI completion is not
+confused with physical proof.
 
 ## Current milestone status
 
@@ -1768,9 +1833,9 @@ milestone cannot be marked complete by code alone when physical proof is still m
 | M5.2a | `StateStore` | **Implemented + CI verified + concurrency hardened (`01141174`, run `37365030829`)** |
 | M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
-| M6 | real Android Clock alarm synchronization | **Planned** |
-| M7 | scripting / local module API | **Planned** |
-| M8 | APK provider/plugin IPC | **Planned** |
+| M6 | real Android next-alarm synchronization | **Planned; API boundary studied** |
+| M7 | Espruino/JavaScript runtime + local Diesel API bindings | **Planned** |
+| M8 | external Wear APK API + provider/plugin IPC | **Planned** |
 | M9 | health/history expansion | **Planned** |
 | M10 | vendor/TicWatch-specific providers + ULP display research | **Planned** |
 
@@ -1783,6 +1848,23 @@ UI/action/state components remain valid compatibility code and do not need migra
 architectural consistency. New functionality should use the runtime-core primitives where they fit,
 and existing components should migrate only when a concrete new consumer, lifecycle requirement or
 feature change justifies touching them.
+
+### Post-core higher-layer boundary
+
+What remains above the stable center is boundary engineering rather than another foundational
+runtime:
+
+| Surface | Existing brick | Still missing |
+|---|---|---|
+| local native modules | process-local states/actions/events/capabilities + lifecycle | stable domain API catalogue as new consumers require it |
+| M7 JavaScript/Espruino | logical process-local runtime | JS engine/host, bindings, Promise/coroutine mapping, quotas, script storage and policy |
+| M8 external Wear APKs | logical process-local runtime | Binder/AIDL-style IPC, versioning, caller authorization, serialization, subscriptions/backpressure and caller-death cleanup |
+| phone / Gadgetbridge | stock Gadgetbridge BLE/NUS path and Diesel request/response transport | repo-owned correlated client/gateway, public discovery/SDK surface and phone-side feature observers such as M6 |
+| future providers | `CapabilityRegistry` + module lifecycle | concrete vendor/plugin implementations and evidence |
+
+JavaScript, external APK IPC and a phone gateway must expose the **same logical Diesel domains**. None
+of them should gain a privileged bypass around `CapabilityRegistry`, `StateStore`,
+`ActionDispatcher`, `DieselEventBus` or module lifecycle.
 
 The next numbered product milestone is:
 
@@ -1825,6 +1907,10 @@ Keep these rules unless there is strong evidence to change them:
 
 8. **Separate implementation from hardware evidence.**
    CI success does not prove a vendor watch actually supplies a sensor.
+
+9. **One logical platform, multiple adapters.**
+   JavaScript, external Wear APK IPC, phone/Gadgetbridge gateways and future transports must adapt to
+   the same Diesel states/actions/events/capabilities instead of becoming parallel architectures.
 
 ## Upstream and mergeability
 
@@ -1873,7 +1959,13 @@ a valid result; completion does not require inventing a wakelock/vendor API just
 
 ## Companion / complete phone-side response path
 
-A future optional companion should **not** own BLE.
+The physical/request-response transport bricks already exist: stock Gadgetbridge owns BLE/NUS,
+Diesel requests can be injected through the supported Gadgetbridge/Bangle path, and watch responses
+can be serialized into the fixed `io.github.bloom11.dieselbridge.DIESEL_MESSAGE` Android action.
+What is still missing is a repo-owned, stable client/gateway that correlates that path and exposes it
+to ordinary phone apps, Termux or automation.
+
+A future optional companion/gateway should **not** own BLE.
 
 Intended topology:
 
@@ -1910,13 +2002,33 @@ Do not extract a large shared protocol library before the first phone-side path 
 
 ## Alarm synchronization
 
-Desired future work:
+M6 should synchronize **real next-alarm occurrence truth**, not claim to mirror the private database
+of Google Clock or another clock application.
 
-- observe real Android phone alarms/default clock state where Android permits it;
-- expose alarm state through a logical Diesel alarm capability;
-- synchronize phone-to-watch and eventually watch-to-phone;
-- avoid notification-only imitation where a real alarm API/integration exists;
-- keep vendor-specific clock behavior behind providers.
+Android's supported read boundary is `AlarmManager.getNextAlarmClock()`. It yields the next scheduled
+`AlarmClockInfo` (or no alarm), including an exact wall-clock trigger epoch. Changes can be observed
+with the registered-receiver-only `ACTION_NEXT_ALARM_CLOCK_CHANGED` broadcast. Android does not
+provide a general public API that enumerates another clock application's complete alarm database.
+
+The initial logical state should therefore preserve an exact occurrence such as:
+
+```text
+companion.alarm.next
+    triggerAtMs
+    sourcePackage?   best-effort identity when defensible
+```
+
+A phone-side observer is required because the watch process cannot query the phone's
+`AlarmManager`. That observer must use stock Gadgetbridge as transport and must not acquire Bluetooth.
+
+Keep Android next-alarm truth separate from Gadgetbridge's own device-alarm database/slots.
+Gadgetbridge's Alarms Intent API manages Gadgetbridge/device alarms with Gadgetbridge's database as
+its source of truth; those alarms are not automatically equivalent to the phone Clock application's
+next alarm.
+
+Later watch-to-phone control may evaluate Android `AlarmClock` intents and/or Gadgetbridge's alarm
+Intent API where their semantics match the requested operation. Do not describe that as bidirectional
+Clock-database synchronization until a supported API actually provides those semantics.
 
 ## Health expansion
 
@@ -1933,11 +2045,12 @@ Potential next Health Services work:
 - never call vendor temperature data skin temperature without evidence;
 - never infer medical meaning from vendor PPG names or raw type numbers.
 
-## Observation roadmap after M5.0b
+## Observation/activity implementation history
 
-Long-lived observation is now a working provider-neutral runtime with both SensorManager and Health
-Services providers. The next work adds a typed local distribution layer and then consumes it from the
-Gadgetbridge activity protocol.
+Long-lived observation is a working provider-neutral runtime with both SensorManager and Health
+Services providers. The sequence below is retained as design rationale for the completed M5.0d event
+layer and implemented M5.1 Gadgetbridge activity adapter; the milestone table above is authoritative
+for current completion/hardware-closure status.
 
 ### M5.0c1 — Health Services passive continuous HR — complete
 
@@ -1957,9 +2070,9 @@ runtime failure.
 The existing explicit availability refresh remains valid; M5.0c2 should add recovery without turning
 a failed provider into an uncontrolled polling loop.
 
-### M5.0d1 — typed process-local observation events
+### M5.0d1 — typed process-local observation events — complete
 
-Add typed platform events, approximately:
+The platform adds typed events approximately:
 
 ```text
 SensorObservationStateEvent(
@@ -1981,7 +2094,7 @@ map.
 `SensorReading.timestampNanos` remains the sensor/provider timestamp. `DieselEvent.timestampMs`
 is the wall-clock publication time; the two clocks must not be conflated.
 
-### M5.0d2 — explicit subscription -> EventBus bridge
+### M5.0d2 — explicit subscription -> EventBus bridge — complete
 
 Do **not** refactor `PublicSensorSubscriptionController` into the process-local EventBus. The remote
 path owns leases and BLE-transport drop accounting that local consumers should not inherit.
@@ -2026,9 +2139,9 @@ provider acquisition.
 Closing a bridge registration cancels only forwarding jobs. It must not close the
 `SensorSubscription`; the caller owns that lifecycle.
 
-### M5.0d3 — bounded real-watch EventBus proof
+### M5.0d3 — bounded real-watch EventBus proof — complete
 
-Extend the existing smoke framework with an `event_bus` profile:
+The smoke framework includes an `event_bus` profile:
 
 ```text
 open accelerometer logical subscription
@@ -2045,7 +2158,7 @@ open accelerometer logical subscription
 This closes M5.0d with physical proof of the new layer rather than only re-testing the observation
 manager below it.
 
-### M5.1 — Gadgetbridge activity adapter
+### M5.1 — Gadgetbridge activity adapter — implemented; hardware closeout pending
 
 M5.1 should remain an application-protocol adapter above the observation platform:
 
@@ -2079,9 +2192,9 @@ hardware proof.
 Android accelerometer values remain m/s^2 internally; any conversion to Bangle/Gadgetbridge `g`
 units belongs in the protocol codec layer.
 
-### M5.2 — Diesel runtime core
+### M5.2 — Diesel runtime core — complete
 
-After M5.1, add the general runtime abstractions only where real consumers require them:
+M5.2 completed the general process-local runtime abstractions needed by future consumers:
 
 ```text
 M5.2a StateStore
@@ -2146,41 +2259,53 @@ Strategy:
 
 Do not publish `android_type_<n>` as a stable semantic capability merely because the number repeats.
 
-## Espruino / module architecture
+## M7 — Espruino / JavaScript runtime
 
-A future scripting/plugin architecture can sit **above** the Diesel platform:
+JavaScript belongs **above** the completed Diesel runtime core:
 
 ```text
-script/plugin
+JavaScript
     ↓
-logical Diesel capability/action APIs
+Diesel JS bindings
     ↓
-CapabilityRegistry / ActionDispatcher
+logical capabilities / states / actions / events
     ↓
-provider
+DieselPlatform
+    ↓
+providers/modules
 ```
 
-Scripts should not need to know BLE transport or raw Android route IDs.
+Scripts must not know BLE transport, concrete provider IDs or raw Android route IDs. M7 still needs
+the actual JS engine/host, script/module loading, Promise/coroutine bridging, event subscriptions,
+resource/CPU/memory limits, persistence policy, error isolation and an authorization model. Those are
+adapter/runtime-host concerns; they do not require another provider/action/state architecture.
 
-## Native APK plugin SDK
+## M8 — external Wear APK API / native plugin SDK
 
-A later plugin milestone can allow separately installed APK modules to extend DieselBridge without
-putting every hardware-specific integration into the core APK.
+M8 should expose the completed logical platform to separately installed Wear APKs through Binder/AIDL
+or another explicit Android IPC contract. The boundary should support two distinct roles:
 
-The intended local boundary is Binder/AIDL or another explicit Android IPC contract.
+```text
+consumer APK                    provider/plugin APK
+    ↓                                 ↓
+read state / invoke actions      register controlled capabilities
+subscribe to events              publish availability/state/events
+    \                                 /
+     +--------- versioned IPC --------+
+                    ↓
+                DieselPlatform
+```
 
-Plugins may:
+The IPC layer still needs explicit API versioning, typed serialization, caller authorization,
+bounded subscriptions/backpressure, Binder-death cleanup and rules for which registrations an
+external process may own.
 
-- provide logical capabilities;
-- expose provider availability;
-- optionally register commands through a controlled bridge;
-- publish typed state and events;
-- remain replaceable without modifying BLE/NUS transport.
+Provider plugins and ordinary consumer APKs remain separate concepts even if one APK performs both
+roles. Normal consumers still request logical capabilities/actions/states rather than selecting a
+concrete plugin, SensorManager route, Health Services implementation or Mobvoi provider.
 
-Provider plugins and command plugins remain separate concepts even if one APK implements both.
-
-Normal consumers still request logical capabilities rather than selecting a concrete plugin,
-SensorManager route, Health Services implementation, or Mobvoi provider.
+External APK IPC must not expose mutable process-local implementation objects directly and must not
+become a second hardware/transport architecture.
 
 ## Power expansion
 
@@ -2223,7 +2348,9 @@ branch.
 
 ## `feature/diesel-platform`
 
-Current authoritative development branch.
+Former authoritative provider/observation development branch. It is superseded by
+`feature/diesel-runtime-core` for current development, but remains the source branch for some earlier
+hardware-evidence commits referenced above.
 
 ## `Health`
 
