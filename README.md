@@ -92,8 +92,8 @@ IPC, a phone-side Diesel client/gateway and future vendor modules should be adap
 logical platform rather than parallel architectures that bypass it.
 
 "Core complete" does **not** mean every validation or product milestone is complete. M5.0b2
-SensorManager physical closure, M5.0c2 Health Services autonomous recovery and M5.1d exact-SHA
-Gadgetbridge activity hardware closure remain independent open work. M6 and later product layers are
+SensorManager physical closure and M5.0c2 Health Services autonomous recovery remain independent open
+work. M5.1d stock-Gadgetbridge activity hardware closure is complete. M6 and later product layers are
 also still planned.
 
 The repository currently contains only the Wear OS application. The phone BLE owner remains stock,
@@ -1829,7 +1829,7 @@ confused with physical proof.
 | M5.1a | Gadgetbridge `t:"act"` request/session ownership | **Implemented + CI verified** |
 | M5.1b | native activity HR output + shared Bangle line transport | **Implemented + CI verified** |
 | M5.1c | step-counter delta/session semantics | **Implemented + CI verified** |
-| M5.1d | stock-Gadgetbridge activity hardware proof | **Hardware proof in progress; runtime `14339ee3`** |
+| M5.1d | stock-Gadgetbridge activity hardware proof | **Complete: stock Gadgetbridge + TicWatch Pro 5 hardware verified (`14339ee3`, run `37326175443`)** |
 | M5.2a | `StateStore` | **Implemented + CI verified + concurrency hardened (`01141174`, run `37365030829`)** |
 | M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
@@ -1872,10 +1872,10 @@ The next numbered product milestone is:
 M6 Android Clock alarm synchronization
 ```
 
-M5.1d exact-SHA Gadgetbridge activity hardware closeout, M5.0b2 SensorManager physical closure and
-M5.0c2 Health Services autonomous recovery remain independent open validation/resilience work. They
-should be prioritized if physical evidence exposes a blocking hardware or recovery problem, but they
-do not redefine the runtime-core layering.
+M5.0b2 SensorManager physical closure and M5.0c2 Health Services autonomous recovery remain
+independent open validation/resilience work. M5.1d exact-SHA Gadgetbridge activity hardware closeout
+is complete. The remaining validation/resilience work should be prioritized if physical evidence
+exposes a blocking hardware or recovery problem, but it does not redefine the runtime-core layering.
 
 Do not implement Gadgetbridge activity acquisition as another sensor provider or another BLE stack.
 It should consume logical observation capabilities.
@@ -2158,7 +2158,7 @@ open accelerometer logical subscription
 This closes M5.0d with physical proof of the new layer rather than only re-testing the observation
 manager below it.
 
-### M5.1 — Gadgetbridge activity adapter — implemented; hardware closeout pending
+### M5.1 — Gadgetbridge activity adapter — complete
 
 M5.1 should remain an application-protocol adapter above the observation platform:
 
@@ -2186,8 +2186,21 @@ existing BLE/NUS physical connection
 M5.1a owns request/session lifetime. M5.1b adds HR output and a small shared physical line seam such
 as `BangleLineTransport.sendLine()`; Diesel response/event transports remain Diesel-specific.
 M5.1c defines step-counter session deltas from an explicit baseline instead of publishing Android's
-cumulative-since-boot value as today's steps. M5.1d closes the milestone with stock-Gadgetbridge
-hardware proof.
+cumulative-since-boot value as today's steps.
+
+M5.1d is physically closed against **stock, unmodified Gadgetbridge** on a TicWatch Pro 5 using exact
+runtime SHA `14339ee3c49cb8021fd1a779ae3b953245a10e7c` (CI run `37326175443`,
+`1.0.0-dev.21`). Gadgetbridge's **Live Activity** UI opened the native `t:"act"` session,
+selected `wear.health_services` for heart rate and `android.sensor_manager` for steps, rendered
+live heart-rate and step data, and accepted multiple real activity reports with zero queue
+rejections. The machine-readable proof observed the raw step counter move from 407 to 569 (+162)
+while emitted step deltas were 37 + 51 + 31 + 43 = 162, with four reports queued and none rejected.
+After leaving Live Activity, a follow-up physical snapshot showed the activity session disabled and
+both HR and step subscriptions released.
+
+The separate Gadgetbridge device-dashboard **one-shot heart-rate measurement** control is not the
+Live Activity lifecycle. Its behavior is tracked as a separate Gadgetbridge compatibility
+investigation and does not invalidate the completed M5.1d Live Activity proof.
 
 Android accelerometer values remain m/s^2 internally; any conversion to Bangle/Gadgetbridge `g`
 units belongs in the protocol codec layer.
