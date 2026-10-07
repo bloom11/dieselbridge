@@ -92,9 +92,9 @@ IPC, a phone-side Diesel client/gateway and future vendor modules should be adap
 logical platform rather than parallel architectures that bypass it.
 
 "Core complete" does **not** mean every validation or product milestone is complete. M5.0b2
-SensorManager physical closure and M5.0c2 Health Services autonomous recovery remain independent open
-work. M5.1d stock-Gadgetbridge activity hardware closure is complete. M6 and later product layers are
-also still planned.
+SensorManager physical closure remains independent open hardware-validation work. M5.0c2 Health
+Services autonomous recovery and M5.1d stock-Gadgetbridge activity hardware closure are complete.
+M6 and later product layers are also still planned.
 
 The repository currently contains only the Wear OS application. The phone BLE owner remains stock,
 unmodified Gadgetbridge; no DieselBridge-owned phone BLE stack exists.
@@ -143,6 +143,7 @@ The current development branch additionally provides:
 - Health Services spot heart-rate provider through `MeasureClient`;
 - Health Services passive heart-rate observation through `PassiveMonitoringClient`;
 - automatic provider priority/failover through `CapabilityRegistry`;
+- bounded autonomous Health Services observation recovery/re-promotion after runtime demotion;
 - typed process-local `DieselEventBus` plus caller-owned observation-to-event bridging;
 - native Gadgetbridge `t:"act"` session ownership with provider-neutral heart-rate and step output;
 - shared `BangleLineTransport` physical-line seam for non-Diesel Gadgetbridge protocol adapters;
@@ -1129,9 +1130,24 @@ Runtime permission loss or passive-registration failure marks the Health Service
 an already-owned logical subscription can move to the lower-priority SensorManager observation
 provider when a usable fallback exists.
 
-There is currently **no autonomous periodic re-probe** that promotes Health Services again after such
-a runtime failure. Availability is refreshed during service setup and through the explicit
-developer/runtime refresh path. Automatic recovery/re-promotion is tracked separately as M5.0c2.
+Health Services observation recovery is autonomous. A semantic provider failure first marks the
+priority-20 `wear.health_services` observation binding `UNAVAILABLE`, which lets
+`CapabilityRegistry` move an already-owned logical subscription to the lower-priority
+`android.sensor_manager` fallback. A service-owned recovery controller then performs one bounded
+re-probe job per logical capability with capped backoff (5 s, 15 s, 30 s, 60 s, then 120 s).
+A successful permission/capability preflight re-advertises Health Services as `AVAILABLE`; the
+registry then re-promotes it automatically. Backoff is reset only after an actual Health Services
+registration or first sample proves the provider healthy, avoiding tight re-registration loops.
+
+M5.0c2 is physically closed on a TicWatch Pro 5 using exact runtime SHA
+`28eba37fd27e75a8b6954a842155cc51db25b944` (CI run `37617857055`,
+`1.0.0-dev.21`). The debug-only recovery proof injected the same semantic demotion path used by
+production provider failures without revoking `BODY_SENSORS`, so the SensorManager fallback remained
+eligible. One live `heart_rate` logical subscription recorded provider transitions
+`wear.health_services -> android.sensor_manager -> wear.health_services`, then reached `CLOSED`
+without consumer resubscription. The proof finished `passed` in about 7.2 seconds. It intentionally
+did not require a heart-rate sample; real passive Health Services sample delivery was already closed
+separately by M5.0c1.
 
 Passive callback registration is app-global in Health Services, so cancellation performs bounded
 non-cancellable cleanup through `clearPassiveListenerCallbackAsync()` before the provider session is
@@ -1822,7 +1838,7 @@ confused with physical proof.
 | M5.0b1 | SensorManager continuous observation implementation | **Implemented + CI verified** |
 | M5.0b2 | SensorManager physical-watch closure campaign | **Pending hardware campaign; tooling implemented** |
 | M5.0c1 | Health Services passive continuous HR | **Implemented + CI + TicWatch Pro 5 hardware verified** |
-| M5.0c2 | automatic Health Services recovery/re-promotion after runtime failure | **Pending** |
+| M5.0c2 | automatic Health Services recovery/re-promotion after runtime failure | **Complete: implementation + CI + TicWatch Pro 5 failover/re-promotion proof (`28eba37f`, run `37617857055`; implementation `92a3c69a`)** |
 | M5.0d1 | typed process-local sensor observation events | **Implemented + CI verified** |
 | M5.0d2 | externally owned subscription -> `DieselEventBus` bridge | **Implemented + CI verified** |
 | M5.0d3 | bounded real-watch EventBus proof | **Implemented + CI + TicWatch Pro 5 hardware verified** |
@@ -1840,8 +1856,10 @@ confused with physical proof.
 | M10 | vendor/TicWatch-specific providers + ULP display research | **Planned** |
 
 M5.0c1 is complete because the passive Health Services path is implemented, CI-tested and backed by
-four physical TicWatch Pro 5 runs. M5.0c2 is deliberately separate: runtime demotion/fallback exists,
-but automatic future re-probing and promotion does not.
+four physical TicWatch Pro 5 runs. M5.0c2 is also complete: runtime demotion/fallback, bounded
+autonomous re-probing and automatic re-promotion are implemented and CI-tested, and an exact-SHA
+TicWatch Pro 5 proof demonstrated `wear.health_services -> android.sensor_manager ->
+wear.health_services` on one logical subscription without consumer resubscription.
 
 The M5.2 runtime-core primitives are now implemented and CI-verified. Existing original DieselBridge
 UI/action/state components remain valid compatibility code and do not need migration solely for
@@ -1872,10 +1890,10 @@ The next numbered product milestone is:
 M6 Android Clock alarm synchronization
 ```
 
-M5.0b2 SensorManager physical closure and M5.0c2 Health Services autonomous recovery remain
-independent open validation/resilience work. M5.1d exact-SHA Gadgetbridge activity hardware closeout
-is complete. The remaining validation/resilience work should be prioritized if physical evidence
-exposes a blocking hardware or recovery problem, but it does not redefine the runtime-core layering.
+M5.0b2 SensorManager physical closure is now the remaining independent pre-M6
+validation/resilience item. M5.0c2 Health Services autonomous recovery and M5.1d exact-SHA
+Gadgetbridge activity hardware closeout are complete. The remaining SensorManager hardware campaign
+does not redefine the runtime-core layering.
 
 Do not implement Gadgetbridge activity acquisition as another sensor provider or another BLE stack.
 It should consume logical observation capabilities.
