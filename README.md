@@ -2078,15 +2078,24 @@ for current completion/hardware-closure status.
 observation contract, has bounded source ingress/loss accounting and has physical TicWatch Pro 5
 proof at runtime SHA `861bc4a4...`.
 
-### M5.0c2 — automatic Health Services recovery/re-promotion — pending
+### M5.0c2 — automatic Health Services recovery/re-promotion — complete
 
-Runtime permission loss or passive-registration failure marks the Health Services observation binding
-unavailable, which lets `CapabilityRegistry` select a SensorManager fallback. What is still missing
-is autonomous future re-probing that can make Health Services available again after a transient
-runtime failure.
+Runtime permission loss, unsupported passive capability, registration rejection, unexpected provider
+stream completion, or equivalent semantic provider-health failure marks the Health Services
+observation binding unavailable. `CapabilityRegistry` can then select the lower-priority
+SensorManager fallback for an already-owned logical subscription.
 
-The existing explicit availability refresh remains valid; M5.0c2 should add recovery without turning
-a failed provider into an uncontrolled polling loop.
+A service-owned recovery controller now performs one bounded re-probe job per logical capability
+using capped backoff. Successful permission/capability preflight re-advertises Health Services as
+available, and normal registry priority rules re-promote it. Backoff resets only after actual
+Health Services registration or the first real sample proves the provider healthy.
+
+The behavior is CI-tested and physically closed on TicWatch Pro 5 with runtime SHA
+`28eba37fd27e75a8b6954a842155cc51db25b944` (CI run `37617857055`). The exact-SHA hardware proof
+kept one live `heart_rate` subscription while a debug-only semantic provider failure forced
+`wear.health_services -> android.sensor_manager -> wear.health_services`; the same subscription then
+closed cleanly without consumer resubscription. The explicit developer availability refresh remains
+available as an immediate manual retry path.
 
 ### M5.0d1 — typed process-local observation events — complete
 
