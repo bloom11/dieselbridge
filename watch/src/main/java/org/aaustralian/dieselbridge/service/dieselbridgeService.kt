@@ -52,6 +52,7 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorSampler
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorManagerSource
 import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesObservationSource
 import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesSource
+import org.aaustralian.dieselbridge.platform.sensor.HealthServicesObservationRecoveryController
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
 import org.aaustralian.dieselbridge.platform.sensor.healthServicesObservationCapabilities
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
@@ -85,6 +86,9 @@ class DieselBridgeService : Service() {
 
     private var sensorObservationSmokeRunner:
         SensorObservationSmokeRunner? = null
+
+    private var healthServicesObservationRecoveryController:
+        HealthServicesObservationRecoveryController? = null
 
     /*
      * Lifecycle scope for Diesel platform routes/modules.
@@ -310,38 +314,74 @@ class DieselBridgeService : Service() {
             )
         }
 
+        val healthServicesObservationSource =
+            AndroidHealthServicesObservationSource(
+                context = applicationContext,
+            )
+
+        val healthServicesObservationRecovery =
+            HealthServicesObservationRecoveryController(
+                scope = platformScope,
+                probeAvailable = { logicalId ->
+                    healthServicesObservationSource
+                        .hasRequiredPermission(
+                            logicalId,
+                        ) &&
+                        healthServicesObservationSource
+                            .supports(
+                                logicalId,
+                            )
+                },
+                promoteAvailable = { logicalId ->
+                    platform.capabilities.setAvailability(
+                        SensorObservationCapabilityId
+                            .forLogical(
+                                logicalId,
+                            )
+                            .value,
+                        healthServicesProvider.providerId,
+                        ProviderAvailability.AVAILABLE,
+                    )
+                },
+            )
+
+        healthServicesObservationRecoveryController =
+            healthServicesObservationRecovery
+
         fun markHealthServicesObservationUnavailable(
             logicalId: String,
             reason: String,
         ) {
+            /*
+             * Record the failure before mutating registry availability. This
+             * ordering prevents an in-flight recovery promotion from winning
+             * a race against a newer provider failure.
+             */
+            healthServicesObservationRecovery
+                .providerFailed(
+                    logicalId,
+                )
+
             platform.capabilities.setAvailability(
-                SensorObservationCapabilityId.forLogical(logicalId).value,
+                SensorObservationCapabilityId
+                    .forLogical(
+                        logicalId,
+                    )
+                    .value,
                 healthServicesProvider.providerId,
                 ProviderAvailability.UNAVAILABLE,
                 reason,
             )
         }
 
-        val healthServicesObservationSource =
-            AndroidHealthServicesObservationSource(
-                context = applicationContext,
-                onPermissionLost = { logicalId ->
-                    markHealthServicesObservationUnavailable(
-                        logicalId,
-                        "permission_lost",
-                    )
-                },
-                onRegistrationFailure = { logicalId, _ ->
-                    markHealthServicesObservationUnavailable(
-                        logicalId,
-                        "registration_failed",
-                    )
-                },
-            )
-
         val healthServicesObservationCapabilityList =
             healthServicesObservationCapabilities(
-                healthServicesObservationSource,
+                source =
+                    healthServicesObservationSource,
+                onProviderHealthy =
+                    healthServicesObservationRecovery::providerHealthy,
+                onProviderFailure =
+                    ::markHealthServicesObservationUnavailable,
             )
 
         healthServicesObservationCapabilityList.forEach { capability ->
@@ -386,25 +426,29 @@ class DieselBridgeService : Service() {
                 val available =
                     runCatching {
                         healthServicesObservationSource
-                            .hasRequiredPermission(logicalId) &&
+                            .hasRequiredPermission(
+                                logicalId,
+                            ) &&
                             healthServicesObservationSource
-                                .supports(logicalId)
+                                .supports(
+                                    logicalId,
+                                )
                     }.getOrDefault(false)
 
-                platform.capabilities.setAvailability(
-                    capability.id,
-                    healthServicesProvider.providerId,
-                    if (available) {
-                        ProviderAvailability.AVAILABLE
-                    } else {
-                        ProviderAvailability.UNAVAILABLE
-                    },
-                    if (available) {
-                        null
-                    } else {
-                        "unsupported_or_permission_not_granted"
-                    },
-                )
+                if (
+                    available
+                ) {
+                    platform.capabilities.setAvailability(
+                        capability.id,
+                        healthServicesProvider.providerId,
+                        ProviderAvailability.AVAILABLE,
+                    )
+                } else {
+                    markHealthServicesObservationUnavailable(
+                        logicalId,
+                        "unsupported_or_permission_not_granted",
+                    )
+                }
             }
         }
 
@@ -559,6 +603,12 @@ class DieselBridgeService : Service() {
         NotificationActions.callHandler = null
         NotificationActions.musicHandler = null
         tileScope.cancel()
+
+        healthServicesObservationRecoveryController
+            ?.close()
+
+        healthServicesObservationRecoveryController =
+            null
 
         /*
          * Close remote sensor subscriptions while the observation runtime and

@@ -112,21 +112,13 @@ internal class HealthServicesObservationIngress(
  * Passive monitoring owns the provider acquisition cadence. Diesel never
  * pretends that preferredSamplePeriodMs configures this source.
  *
- * The optional provider-health callbacks are intentionally process-local.
- * The service wiring phase uses them to mark the priority-20 Health Services
- * observation binding unavailable so CapabilityRegistry can select the
- * SensorManager fallback.
+ * Provider-health policy deliberately lives above this Android adapter.
+ * This source reports typed registration/permission outcomes; the
+ * HealthServicesObservationCapability maps those outcomes into semantic
+ * provider health so service wiring can fail over and recover consistently.
  */
 internal class AndroidHealthServicesObservationSource(
     context: Context,
-    private val onPermissionLost:
-        (logicalId: String) -> Unit = {},
-    private val onRegistrationFailure:
-        (
-            logicalId: String,
-            error: Throwable,
-        ) -> Unit =
-        { _, _ -> },
 ) : HealthServicesObservationSource {
 
     private val appContext =
@@ -281,13 +273,6 @@ internal class AndroidHealthServicesObservationSource(
                                     failure !=
                                     null
                                 ) {
-                                    runCatching {
-                                        onRegistrationFailure(
-                                            logicalId,
-                                            failure,
-                                        )
-                                    }
-
                                     close(
                                         HealthServicesObservationRegistrationException(
                                             message =
@@ -376,12 +361,6 @@ internal class AndroidHealthServicesObservationSource(
                                             false,
                                         )
                                 ) {
-                                    runCatching {
-                                        onPermissionLost(
-                                            logicalId,
-                                        )
-                                    }
-
                                     send(
                                         HealthServicesObservationSourceUpdate
                                             .PermissionLost(

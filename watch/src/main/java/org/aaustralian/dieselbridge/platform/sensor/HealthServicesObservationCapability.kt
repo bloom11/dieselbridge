@@ -73,10 +73,23 @@ internal class HealthServicesObservationRegistrationException(
  * This class deliberately contains no Android Health Services API types. The
  * Android adapter is a separate source implementation, which keeps provider
  * mapping and lifecycle behavior JVM-testable.
+ *
+ * Provider-health callbacks are semantic rather than Android-callback based:
+ * every terminal observation failure reports unhealthy, while Registered (or
+ * the first Sample when a vendor omits Registered) reports actual health.
  */
 internal class HealthServicesObservationCapability(
     private val logicalIdValue: String,
     private val source: HealthServicesObservationSource,
+    private val onProviderHealthy:
+        (logicalId: String) -> Unit =
+        {},
+    private val onProviderFailure:
+        (
+            logicalId: String,
+            reason: String,
+        ) -> Unit =
+        { _, _ -> },
 ) : SensorObservationCapability {
 
     override val capabilityId =
@@ -96,12 +109,47 @@ internal class HealthServicesObservationCapability(
              */
             options.preferredSamplePeriodMs
 
+            var failureReported =
+                false
+
+            fun reportFailure(
+                reason: String,
+            ) {
+                if (
+                    failureReported
+                ) {
+                    return
+                }
+
+                failureReported =
+                    true
+
+                runCatching {
+                    onProviderFailure(
+                        logicalIdValue,
+                        reason,
+                    )
+                }
+            }
+
+            fun reportHealthy() {
+                runCatching {
+                    onProviderHealthy(
+                        logicalIdValue,
+                    )
+                }
+            }
+
             try {
                 if (
                     !source.hasRequiredPermission(
                         logicalIdValue,
                     )
                 ) {
+                    reportFailure(
+                        REASON_PERMISSION_DENIED,
+                    )
+
                     emit(
                         SensorObservationUpdate
                             .PermissionDenied(
@@ -120,6 +168,10 @@ internal class HealthServicesObservationCapability(
                         logicalIdValue,
                     )
                 ) {
+                    reportFailure(
+                        REASON_PASSIVE_UNSUPPORTED,
+                    )
+
                     emit(
                         SensorObservationUpdate
                             .Unavailable(
@@ -143,6 +195,8 @@ internal class HealthServicesObservationCapability(
                                 if (!started) {
                                     started =
                                         true
+
+                                    reportHealthy()
 
                                     emit(
                                         SensorObservationUpdate
@@ -175,6 +229,8 @@ internal class HealthServicesObservationCapability(
                                 if (!started) {
                                     started =
                                         true
+
+                                    reportHealthy()
 
                                     emit(
                                         SensorObservationUpdate
@@ -219,7 +275,11 @@ internal class HealthServicesObservationCapability(
                                 )
                             }
 
-                            is HealthServicesObservationSourceUpdate.PermissionLost ->
+                            is HealthServicesObservationSourceUpdate.PermissionLost -> {
+                                reportFailure(
+                                    REASON_PERMISSION_LOST,
+                                )
+
                                 emit(
                                     SensorObservationUpdate
                                         .PermissionDenied(
@@ -228,8 +288,18 @@ internal class HealthServicesObservationCapability(
                                                     .requiredPermission,
                                         ),
                                 )
+                            }
                         }
                     }
+
+                /*
+                 * A continuous observation source completing without
+                 * cancellation is unhealthy even when no explicit terminal
+                 * callback preceded it.
+                 */
+                reportFailure(
+                    REASON_PROVIDER_STREAM_COMPLETED,
+                )
             } catch (
                 cancellation: CancellationException,
             ) {
@@ -237,6 +307,10 @@ internal class HealthServicesObservationCapability(
             } catch (
                 error: SecurityException,
             ) {
+                reportFailure(
+                    REASON_PERMISSION_DENIED,
+                )
+
                 emit(
                     SensorObservationUpdate
                         .PermissionDenied(
@@ -250,6 +324,10 @@ internal class HealthServicesObservationCapability(
             } catch (
                 error: UnsupportedOperationException,
             ) {
+                reportFailure(
+                    REASON_PASSIVE_UNSUPPORTED,
+                )
+
                 emit(
                     SensorObservationUpdate
                         .Unavailable(
@@ -265,6 +343,10 @@ internal class HealthServicesObservationCapability(
                     error.cause is
                         SecurityException
                 ) {
+                    reportFailure(
+                        REASON_PERMISSION_DENIED,
+                    )
+
                     emit(
                         SensorObservationUpdate
                             .PermissionDenied(
@@ -276,6 +358,10 @@ internal class HealthServicesObservationCapability(
                             ),
                     )
                 } else {
+                    reportFailure(
+                        REASON_REGISTRATION_REJECTED,
+                    )
+
                     emit(
                         SensorObservationUpdate
                             .RegistrationRejected(
@@ -290,11 +376,32 @@ internal class HealthServicesObservationCapability(
     private companion object {
         const val REASON_PASSIVE_UNSUPPORTED =
             "health_services_passive_unsupported"
+
+        const val REASON_PERMISSION_DENIED =
+            "permission_denied"
+
+        const val REASON_PERMISSION_LOST =
+            "permission_lost"
+
+        const val REASON_REGISTRATION_REJECTED =
+            "registration_rejected"
+
+        const val REASON_PROVIDER_STREAM_COMPLETED =
+            "provider_stream_completed"
     }
 }
 
 internal fun healthServicesObservationCapabilities(
     source: HealthServicesObservationSource,
+    onProviderHealthy:
+        (logicalId: String) -> Unit =
+        {},
+    onProviderFailure:
+        (
+            logicalId: String,
+            reason: String,
+        ) -> Unit =
+        { _, _ -> },
 ): List<SensorObservationCapability> =
     listOf(
         HealthServicesObservationCapability(
@@ -302,5 +409,9 @@ internal fun healthServicesObservationCapabilities(
                 "heart_rate",
             source =
                 source,
+            onProviderHealthy =
+                onProviderHealthy,
+            onProviderFailure =
+                onProviderFailure,
         ),
     )
