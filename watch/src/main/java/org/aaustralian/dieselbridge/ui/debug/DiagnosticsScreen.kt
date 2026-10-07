@@ -1689,6 +1689,8 @@ private fun observationSmokeProfileTitle(
         SensorObservationSmokeProfile.SCREEN_OFF -> "Screen-off continuity"
         SensorObservationSmokeProfile.STEP_COUNTER -> "Step-counter observation"
         SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> "Health Services HR"
+        SensorObservationSmokeProfile.HEALTH_SERVICES_RECOVERY ->
+            "Health Services recovery"
         SensorObservationSmokeProfile.EVENT_BUS -> "Process-local EventBus"
         SensorObservationSmokeProfile.SHARING -> "Shared runtime cadence"
         SensorObservationSmokeProfile.LIFECYCLE -> "Repeated lifecycle"
@@ -1712,6 +1714,9 @@ private fun observationSmokeProfileSummary(
 
         SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
             "Require wear.health_services; wait up to 90 s for one passive HR sample"
+
+        SensorObservationSmokeProfile.HEALTH_SERVICES_RECOVERY ->
+            "Inject HS failure; prove Health Services → SensorManager → Health Services"
 
         SensorObservationSmokeProfile.EVENT_BUS ->
             "Real accelerometer ACTIVE/sample/CLOSED through DieselPlatform.events"
