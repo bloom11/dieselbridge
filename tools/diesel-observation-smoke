@@ -28,6 +28,7 @@ PROFILES = (
     "screen_off",
     "step_counter",
     "health_services_hr",
+    "health_services_recovery",
     "event_bus",
     "sharing",
     "lifecycle",
@@ -49,6 +50,7 @@ PROFILE_TIMEOUT_SECONDS = {
     "screen_off": 45.0,
     "step_counter": 40.0,
     "health_services_hr": 120.0,
+    "health_services_recovery": 60.0,
     "event_bus": 35.0,
     "sharing": 55.0,
     "lifecycle": 90.0,
@@ -386,6 +388,12 @@ def run_profile(
             "HEALTH-SERVICES HR TEST: keep the watch on your wrist. "
             "This profile requires providerId=wear.health_services; "
             "SensorManager fallback is a test failure."
+        )
+    elif profile == "health_services_recovery":
+        print(
+            "HEALTH-SERVICES RECOVERY TEST: no permissions are revoked. "
+            "The debug-only runner requires wear.health_services -> "
+            "android.sensor_manager -> wear.health_services on one subscription."
         )
     elif profile == "event_bus":
         print(

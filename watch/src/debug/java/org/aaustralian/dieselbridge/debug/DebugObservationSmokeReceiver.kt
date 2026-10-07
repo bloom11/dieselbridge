@@ -342,6 +342,14 @@ class DebugObservationSmokeReceiver : BroadcastReceiver() {
                 },
             )
             put(
+                "providerTransitions",
+                JSONArray().apply {
+                    providerTransitions.forEach {
+                        put(it)
+                    }
+                },
+            )
+            put(
                 "lastValues",
                 JSONArray().apply {
                     lastValues.forEach { value ->

@@ -36,6 +36,7 @@ internal enum class SensorObservationSmokeProfile(
     SCREEN_OFF("screen_off"),
     STEP_COUNTER("step_counter"),
     HEALTH_SERVICES_HR("health_services_hr"),
+    HEALTH_SERVICES_RECOVERY("health_services_recovery"),
     EVENT_BUS("event_bus"),
     SHARING("sharing"),
     LIFECYCLE("lifecycle"),
@@ -102,6 +103,7 @@ internal data class SensorObservationSmokeSnapshot(
     val eventClosedSeen: Boolean = false,
     val eventSamplesAfterClosed: Int = 0,
     val phaseTransitions: List<String> = emptyList(),
+    val providerTransitions: List<String> = emptyList(),
     val lastValues: List<Float> = emptyList(),
     val completedCycles: Int = 0,
     val sharingInitialAcquisitionPeriodMs: Long? = null,
@@ -153,6 +155,23 @@ internal class SensorObservationSmokeRunner(
     private var activeRunId: String? = null
     private var activeJob: Job? = null
 
+    private var healthServicesFailureInjector:
+        ((logicalId: String) -> Boolean)? =
+        null
+
+    fun attachHealthServicesFailureInjector(
+        injector: (logicalId: String) -> Boolean,
+    ) {
+        synchronized(lock) {
+            check(!closed) {
+                "Sensor observation smoke runner is closed"
+            }
+
+            healthServicesFailureInjector =
+                injector
+        }
+    }
+
     fun start(profile: SensorObservationSmokeProfile): String? {
         val runId: String
         val job: Job
@@ -191,6 +210,8 @@ internal class SensorObservationSmokeRunner(
                                 runSingle(runId, "step_counter", 1_000L, 1, 30_000L, false)
                             SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
                                 runHealthServicesHeartRate(runId)
+                            SensorObservationSmokeProfile.HEALTH_SERVICES_RECOVERY ->
+                                runHealthServicesRecovery(runId)
                             SensorObservationSmokeProfile.EVENT_BUS ->
                                 runEventBus(runId)
                             SensorObservationSmokeProfile.SHARING ->
@@ -571,6 +592,250 @@ internal class SensorObservationSmokeRunner(
                 "Health Services HR subscription did not reach CLOSED",
             )
             return
+        }
+
+        finish(
+            runId,
+            terminalStatus,
+            terminalDetail,
+        )
+    }
+
+
+    private suspend fun runHealthServicesRecovery(
+        runId: String,
+    ) {
+        val logicalId =
+            "heart_rate"
+
+        val injector =
+            synchronized(lock) {
+                healthServicesFailureInjector
+            }
+
+        if (
+            injector ==
+            null
+        ) {
+            finish(
+                runId,
+                SensorObservationSmokeStatus.FAILED,
+                "Health Services recovery fault injector is unavailable",
+            )
+            return
+        }
+
+        val accumulator =
+            SampleAccumulator(
+                runId = runId,
+                trackMonotonicity = false,
+            )
+
+        val client =
+            observationManager.openClient(
+                "developer-observation-health-services-recovery-$runId",
+            )
+
+        var terminalStatus =
+            SensorObservationSmokeStatus.FAILED
+
+        var terminalDetail =
+            "Health Services recovery smoke did not reach a terminal decision"
+
+        try {
+            val subscription =
+                client.subscribe(
+                    SensorSubscriptionRequest(
+                        logicalId = logicalId,
+                        periodMs = 1_000L,
+                        bufferPolicy = SensorBufferPolicy.Bounded(16),
+                    ),
+                )
+
+            coroutineScope {
+                val stateJob =
+                    launch {
+                        subscription.state.collect {
+                            accumulator.recordState(it)
+                        }
+                    }
+
+                try {
+                    val initial =
+                        withTimeoutOrNull(
+                            HEALTH_SERVICES_ACTIVE_TIMEOUT_MS,
+                        ) {
+                            subscription.state.first {
+                                it.phase ==
+                                    SensorSubscriptionPhase.ACTIVE &&
+                                    it.providerId ==
+                                    HEALTH_SERVICES_PROVIDER_ID
+                            }
+                        }
+
+                    if (
+                        initial ==
+                        null
+                    ) {
+                        accumulator.recordState(
+                            subscription.state.value,
+                        )
+
+                        terminalDetail =
+                            "Health Services never reached initial ACTIVE state"
+                    } else {
+                        accumulator.recordState(
+                            initial,
+                        )
+
+                        val injected =
+                            runCatching {
+                                injector(
+                                    logicalId,
+                                )
+                            }
+                                .getOrDefault(
+                                    false,
+                                )
+
+                        if (
+                            !injected
+                        ) {
+                            terminalDetail =
+                                "Debug recovery fault injection was rejected"
+                        } else {
+                            val fallback =
+                                withTimeoutOrNull(
+                                    HEALTH_SERVICES_FALLBACK_TIMEOUT_MS,
+                                ) {
+                                    subscription.state.first {
+                                        it.phase ==
+                                            SensorSubscriptionPhase.ACTIVE &&
+                                            it.providerId ==
+                                            SENSOR_MANAGER_PROVIDER_ID
+                                    }
+                                }
+
+                            if (
+                                fallback ==
+                                null
+                            ) {
+                                accumulator.recordState(
+                                    subscription.state.value,
+                                )
+
+                                terminalDetail =
+                                    "SensorManager fallback did not become ACTIVE"
+                            } else {
+                                accumulator.recordState(
+                                    fallback,
+                                )
+
+                                val recovered =
+                                    withTimeoutOrNull(
+                                        HEALTH_SERVICES_RECOVERY_TIMEOUT_MS,
+                                    ) {
+                                        subscription.state.first {
+                                            it.phase ==
+                                                SensorSubscriptionPhase.ACTIVE &&
+                                            it.providerId ==
+                                                HEALTH_SERVICES_PROVIDER_ID
+                                        }
+                                    }
+
+                                if (
+                                    recovered ==
+                                    null
+                                ) {
+                                    accumulator.recordState(
+                                        subscription.state.value,
+                                    )
+
+                                    terminalDetail =
+                                        "Health Services did not autonomously re-promote"
+                                } else {
+                                    accumulator.recordState(
+                                        recovered,
+                                    )
+
+                                    terminalStatus =
+                                        SensorObservationSmokeStatus.PASSED
+
+                                    terminalDetail =
+                                        "Health Services ACTIVE -> SensorManager ACTIVE -> " +
+                                            "Health Services ACTIVE on one subscription"
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    subscription.close()
+                    accumulator.recordState(
+                        subscription.state.value,
+                    )
+                    stateJob.cancel()
+                }
+            }
+        } finally {
+            client.close()
+        }
+
+        val snapshot =
+            requireNotNull(
+                snapshotFor(runId),
+            )
+
+        if (
+            snapshot.phaseTransitions.lastOrNull() !=
+            SensorSubscriptionPhase.CLOSED.name.lowercase()
+        ) {
+            finish(
+                runId,
+                SensorObservationSmokeStatus.FAILED,
+                "Health Services recovery subscription did not reach CLOSED",
+            )
+            return
+        }
+
+        if (
+            terminalStatus ==
+            SensorObservationSmokeStatus.PASSED
+        ) {
+            val expected =
+                listOf(
+                    HEALTH_SERVICES_PROVIDER_ID,
+                    SENSOR_MANAGER_PROVIDER_ID,
+                    HEALTH_SERVICES_PROVIDER_ID,
+                )
+
+            var expectedIndex =
+                0
+
+            snapshot.providerTransitions.forEach { providerId ->
+                if (
+                    expectedIndex <
+                    expected.size &&
+                    providerId ==
+                    expected[
+                        expectedIndex
+                    ]
+                ) {
+                    expectedIndex++
+                }
+            }
+
+            if (
+                expectedIndex !=
+                expected.size
+            ) {
+                finish(
+                    runId,
+                    SensorObservationSmokeStatus.FAILED,
+                    "Incomplete provider transitions: " +
+                        snapshot.providerTransitions.joinToString("->"),
+                )
+                return
+            }
         }
 
         finish(
@@ -1275,8 +1540,30 @@ internal class SensorObservationSmokeRunner(
                         (current.phaseTransitions + phase).takeLast(MAX_PHASE_TRANSITIONS)
                     }
 
+                val provider =
+                    state.providerId
+
+                val providerTransitions =
+                    if (
+                        provider ==
+                        null ||
+                        current.providerTransitions.lastOrNull() ==
+                        provider
+                    ) {
+                        current.providerTransitions
+                    } else {
+                        (
+                            current.providerTransitions +
+                                provider
+                        )
+                            .takeLast(
+                                MAX_PROVIDER_TRANSITIONS,
+                            )
+                    }
+
                 current.copy(
-                    providerId = state.providerId ?: current.providerId,
+                    providerId = provider ?: current.providerId,
+                    providerTransitions = providerTransitions,
                     acquisitionPeriodMs =
                         state.acquisitionPeriodMs ?: current.acquisitionPeriodMs,
                     providerConfiguredPeriodMs =
@@ -1368,7 +1655,9 @@ internal class SensorObservationSmokeRunner(
     private fun primaryLogicalId(profile: SensorObservationSmokeProfile): String =
         when (profile) {
             SensorObservationSmokeProfile.STEP_COUNTER -> "step_counter"
-            SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> "heart_rate"
+            SensorObservationSmokeProfile.HEALTH_SERVICES_HR,
+            SensorObservationSmokeProfile.HEALTH_SERVICES_RECOVERY ->
+                "heart_rate"
             else -> "accelerometer"
         }
 
@@ -1376,7 +1665,9 @@ internal class SensorObservationSmokeRunner(
         when (profile) {
             SensorObservationSmokeProfile.CADENCE -> 20L
             SensorObservationSmokeProfile.STEP_COUNTER -> 1_000L
-            SensorObservationSmokeProfile.HEALTH_SERVICES_HR -> 1_000L
+            SensorObservationSmokeProfile.HEALTH_SERVICES_HR,
+            SensorObservationSmokeProfile.HEALTH_SERVICES_RECOVERY ->
+                1_000L
             SensorObservationSmokeProfile.SHARING -> 250L
             else -> 250L
         }
@@ -1389,6 +1680,8 @@ internal class SensorObservationSmokeRunner(
                 "Walk while the test is running; TYPE_STEP_COUNTER is on-change/cumulative"
             SensorObservationSmokeProfile.HEALTH_SERVICES_HR ->
                 "Require wear.health_services; wait for one passive HR sample"
+            SensorObservationSmokeProfile.HEALTH_SERVICES_RECOVERY ->
+                "Inject semantic Health Services failure; prove fallback and re-promotion"
             SensorObservationSmokeProfile.EVENT_BUS ->
                 "Publish real accelerometer ACTIVE/sample/CLOSED through DieselEventBus"
             SensorObservationSmokeProfile.SHARING ->
@@ -1414,6 +1707,12 @@ internal class SensorObservationSmokeRunner(
         const val HEALTH_SERVICES_SAMPLE_WINDOW_MS =
             90_000L
 
+        const val HEALTH_SERVICES_FALLBACK_TIMEOUT_MS =
+            10_000L
+
+        const val HEALTH_SERVICES_RECOVERY_TIMEOUT_MS =
+            30_000L
+
         const val EVENT_BUS_TARGET_SAMPLES =
             3
 
@@ -1430,6 +1729,7 @@ internal class SensorObservationSmokeRunner(
             500L
 
         const val MAX_PHASE_TRANSITIONS = 16
+        const val MAX_PROVIDER_TRANSITIONS = 16
         const val MAX_RECORDED_TIMESTAMPS = 256
     }
 }

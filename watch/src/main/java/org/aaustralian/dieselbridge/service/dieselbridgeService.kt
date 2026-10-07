@@ -374,6 +374,16 @@ class DieselBridgeService : Service() {
             )
         }
 
+        observationSmokeRunner
+            .attachHealthServicesFailureInjector { logicalId ->
+                markHealthServicesObservationUnavailable(
+                    logicalId,
+                    "debug_forced_recovery_proof",
+                )
+
+                true
+            }
+
         val healthServicesObservationCapabilityList =
             healthServicesObservationCapabilities(
                 source =

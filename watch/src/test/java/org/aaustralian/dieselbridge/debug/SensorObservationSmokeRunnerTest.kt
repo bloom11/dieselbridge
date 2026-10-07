@@ -7,6 +7,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.aaustralian.dieselbridge.platform.capability.CapabilityRegistry
@@ -680,6 +681,137 @@ class SensorObservationSmokeRunnerTest {
             runner.close()
             manager.close()
         }
+
+
+    @Test
+    fun healthServicesRecoveryProfileProvesFallbackAndRepromotion() =
+        runTest {
+            val registry =
+                CapabilityRegistry()
+
+            val healthServices =
+                FakeProvider(
+                    "wear.health_services",
+                )
+
+            val sensorManager =
+                FakeProvider(
+                    "android.sensor_manager",
+                )
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = healthServices.providerId,
+                        emitSamples = false,
+                    ),
+                provider = healthServices,
+                priority = 20,
+            )
+
+            registry.register(
+                capability =
+                    FakeCapability(
+                        logicalId = "heart_rate",
+                        providerId = sensorManager.providerId,
+                        emitSamples = false,
+                    ),
+                provider = sensorManager,
+                priority = 10,
+            )
+
+            val manager =
+                SensorObservationManager(
+                    registry = registry,
+                    scope = this,
+                    monotonicMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            val runner =
+                SensorObservationSmokeRunner(
+                    observationManager = manager,
+                    scope = this,
+                    wallClockMs = {
+                        testScheduler.currentTime
+                    },
+                )
+
+            runner.attachHealthServicesFailureInjector {
+                registry.setAvailability(
+                    capabilityId =
+                        SensorObservationCapabilityId
+                            .forLogical(
+                                it,
+                            )
+                            .value,
+                    providerId =
+                        healthServices.providerId,
+                    availability =
+                        ProviderAvailability.UNAVAILABLE,
+                    reason =
+                        "test_runtime_failure",
+                )
+
+                launch {
+                    delay(
+                        5_000L,
+                    )
+
+                    registry.setAvailability(
+                        capabilityId =
+                            SensorObservationCapabilityId
+                                .forLogical(
+                                    it,
+                                )
+                                .value,
+                        providerId =
+                            healthServices.providerId,
+                        availability =
+                            ProviderAvailability.AVAILABLE,
+                    )
+                }
+
+                true
+            }
+
+            runner.start(
+                SensorObservationSmokeProfile
+                    .HEALTH_SERVICES_RECOVERY,
+            )
+
+            advanceUntilIdle()
+
+            val result =
+                requireNotNull(
+                    runner.latest(),
+                )
+
+            assertEquals(
+                SensorObservationSmokeStatus.PASSED,
+                result.status,
+            )
+
+            assertEquals(
+                listOf(
+                    "wear.health_services",
+                    "android.sensor_manager",
+                    "wear.health_services",
+                ),
+                result.providerTransitions,
+            )
+
+            assertTrue(
+                "closed" in
+                    result.phaseTransitions,
+            )
+
+            runner.close()
+            manager.close()
+        }
+
 
     @Test
     fun healthServicesHrProfileDistinguishesActiveWithoutSample() =
