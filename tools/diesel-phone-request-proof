@@ -1,0 +1,631 @@
+#!/data/data/com.termux/files/usr/bin/python3
+from __future__ import annotations
+
+import argparse
+import base64
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+import uuid
+
+PHONE_PACKAGE = "io.github.bloom11.dieselbridge.phone"
+DEBUG_ACTION = "io.github.bloom11.dieselbridge.phone.DEBUG_SEND_REQUEST"
+DEBUG_COMPONENT = (
+    "io.github.bloom11.dieselbridge.phone/"
+    "org.aaustralian.dieselbridge.phone.debug.DebugSendRequestReceiver"
+)
+
+
+class ProofError(RuntimeError):
+    pass
+
+
+def run(
+    *args: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(value) for value in args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=env,
+    )
+
+
+def repo_root() -> Path:
+    result = run(
+        "git",
+        "rev-parse",
+        "--show-toplevel",
+    )
+
+    if result.returncode != 0:
+        raise ProofError(
+            "Run this tool from the M6 DieselBridge worktree."
+        )
+
+    return Path(
+        result.stdout.strip(),
+    )
+
+
+def choose_watch_serial(
+    explicit: str | None,
+) -> str:
+    if explicit:
+        return explicit
+
+    configured = os.environ.get(
+        "DIESEL_ADB_SERIAL",
+    )
+
+    if configured:
+        return configured
+
+    result = run(
+        "adb",
+        "devices",
+    )
+
+    if result.returncode != 0:
+        raise ProofError(
+            "adb devices failed:\n" +
+            result.stdout +
+            result.stderr
+        )
+
+    devices: list[str] = []
+
+    for line in result.stdout.splitlines()[1:]:
+        fields = line.split()
+
+        if (
+            len(fields) >= 2 and
+            fields[1] == "device"
+        ):
+            devices.append(
+                fields[0],
+            )
+
+    if len(devices) != 1:
+        raise ProofError(
+            "Expected exactly one connected watch ADB device. "
+            "Pass --serial or set DIESEL_ADB_SERIAL.\n" +
+            result.stdout
+        )
+
+    return devices[0]
+
+
+def verify_checkout(
+    root: Path,
+    expected_sha: str,
+) -> None:
+    result = run(
+        "git",
+        "-C",
+        str(root),
+        "rev-parse",
+        "HEAD",
+    )
+
+    if (
+        result.returncode != 0 or
+        result.stdout.strip() != expected_sha
+    ):
+        raise ProofError(
+            "Current worktree HEAD does not match --expect-sha."
+        )
+
+
+def verify_watch_sha(
+    root: Path,
+    serial: str,
+    expected_sha: str,
+) -> None:
+    helper = (
+        root /
+        "tools" /
+        "diesel-adb"
+    )
+
+    if not helper.is_file():
+        raise ProofError(
+            f"Missing existing Diesel helper: {helper}"
+        )
+
+    env = os.environ.copy()
+    env["DIESEL_ADB_SERIAL"] = serial
+
+    result = run(
+        str(helper),
+        '{"cmd":"debug.build.info"}',
+        env=env,
+    )
+
+    if result.returncode != 0:
+        raise ProofError(
+            "Baseline Diesel request could not verify the watch. "
+            "Check Gadgetbridge connection and Allow Intents.\n" +
+            result.stdout +
+            result.stderr
+        )
+
+    if expected_sha not in result.stdout:
+        raise ProofError(
+            "Installed watch is not the expected exact-SHA build.\n" +
+            f"Expected: {expected_sha}\n" +
+            result.stdout
+        )
+
+
+def clear_watch_logcat(
+    serial: str,
+) -> None:
+    result = run(
+        "adb",
+        "-s",
+        serial,
+        "logcat",
+        "-c",
+    )
+
+    if result.returncode != 0:
+        raise ProofError(
+            "Could not clear watch logcat before the unique-ID proof."
+        )
+
+
+def submit_from_companion(
+    request_id: str,
+    expected_sha: str,
+) -> str:
+    result = run(
+        "am",
+        "broadcast",
+        "--receiver-foreground",
+        "-a",
+        DEBUG_ACTION,
+        "-n",
+        DEBUG_COMPONENT,
+        "--es",
+        "requestId",
+        request_id,
+    )
+
+    text = (
+        result.stdout +
+        result.stderr
+    )
+
+    if result.returncode != 0:
+        raise ProofError(
+            "Companion debug receiver could not be invoked. "
+            "Install the exact M6.0b phone APK first.\n" +
+            text
+        )
+
+    required = (
+        "status=submitted",
+        f"id={request_id}",
+        "cmd=debug.build.info",
+        f"gitSha={expected_sha}",
+    )
+
+    for token in required:
+        if token not in text:
+            raise ProofError(
+                "Companion did not report the expected exact-SHA submission.\n"
+                f"Missing: {token}\n"
+                f"Broadcast output:\n{text}"
+            )
+
+    return text.strip()
+
+
+def read_response_log(
+    serial: str,
+) -> str:
+    result = run(
+        "adb",
+        "-s",
+        serial,
+        "logcat",
+        "-d",
+        "-v",
+        "raw",
+        "-s",
+        "DieselResponse:I",
+        "*:S",
+    )
+
+    if result.returncode != 0:
+        return ""
+
+    return result.stdout
+
+
+def decode_response(
+    log_text: str,
+    request_id: str,
+) -> dict | None:
+    prefix = (
+        f"id={request_id} "
+    )
+
+    single: list[str] = []
+    parts: dict[int, str] = {}
+    expected_parts: int | None = None
+
+    for raw in log_text.splitlines():
+        if not raw.startswith(
+            prefix,
+        ):
+            continue
+
+        rest = raw[
+            len(prefix):
+        ]
+
+        single_match = re.fullmatch(
+            r"encoding=base64 data=(.*)",
+            rest,
+        )
+
+        if single_match:
+            single.append(
+                single_match.group(1),
+            )
+            continue
+
+        part_match = re.fullmatch(
+            r"part=(\d+)/(\d+) encoding=base64 data=(.*)",
+            rest,
+        )
+
+        if not part_match:
+            continue
+
+        index = int(
+            part_match.group(1),
+        )
+
+        total = int(
+            part_match.group(2),
+        )
+
+        if (
+            expected_parts is not None and
+            expected_parts != total
+        ):
+            raise ProofError(
+                "Inconsistent DieselResponse chunk count."
+            )
+
+        expected_parts = total
+
+        parts[index] = (
+            part_match.group(3)
+        )
+
+    if single:
+        encoded = single[-1]
+
+    elif parts:
+        if expected_parts is None:
+            return None
+
+        missing = [
+            index
+            for index in range(
+                1,
+                expected_parts + 1,
+            )
+            if index not in parts
+        ]
+
+        if missing:
+            return None
+
+        encoded = "".join(
+            parts[index]
+            for index in range(
+                1,
+                expected_parts + 1,
+            )
+        )
+
+    else:
+        return None
+
+    try:
+        payload = base64.b64decode(
+            encoded,
+            validate=True,
+        )
+
+        decoded = json.loads(
+            payload.decode(
+                "utf-8",
+            ),
+        )
+
+    except Exception as error:
+        raise ProofError(
+            f"Could not decode matching DieselResponse: {error}"
+        ) from error
+
+    if not isinstance(
+        decoded,
+        dict,
+    ):
+        raise ProofError(
+            "Matching DieselResponse JSON was not an object."
+        )
+
+    return decoded
+
+
+def wait_for_response(
+    serial: str,
+    request_id: str,
+    timeout_seconds: float,
+) -> tuple[dict, str]:
+    deadline = (
+        time.monotonic() +
+        timeout_seconds
+    )
+
+    last_log = ""
+
+    while (
+        time.monotonic() <
+        deadline
+    ):
+        last_log = read_response_log(
+            serial,
+        )
+
+        decoded = decode_response(
+            last_log,
+            request_id,
+        )
+
+        if decoded is not None:
+            return (
+                decoded,
+                last_log,
+            )
+
+        time.sleep(
+            0.20,
+        )
+
+    raise ProofError(
+        "No matching watch DieselResponse appeared for the companion "
+        f"request ID within {timeout_seconds:.1f}s: {request_id}"
+    )
+
+
+def evidence_path(
+    root: Path,
+    expected_sha: str,
+) -> Path:
+    project_root = (
+        root.parent.parent
+    )
+
+    stamp = (
+        dt.datetime.now(
+            dt.timezone.utc,
+        )
+        .replace(
+            microsecond=0,
+        )
+        .strftime(
+            "%Y%m%dT%H%M%SZ",
+        )
+    )
+
+    return (
+        project_root /
+        "artifacts" /
+        "m6" /
+        f"{stamp}-m60b-{expected_sha[:8]}.json"
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Prove companion -> stock Gadgetbridge -> watch "
+            "Diesel request execution."
+        ),
+    )
+
+    parser.add_argument(
+        "--expect-sha",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--serial",
+    )
+
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=20.0,
+    )
+
+    args = parser.parse_args()
+
+    try:
+        root = repo_root()
+
+        verify_checkout(
+            root,
+            args.expect_sha,
+        )
+
+        serial = choose_watch_serial(
+            args.serial,
+        )
+
+        verify_watch_sha(
+            root,
+            serial,
+            args.expect_sha,
+        )
+
+        clear_watch_logcat(
+            serial,
+        )
+
+        request_id = (
+            "m60b-" +
+            uuid.uuid4().hex[:24]
+        )
+
+        phone_result = submit_from_companion(
+            request_id,
+            args.expect_sha,
+        )
+
+        response, _log_text = wait_for_response(
+            serial,
+            request_id,
+            args.timeout,
+        )
+
+        if (
+            response.get("id") !=
+            request_id
+        ):
+            raise ProofError(
+                "Watch response ID did not match the companion request."
+            )
+
+        if (
+            response.get("cmd") !=
+            "debug.build.info"
+        ):
+            raise ProofError(
+                "Watch response command was not debug.build.info."
+            )
+
+        if (
+            response.get("status") !=
+            "ok"
+        ):
+            raise ProofError(
+                "Watch executed the request but did not return status=ok.\n" +
+                json.dumps(
+                    response,
+                    indent=2,
+                )
+            )
+
+        data = response.get(
+            "data",
+        )
+
+        if (
+            not isinstance(
+                data,
+                dict,
+            ) or
+            data.get("gitSha") !=
+            args.expect_sha
+        ):
+            raise ProofError(
+                "Watch response did not report the expected exact build SHA.\n" +
+                json.dumps(
+                    response,
+                    indent=2,
+                )
+            )
+
+        path = evidence_path(
+            root,
+            args.expect_sha,
+        )
+
+        path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        record = {
+            "milestone": "M6.0b",
+            "claim": (
+                "Exact-SHA DieselBridge phone companion submitted "
+                "debug.build.info through stock Gadgetbridge and the "
+                "exact-SHA watch executed the matching request."
+            ),
+            "gitSha": args.expect_sha,
+            "phonePackage": PHONE_PACKAGE,
+            "requestId": request_id,
+            "command": "debug.build.info",
+            "watchAdbSerial": serial,
+            "phoneBroadcastResult": phone_result,
+            "watchResponse": response,
+            "timestampUtc": (
+                dt.datetime.now(
+                    dt.timezone.utc,
+                )
+                .replace(
+                    microsecond=0,
+                )
+                .isoformat()
+            ),
+            "notClaimed": [
+                "phone-side watch response reception",
+                "response timeout/retry semantics",
+                "connection/reconnect state",
+                "multi-device target selection",
+                "alarm synchronization",
+            ],
+        }
+
+        path.write_text(
+            json.dumps(
+                record,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+
+        print(
+            json.dumps(
+                record,
+                indent=2,
+            )
+        )
+
+        print()
+        print(
+            f"Evidence: {path}",
+        )
+
+        return 0
+
+    except ProofError as error:
+        print(
+            f"ERROR: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(
+        main(),
+    )

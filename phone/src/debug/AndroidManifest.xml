@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+          Debug-only physical-proof seam. It exposes no generic command input:
+          callers can choose only a bounded request ID; the command is fixed to
+          read-only debug.build.info. Release builds do not contain it.
+        -->
+        <receiver
+            android:name=".debug.DebugSendRequestReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

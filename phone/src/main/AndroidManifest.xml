@@ -2,9 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      M6.0a intentionally declares no Bluetooth, alarm, foreground-service,
-      location, notification-listener, or exact-alarm permissions.
-      Stock Gadgetbridge remains the phone BLE owner.
+      M6.0b still declares no Bluetooth, alarm, foreground-service, location,
+      notification-listener, or exact-alarm permissions. The companion sends
+      a normal Android broadcast to stock Gadgetbridge; Gadgetbridge remains
+      the only phone-side BLE owner.
     -->
 
     <application

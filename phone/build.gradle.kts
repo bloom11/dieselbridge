@@ -35,8 +35,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge.phone"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-dev.1"
+        versionCode = 2
+        versionName = "0.1.0-dev.2"
 
         buildConfigField(
             "String",
@@ -99,4 +99,5 @@ kotlin {
 
 dependencies {
     testImplementation(libs.junit)
+    testImplementation(libs.json)
 }

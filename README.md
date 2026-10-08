@@ -62,7 +62,7 @@ Java/Kotlin     17 bytecode
 CI JDK          21
 ```
 
-M6.0a phone companion foundation:
+M6 phone companion current build:
 
 ```text
 namespace       org.aaustralian.dieselbridge.phone
@@ -72,12 +72,13 @@ compileSdk      36
 minSdk          28
 targetSdk       36
 
-versionCode     1
-versionName     0.1.0-dev.1
+versionCode     2
+versionName     0.1.0-dev.2
 
 BLE permissions none
-Alarm APIs      not implemented in M6.0a
-Transport       not implemented in M6.0a
+Alarm APIs      not implemented
+Request path    com.banglejs.uart.tx -> stock Gadgetbridge -> watch
+Response client not implemented until M6.0c
 ```
 
 `minSdk=28` means the application keeps an Android 9 / legacy Wear OS floor. `targetSdk=28` is an
@@ -114,10 +115,11 @@ SensorManager physical closure remains independent open hardware-validation work
 Services autonomous recovery and M5.1d stock-Gadgetbridge activity hardware closure are complete.
 M6 and later product layers are also still planned.
 
-M6.0a adds a separate `phone` companion application module to the repository. That foundation is
-deliberately transport-free and alarm-free: it does not acquire Bluetooth, does not replace
-Gadgetbridge and does not yet claim phone/watch synchronization. Stock, unmodified Gadgetbridge
-remains the phone BLE owner.
+M6 contains a separate `phone` companion application module. M6.0b adds the first one-way Diesel
+request adapter from that app to stock Gadgetbridge using the same `com.banglejs.uart.tx`
+`line="GB(...)"` contract already used by `tools/diesel-adb`. The companion still declares no
+Bluetooth permissions and never owns the watch BLE connection. Phone-side response correlation and
+alarm synchronization remain later milestones.
 
 ---
 
@@ -369,6 +371,23 @@ The production phone/watch topology is:
 
 The phone side is **not** a custom Gadgetbridge fork and DieselBridge does not create a second BLE
 owner. Gadgetbridge owns the central connection.
+
+M6.0b adds a request-only companion adapter:
+
+```text
+DieselBridge Companion
+    -> Android broadcast action com.banglejs.uart.tx
+       extra line = GB(<Diesel v1 request JSON>)
+    -> stock Gadgetbridge Bangle.js support
+    -> existing BLE/NUS central connection
+    -> watch GbProtocol
+    -> DieselProtocolExecutionLane
+```
+
+The connected Bangle-compatible device must have Gadgetbridge **Allow Intents** enabled. This first
+slice intentionally mirrors `tools/diesel-adb`: it does not apply a Gadgetbridge package filter or
+`device` MAC filter. Android broadcast submission is not treated as watch acknowledgement. M6.0c
+owns response reception/correlation; M6.0d owns timeout, reconnect and target-selection policy.
 
 The watch advertises a Bangle-compatible name; current code uses:
 
@@ -1893,7 +1912,7 @@ confused with physical proof.
 | M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
 | M6.0a | phone companion application + CI foundation | **Implemented on M6 branch; exact-SHA CI validates the pushed commit** |
-| M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Planned** |
+| M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Implemented on branch; exact-SHA stock-Gadgetbridge physical proof pending** |
 | M6.0c | watch -> Gadgetbridge -> phone response correlation | **Planned** |
 | M6.0d | bounded gateway timeout/session/reconnect semantics | **Planned** |
 | M6.1a | Android next-alarm provider | **Planned; API boundary studied** |

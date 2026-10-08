@@ -12,24 +12,59 @@ class PhoneBuildInfoTest {
     fun diagnosticText_preservesBuildProvenanceAndM6Boundaries() {
         val text =
             PhoneBuildInfo(
-                applicationId = "io.github.bloom11.dieselbridge.phone",
-                versionName = "0.1.0-dev.1",
-                versionCode = 1L,
-                gitSha = "0123456789abcdef",
-                ciRunId = "12345",
-                buildTimestampUtc = "2026-10-08 12:00:00 UTC",
+                applicationId =
+                    "io.github.bloom11.dieselbridge.phone",
+                versionName =
+                    "0.1.0-dev.2",
+                versionCode =
+                    2L,
+                gitSha =
+                    "0123456789abcdef",
+                ciRunId =
+                    "12345",
+                buildTimestampUtc =
+                    "2026-10-08 12:00:00 UTC",
             ).diagnosticText()
 
+        assertTrue(
+            text.contains(
+                "Milestone: M6.0b",
+            ),
+        )
         assertTrue(
             text.contains(
                 "Package: io.github.bloom11.dieselbridge.phone",
             ),
         )
-        assertTrue(text.contains("Git SHA: 0123456789abcdef"))
-        assertTrue(text.contains("CI run: 12345"))
-        assertTrue(text.contains("BLE ownership: stock Gadgetbridge only"))
-        assertTrue(text.contains("Gadgetbridge transport: not implemented"))
-        assertTrue(text.contains("Android next-alarm provider: not implemented"))
-        assertFalse(text.contains("connected to watch"))
+        assertTrue(
+            text.contains(
+                "Git SHA: 0123456789abcdef",
+            ),
+        )
+        assertTrue(
+            text.contains(
+                "Gadgetbridge request transport: implemented",
+            ),
+        )
+        assertTrue(
+            text.contains(
+                "Diesel response correlation: not implemented",
+            ),
+        )
+        assertTrue(
+            text.contains(
+                "Android next-alarm provider: not implemented",
+            ),
+        )
+        assertTrue(
+            text.contains(
+                "BLE ownership: stock Gadgetbridge only",
+            ),
+        )
+        assertFalse(
+            text.contains(
+                "watch acknowledged",
+            ),
+        )
     }
 }
