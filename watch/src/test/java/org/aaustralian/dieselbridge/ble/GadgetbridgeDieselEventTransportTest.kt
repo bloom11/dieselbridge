@@ -63,6 +63,46 @@ class GadgetbridgeDieselEventTransportTest {
     }
 
     @Test
+    fun explicitAndroidTargetIsEncodedWithoutBreakingSenderSeam() {
+        var captured: String? = null
+
+        val transport =
+            GadgetbridgeDieselEventTransport(
+                androidPackage =
+                    "io.github.bloom11.dieselbridge.phone",
+                androidClass =
+                    "org.aaustralian.dieselbridge.phone.gateway.PhoneDieselInboundReceiver",
+            ) {
+                    line,
+                ->
+                captured = line
+                true
+            }
+
+        assertTrue(
+            transport.send(
+                DieselEvent(
+                    topic = "companion.sync.request",
+                ),
+            ),
+        )
+
+        val intent =
+            JSONObject(
+                requireNotNull(captured),
+            )
+
+        assertEquals(
+            "io.github.bloom11.dieselbridge.phone",
+            intent.getString("package"),
+        )
+        assertEquals(
+            "org.aaustralian.dieselbridge.phone.gateway.PhoneDieselInboundReceiver",
+            intent.getString("class"),
+        )
+    }
+
+    @Test
     fun propagatesSenderFailure() {
         val transport =
             GadgetbridgeDieselEventTransport {
