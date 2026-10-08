@@ -22,7 +22,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "DieselBridge"
 
-// The Wear OS watch app contains the Diesel platform and BLE-peripheral bridge.
-// The phone side is unmodified Gadgetbridge, installed separately; there is intentionally
-// no phone application module in this repository.
+// The Wear OS app contains the Diesel platform and BLE-peripheral bridge.
+// M6 adds a separate phone companion application. Stock, unmodified Gadgetbridge remains
+// the only phone-side BLE owner; the companion must not acquire its own watch BLE link.
 include(":watch")
+include(":phone")

@@ -72,12 +72,12 @@ jobs:
         run: chmod +x gradlew
 
       - name: Unit tests
-        run: ./gradlew :watch:testDebugUnitTest
+        run: ./gradlew :watch:testDebugUnitTest :phone:testDebugUnitTest
 
-      - name: Build debug APK
-        run: ./gradlew :watch:assembleDebug --stacktrace
+      - name: Build debug APKs
+        run: ./gradlew :watch:assembleDebug :phone:assembleDebug --stacktrace
 
-      - name: Verify debug APK signing certificate
+      - name: Verify debug APK signing certificates
         run: |
           EXPECTED_SHA256="62781110de7cdd6815210365399e90f9a1446837a9fa084be70bfedc90e6f7f5"
 
@@ -88,18 +88,29 @@ jobs:
             exit 1
           fi
 
-          ACTUAL_SHA256="$("$APKSIGNER" verify --print-certs watch/build/outputs/apk/debug/watch-debug.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]')"
+          for APK in watch/build/outputs/apk/debug/watch-debug.apk phone/build/outputs/apk/debug/phone-debug.apk
+          do
+            ACTUAL_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]')"
 
-          echo "Built APK certificate: $ACTUAL_SHA256"
+            echo "$APK certificate: $ACTUAL_SHA256"
 
-          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
-            echo "::error::Built APK has unexpected signing certificate"
-            exit 1
-          fi
+            if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+              echo "::error::$APK has unexpected signing certificate"
+              exit 1
+            fi
+          done
 
-      - name: Upload debug APK
+      - name: Upload watch debug APK
         uses: actions/upload-artifact@v4
         with:
+          # Keep this name stable for tools/diesel-ci-watch-install.
           name: dieselbridge-bloom-debug
           path: watch/build/outputs/apk/debug/watch-debug.apk
+          retention-days: 14
+
+      - name: Upload phone debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dieselbridge-phone-bloom-debug
+          path: phone/build/outputs/apk/debug/phone-debug.apk
           retention-days: 14

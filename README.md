@@ -9,7 +9,7 @@ a generic versioned command protocol, developer diagnostics, logical sensor capa
 automatic provider selection, bounded hardware experiments, Health Services integration, power
 controls, and tooling for real-watch validation.
 
-The current active development line is `feature/diesel-runtime-core`.
+The current M6 development line is `feature/m6-phone-companion`, based on the completed `feature/diesel-runtime-core` foundation.
 
 ---
 
@@ -45,7 +45,7 @@ The current active development line is `feature/diesel-runtime-core`.
 
 # Project status
 
-Current development build configuration on `feature/diesel-runtime-core`:
+Current watch build configuration inherited from `feature/diesel-runtime-core`:
 
 ```text
 namespace       org.aaustralian.dieselbridge
@@ -60,6 +60,24 @@ versionName     1.0.0-dev.21
 
 Java/Kotlin     17 bytecode
 CI JDK          21
+```
+
+M6.0a phone companion foundation:
+
+```text
+namespace       org.aaustralian.dieselbridge.phone
+applicationId   io.github.bloom11.dieselbridge.phone
+
+compileSdk      36
+minSdk          28
+targetSdk       36
+
+versionCode     1
+versionName     0.1.0-dev.1
+
+BLE permissions none
+Alarm APIs      not implemented in M6.0a
+Transport       not implemented in M6.0a
 ```
 
 `minSdk=28` means the application keeps an Android 9 / legacy Wear OS floor. `targetSdk=28` is an
@@ -96,8 +114,10 @@ SensorManager physical closure remains independent open hardware-validation work
 Services autonomous recovery and M5.1d stock-Gadgetbridge activity hardware closure are complete.
 M6 and later product layers are also still planned.
 
-The repository currently contains only the Wear OS application. The phone BLE owner remains stock,
-unmodified Gadgetbridge; no DieselBridge-owned phone BLE stack exists.
+M6.0a adds a separate `phone` companion application module to the repository. That foundation is
+deliberately transport-free and alarm-free: it does not acquire Bluetooth, does not replace
+Gadgetbridge and does not yet claim phone/watch synchronization. Stock, unmodified Gadgetbridge
+remains the phone BLE owner.
 
 ---
 
@@ -1849,7 +1869,14 @@ confused with physical proof.
 | M5.2a | `StateStore` | **Implemented + CI verified + concurrency hardened (`01141174`, run `37365030829`)** |
 | M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
-| M6 | real Android next-alarm synchronization | **Planned; API boundary studied** |
+| M6.0a | phone companion application + CI foundation | **Implemented on M6 branch; exact-SHA CI validates the pushed commit** |
+| M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Planned** |
+| M6.0c | watch -> Gadgetbridge -> phone response correlation | **Planned** |
+| M6.0d | bounded gateway timeout/session/reconnect semantics | **Planned** |
+| M6.1a | Android next-alarm provider | **Planned; API boundary studied** |
+| M6.1b | watch `companion.alarm.next` StateStore ownership | **Planned** |
+| M6.1c | initial phone -> watch next-alarm synchronization | **Planned** |
+| M6.1d | automatic alarm-change propagation + reconnect resync | **Planned** |
 | M7 | Espruino/JavaScript runtime + local Diesel API bindings | **Planned** |
 | M8 | external Wear APK API + provider/plugin IPC | **Planned** |
 | M9 | health/history expansion | **Planned** |
