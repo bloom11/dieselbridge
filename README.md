@@ -1381,33 +1381,56 @@ observed; reaching ACTIVE without a sample is recorded as incomplete proof.
 
 ## `tools/diesel-ci-watch-install`
 
-This Termux helper closes the normal development loop from a pushed commit to the exact APK
-installed on the physical watch.
+This Termux helper closes the development loop from one pushed commit to the exact watch and phone
+artifacts produced by the same CI run. Its historical name remains because the default action still
+installs the watch.
 
 It:
 
 - requires a clean Git worktree;
 - verifies local `HEAD` equals the pushed branch head;
 - waits for the GitHub Actions run belonging to that exact SHA;
-- requires CI success;
-- downloads the exact `dieselbridge-bloom-debug` artifact produced by that run;
-- reports the APK SHA-256 when `sha256sum` is available;
-- reuses an existing wireless-ADB connection or asks for the current watch endpoint;
-- never hard-codes the Wear OS wireless-debugging port;
-- installs with `adb install -r` so application data and signing lineage are preserved;
-- retries automatically only when the ADB connection is lost;
-- reports installed version, install/update timestamps, Git SHA, CI run and APK path.
+- distinguishes a transient `gh run watch` network interruption from a real CI failure;
+- requires authoritative exact-SHA CI success;
+- downloads both `dieselbridge-bloom-debug` and `dieselbridge-phone-bloom-debug`;
+- stores them under `<sha>-run-<run>/watch/` and `<sha>-run-<run>/phone/`;
+- stages both downloads before replacing the prior exact-SHA pair;
+- reports SHA-256 for both APKs when available;
+- copies the companion APK to Android Downloads as `DieselBridge-Companion-<sha>.apk` when Termux
+  shared storage is available;
+- installs the watch through the existing wireless-ADB flow by default.
 
-Typical use after committing and pushing:
+Default:
 
-    cd /path/to/your/dieselbridge-checkout
     ./tools/diesel-ci-watch-install
+
+Download both artifacts without watch installation:
+
+    ./tools/diesel-ci-watch-install --download-only
+
+Download both and launch Android's installer for the companion:
+
+    ./tools/diesel-ci-watch-install --download-only --open-phone-installer
+
+Canonical artifact layout:
+
+```text
+~/dieselbridge-project/artifacts/builds/<sha>-run-<run>/
+    watch/
+        watch-debug.apk
+    phone/
+        phone-debug.apk
+```
+
+The Android Downloads copy is only an installation convenience; the build directory remains the
+provenance-preserving source artifact.
 
 The helper resolves both ordinary clones and linked Git worktrees. When invoked from outside a
 checkout, set `DIESEL_REPO_ROOT=/path/to/checkout`. `DIESEL_BUILD_ROOT` can override the artifact
 destination; the project workspace defaults to `~/dieselbridge-project/artifacts/builds`.
 
-Required phone-side commands are `git`, `gh`, `adb`, and `find`.
+Download-only mode requires `git`, `gh`, and `find`; default watch installation additionally needs
+`adb`; opening the phone installer additionally needs `termux-open`.
 
 The GitHub CLI must already be authenticated.
 

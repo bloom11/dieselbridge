@@ -3,8 +3,36 @@
 diesel_ci_watch_download_install() {
   REPO="bloom11/dieselbridge"
   WORKFLOW="ci.yml"
-  ARTIFACT="dieselbridge-bloom-debug"
-  PACKAGE="io.github.bloom11.dieselbridge"
+  WATCH_ARTIFACT="dieselbridge-bloom-debug"
+  PHONE_ARTIFACT="dieselbridge-phone-bloom-debug"
+  WATCH_PACKAGE="io.github.bloom11.dieselbridge"
+
+  DOWNLOAD_ONLY=0
+  OPEN_PHONE_INSTALLER=0
+
+  for ARG in "$@"; do
+    case "$ARG" in
+      --download-only)
+        DOWNLOAD_ONLY=1
+        ;;
+      --open-phone-installer)
+        OPEN_PHONE_INSTALLER=1
+        ;;
+      -h|--help)
+        echo "Usage:"
+        echo "  ./tools/diesel-ci-watch-install [--download-only] [--open-phone-installer]"
+        echo
+        echo "Default: download exact-SHA watch + phone artifacts, then install the watch."
+        echo "--download-only: download both artifacts without watch ADB/install."
+        echo "--open-phone-installer: open Android installer for the downloaded companion."
+        return 0
+        ;;
+      *)
+        echo "ERROR: unknown argument: $ARG"
+        return 2
+        ;;
+    esac
+  done
 
   ROOT=""
 
@@ -44,12 +72,24 @@ diesel_ci_watch_download_install() {
 
   printf '\n===== PREFLIGHT =====\n'
 
-  for CMD in git gh adb find; do
+  for CMD in git gh find; do
     if ! command -v "$CMD" >/dev/null 2>&1; then
       echo "ERROR: missing command: $CMD"
       return 1
     fi
   done
+
+  if [ "$DOWNLOAD_ONLY" -ne 1 ] &&
+     ! command -v adb >/dev/null 2>&1; then
+    echo "ERROR: missing command: adb"
+    return 1
+  fi
+
+  if [ "$OPEN_PHONE_INSTALLER" -eq 1 ] &&
+     ! command -v termux-open >/dev/null 2>&1; then
+    echo "ERROR: --open-phone-installer requires termux-open."
+    return 1
+  fi
 
   if ! gh auth status >/dev/null 2>&1; then
     echo "ERROR: GitHub CLI is not authenticated."
@@ -171,14 +211,62 @@ diesel_ci_watch_download_install() {
   WATCH_RC=$?
 
   if [ "$WATCH_RC" -ne 0 ]; then
-    printf '\n===== CI FAILED =====\n'
+    printf '\n===== RESOLVE CI STATE =====\n'
+    echo "gh run watch returned non-zero; resolving remote state before declaring failure."
 
-    gh run view \
-      "$RUN_ID" \
-      --repo "$REPO" \
-      --log-failed
+    STATE_ATTEMPT=0
+    RESOLVED=0
 
-    return "$WATCH_RC"
+    while [ "$STATE_ATTEMPT" -lt 12 ]; do
+      STATE_ATTEMPT=$((STATE_ATTEMPT + 1))
+
+      RUN_STATE="$(
+        gh run view \
+          "$RUN_ID" \
+          --repo "$REPO" \
+          --json headSha,status,conclusion \
+          --jq '[.headSha,.status,(.conclusion // "")] | @tsv' \
+          2>/dev/null
+      )"
+
+      if [ -n "$RUN_STATE" ]; then
+        STATE_SHA="$(printf '%s' "$RUN_STATE" | cut -f1)"
+        STATE_STATUS="$(printf '%s' "$RUN_STATE" | cut -f2)"
+        STATE_CONCLUSION="$(printf '%s' "$RUN_STATE" | cut -f3)"
+
+        if [ "$STATE_SHA" != "$HEAD" ]; then
+          echo "ERROR: CI state resolved to unexpected SHA."
+          echo "Expected: $HEAD"
+          echo "Actual  : $STATE_SHA"
+          return 1
+        fi
+
+        echo "Remote status: $STATE_STATUS"
+        echo "Remote result: ${STATE_CONCLUSION:-pending}"
+
+        if [ "$STATE_STATUS" = "completed" ]; then
+          RESOLVED=1
+          break
+        fi
+      else
+        echo "GitHub API unavailable ($STATE_ATTEMPT/12)."
+      fi
+
+      sleep 5
+    done
+
+    if [ "$RESOLVED" -ne 1 ]; then
+      echo "ERROR: could not resolve authoritative CI state."
+      return 1
+    fi
+
+    if [ "$STATE_CONCLUSION" != "success" ]; then
+      printf '\n===== CI FAILED =====\n'
+      gh run view "$RUN_ID" --repo "$REPO" --log-failed || true
+      return 1
+    fi
+
+    echo "CI succeeded; continuing after the local network interruption."
   fi
 
   printf '\n===== CI SUCCESS =====\n'
@@ -204,55 +292,138 @@ diesel_ci_watch_download_install() {
   else
     BUILD_ROOT="$HOME/dieselbridge-builds"
   fi
+
   BUILD_DIR="$BUILD_ROOT/${SHORT}-run-${RUN_ID}"
+  WATCH_DIR="$BUILD_DIR/watch"
+  PHONE_DIR="$BUILD_DIR/phone"
+  TEMP_DIR="$BUILD_DIR/.download-$$"
 
-  printf '\n===== DOWNLOAD APK =====\n'
-  echo "$BUILD_DIR"
+  printf '\n===== DOWNLOAD EXACT-SHA ARTIFACTS =====\n'
+  echo "Build root: $BUILD_DIR"
+  echo "Watch     : $WATCH_DIR"
+  echo "Phone     : $PHONE_DIR"
 
-  rm -rf "$BUILD_DIR"
-  mkdir -p "$BUILD_DIR"
+  rm -rf "$TEMP_DIR"
+  mkdir -p "$TEMP_DIR/watch" "$TEMP_DIR/phone"
 
   gh run download \
     "$RUN_ID" \
     --repo "$REPO" \
-    --name "$ARTIFACT" \
-    --dir "$BUILD_DIR"
+    --name "$WATCH_ARTIFACT" \
+    --dir "$TEMP_DIR/watch"
 
-  DOWNLOAD_RC=$?
+  WATCH_DOWNLOAD_RC=$?
 
-  if [ "$DOWNLOAD_RC" -ne 0 ]; then
-    echo "ERROR: artifact download failed."
-    return "$DOWNLOAD_RC"
+  if [ "$WATCH_DOWNLOAD_RC" -ne 0 ]; then
+    rm -rf "$TEMP_DIR"
+    echo "ERROR: watch artifact download failed."
+    return "$WATCH_DOWNLOAD_RC"
   fi
 
-  APK_COUNT="$(
-    find "$BUILD_DIR" \
-      -type f \
-      -name '*.apk' |
+  gh run download \
+    "$RUN_ID" \
+    --repo "$REPO" \
+    --name "$PHONE_ARTIFACT" \
+    --dir "$TEMP_DIR/phone"
+
+  PHONE_DOWNLOAD_RC=$?
+
+  if [ "$PHONE_DOWNLOAD_RC" -ne 0 ]; then
+    rm -rf "$TEMP_DIR"
+    echo "ERROR: phone artifact download failed."
+    return "$PHONE_DOWNLOAD_RC"
+  fi
+
+  WATCH_APK_COUNT="$(
+    find "$TEMP_DIR/watch" -type f -name '*.apk' |
       wc -l |
       tr -d '[:space:]'
   )"
 
-  if [ "$APK_COUNT" -ne 1 ]; then
-    echo "ERROR: expected exactly one APK; found $APK_COUNT"
-    find "$BUILD_DIR" -maxdepth 3 -type f
+  PHONE_APK_COUNT="$(
+    find "$TEMP_DIR/phone" -type f -name '*.apk' |
+      wc -l |
+      tr -d '[:space:]'
+  )"
+
+  if [ "$WATCH_APK_COUNT" -ne 1 ]; then
+    echo "ERROR: expected exactly one watch APK; found $WATCH_APK_COUNT"
+    find "$TEMP_DIR/watch" -maxdepth 3 -type f
+    rm -rf "$TEMP_DIR"
     return 1
   fi
 
-  APK="$(
-    find "$BUILD_DIR" \
-      -type f \
-      -name '*.apk' |
-      head -n1
-  )"
+  if [ "$PHONE_APK_COUNT" -ne 1 ]; then
+    echo "ERROR: expected exactly one phone APK; found $PHONE_APK_COUNT"
+    find "$TEMP_DIR/phone" -maxdepth 3 -type f
+    rm -rf "$TEMP_DIR"
+    return 1
+  fi
 
-  printf '\n===== DOWNLOADED APK =====\n'
-  echo "$APK"
-  ls -lh "$APK"
+  mkdir -p "$BUILD_DIR"
+  rm -rf "$WATCH_DIR" "$PHONE_DIR"
+  mv "$TEMP_DIR/watch" "$WATCH_DIR"
+  mv "$TEMP_DIR/phone" "$PHONE_DIR"
+  rmdir "$TEMP_DIR" 2>/dev/null || true
+
+  WATCH_APK="$(find "$WATCH_DIR" -type f -name '*.apk' | head -n1)"
+  PHONE_APK="$(find "$PHONE_DIR" -type f -name '*.apk' | head -n1)"
+
+  printf '\n===== DOWNLOADED WATCH APK =====\n'
+  echo "$WATCH_APK"
+  ls -lh "$WATCH_APK"
+
+  printf '\n===== DOWNLOADED PHONE APK =====\n'
+  echo "$PHONE_APK"
+  ls -lh "$PHONE_APK"
 
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$APK"
+    printf '\nWatch SHA-256:\n'
+    sha256sum "$WATCH_APK"
+    printf '\nPhone SHA-256:\n'
+    sha256sum "$PHONE_APK"
   fi
+
+  PHONE_DOWNLOAD_COPY=""
+
+  if [ -d "$HOME/storage/downloads" ]; then
+    PHONE_DOWNLOAD_COPY="$HOME/storage/downloads/DieselBridge-Companion-${SHORT}.apk"
+    cp -f "$PHONE_APK" "$PHONE_DOWNLOAD_COPY"
+
+    printf '\n===== PHONE INSTALLER COPY =====\n'
+    echo "$PHONE_DOWNLOAD_COPY"
+    ls -lh "$PHONE_DOWNLOAD_COPY"
+  else
+    echo
+    echo "NOTE: ~/storage/downloads is unavailable."
+    echo "Run termux-setup-storage if you want an Android Downloads copy."
+  fi
+
+  if [ "$OPEN_PHONE_INSTALLER" -eq 1 ]; then
+    if [ -z "$PHONE_DOWNLOAD_COPY" ]; then
+      echo "ERROR: cannot open installer without ~/storage/downloads."
+      return 1
+    fi
+
+    printf '\n===== OPEN PHONE INSTALLER =====\n'
+    termux-open "$PHONE_DOWNLOAD_COPY"
+  fi
+
+  if [ "$DOWNLOAD_ONLY" -eq 1 ]; then
+    printf '\n===== DOWNLOAD-ONLY COMPLETE =====\n'
+    echo "Git SHA    : $HEAD"
+    echo "CI run     : $RUN_ID"
+    echo "Watch APK  : $WATCH_APK"
+    echo "Phone APK  : $PHONE_APK"
+
+    if [ -n "$PHONE_DOWNLOAD_COPY" ]; then
+      echo "Phone copy : $PHONE_DOWNLOAD_COPY"
+    fi
+
+    return 0
+  fi
+
+  APK="$WATCH_APK"
 
   adb_connect_watch() {
     if [ -n "${DIESEL_ADB_SERIAL:-}" ]; then
@@ -435,20 +606,36 @@ diesel_ci_watch_download_install() {
   printf '\n===== INSTALLED PACKAGE =====\n'
 
   adb -s "$ENDPOINT" \
-    shell dumpsys package "$PACKAGE" |
+    shell dumpsys package "$WATCH_PACKAGE" |
     grep -E \
       'versionCode=|versionName=|firstInstallTime=|lastUpdateTime='
 
   printf '\n===== BUILD USED =====\n'
-  echo "Git SHA : $HEAD"
-  echo "CI run  : $RUN_ID"
-  echo "APK     : $APK"
-  echo "ADB     : $ENDPOINT"
+  echo "Git SHA   : $HEAD"
+  echo "CI run    : $RUN_ID"
+  echo "Watch APK : $WATCH_APK"
+  echo "Phone APK : $PHONE_APK"
+  echo "ADB       : $ENDPOINT"
+
+  if [ -n "$PHONE_DOWNLOAD_COPY" ]; then
+    echo "Phone copy: $PHONE_DOWNLOAD_COPY"
+  fi
 
   printf '\n===== DONE =====\n'
   echo "Watch APK installed successfully."
+  echo "The exact-SHA companion APK was downloaded from the same CI run."
+
+  if [ -n "$PHONE_DOWNLOAD_COPY" ]; then
+    echo
+    echo "Companion APK ready:"
+    echo "  $PHONE_DOWNLOAD_COPY"
+    echo
+    echo "Open it with:"
+    echo "  termux-open \"$PHONE_DOWNLOAD_COPY\""
+  fi
+
   echo
-  echo "Next useful test:"
+  echo "Next useful watch test:"
   echo "  cd $ROOT"
   echo "  ./tools/diesel-adb '{\"cmd\":\"debug.build.info\"}'"
 
