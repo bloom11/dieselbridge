@@ -24,7 +24,7 @@ diesel_ci_watch_download_install() {
         echo
         echo "Default: download exact-SHA watch + phone artifacts, then install the watch."
         echo "--download-only: download both artifacts without watch ADB/install."
-        echo "--open-phone-installer: open Android installer for the downloaded companion."
+        echo "--open-phone-installer: verify Downloads copy, then open Android installer."
         return 0
         ;;
       *)
@@ -385,12 +385,56 @@ diesel_ci_watch_download_install() {
   fi
 
   PHONE_DOWNLOAD_COPY=""
+  PHONE_DOWNLOAD_DIR="$HOME/storage/downloads/DieselBridge/Companion"
 
   if [ -d "$HOME/storage/downloads" ]; then
-    PHONE_DOWNLOAD_COPY="$HOME/storage/downloads/DieselBridge-Companion-${SHORT}.apk"
-    cp -f "$PHONE_APK" "$PHONE_DOWNLOAD_COPY"
+    if ! mkdir -p "$PHONE_DOWNLOAD_DIR"; then
+      echo "ERROR: could not create companion Downloads directory:"
+      echo "  $PHONE_DOWNLOAD_DIR"
+      return 1
+    fi
 
-    printf '\n===== PHONE INSTALLER COPY =====\n'
+    PHONE_DOWNLOAD_COPY="$PHONE_DOWNLOAD_DIR/DieselBridge-Companion-${SHORT}-run-${RUN_ID}.apk"
+
+    printf '\n===== COPY COMPANION TO ANDROID DOWNLOADS =====\n'
+    echo "Source : $PHONE_APK"
+    echo "Target : $PHONE_DOWNLOAD_COPY"
+
+    if ! cp -f "$PHONE_APK" "$PHONE_DOWNLOAD_COPY"; then
+      echo "ERROR: companion copy failed."
+      return 1
+    fi
+
+    if [ ! -s "$PHONE_DOWNLOAD_COPY" ]; then
+      echo "ERROR: copied companion APK is missing or empty."
+      return 1
+    fi
+
+    SOURCE_BYTES="$(wc -c < "$PHONE_APK" | tr -d '[:space:]')"
+    COPY_BYTES="$(wc -c < "$PHONE_DOWNLOAD_COPY" | tr -d '[:space:]')"
+
+    if [ "$SOURCE_BYTES" != "$COPY_BYTES" ]; then
+      echo "ERROR: copied companion APK size does not match source."
+      echo "Source bytes: $SOURCE_BYTES"
+      echo "Copy bytes  : $COPY_BYTES"
+      return 1
+    fi
+
+    if command -v sha256sum >/dev/null 2>&1; then
+      SOURCE_SHA="$(sha256sum "$PHONE_APK" | awk '{print $1}')"
+      COPY_SHA="$(sha256sum "$PHONE_DOWNLOAD_COPY" | awk '{print $1}')"
+
+      if [ "$SOURCE_SHA" != "$COPY_SHA" ]; then
+        echo "ERROR: copied companion APK SHA-256 does not match source."
+        echo "Source SHA: $SOURCE_SHA"
+        echo "Copy SHA  : $COPY_SHA"
+        return 1
+      fi
+
+      echo "Verified SHA-256: $COPY_SHA"
+    fi
+
+    printf '\n===== PHONE INSTALLER COPY READY =====\n'
     echo "$PHONE_DOWNLOAD_COPY"
     ls -lh "$PHONE_DOWNLOAD_COPY"
   else
@@ -400,13 +444,22 @@ diesel_ci_watch_download_install() {
   fi
 
   if [ "$OPEN_PHONE_INSTALLER" -eq 1 ]; then
-    if [ -z "$PHONE_DOWNLOAD_COPY" ]; then
-      echo "ERROR: cannot open installer without ~/storage/downloads."
+    if [ -z "$PHONE_DOWNLOAD_COPY" ] ||
+       [ ! -s "$PHONE_DOWNLOAD_COPY" ]; then
+      echo "ERROR: verified companion copy is unavailable."
+      echo "Android installer will not be opened."
       return 1
     fi
 
-    printf '\n===== OPEN PHONE INSTALLER =====\n'
-    termux-open "$PHONE_DOWNLOAD_COPY"
+    printf '\n===== OPEN PHONE INSTALLER AFTER VERIFIED COPY =====\n'
+    echo "$PHONE_DOWNLOAD_COPY"
+
+    if ! termux-open "$PHONE_DOWNLOAD_COPY"; then
+      echo "ERROR: Android package installer could not be opened."
+      echo "The verified APK remains at:"
+      echo "  $PHONE_DOWNLOAD_COPY"
+      return 1
+    fi
   fi
 
   if [ "$DOWNLOAD_ONLY" -eq 1 ]; then

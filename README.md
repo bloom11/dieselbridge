@@ -72,8 +72,8 @@ compileSdk      36
 minSdk          28
 targetSdk       36
 
-versionCode     2
-versionName     0.1.0-dev.2
+versionCode     3
+versionName     0.1.0-dev.3
 
 BLE permissions none
 Alarm APIs      not implemented
@@ -1415,8 +1415,9 @@ It:
 - stores them under `<sha>-run-<run>/watch/` and `<sha>-run-<run>/phone/`;
 - stages both downloads before replacing the prior exact-SHA pair;
 - reports SHA-256 for both APKs when available;
-- copies the companion APK to Android Downloads as `DieselBridge-Companion-<sha>.apk` when Termux
-  shared storage is available;
+- copies and verifies the companion APK under
+  `Downloads/DieselBridge/Companion/DieselBridge-Companion-<sha>-run-<run>.apk` when Termux shared
+  storage is available;
 - installs the watch through the existing wireless-ADB flow by default.
 
 Default:
@@ -1427,7 +1428,8 @@ Download both artifacts without watch installation:
 
     ./tools/diesel-ci-watch-install --download-only
 
-Download both and launch Android's installer for the companion:
+Download both, verify the dedicated Downloads copy, and only then launch Android's package
+installer for the companion:
 
     ./tools/diesel-ci-watch-install --download-only --open-phone-installer
 
@@ -1442,7 +1444,8 @@ Canonical artifact layout:
 ```
 
 The Android Downloads copy is only an installation convenience; the build directory remains the
-provenance-preserving source artifact.
+provenance-preserving source artifact. The installer is opened only after the copy exists, is
+non-empty, matches the source byte count and, when `sha256sum` is available, matches its SHA-256.
 
 The helper resolves both ordinary clones and linked Git worktrees. When invoked from outside a
 checkout, set `DIESEL_REPO_ROOT=/path/to/checkout`. `DIESEL_BUILD_ROOT` can override the artifact

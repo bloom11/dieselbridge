@@ -27,3 +27,7 @@ local.properties
 *.keystore
 .watch_endpoint
 .encyrptedtxt
+
+# Python tool caches
+__pycache__/
+*.py[cod]
