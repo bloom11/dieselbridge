@@ -12,7 +12,7 @@ data class PhoneBuildInfo(
 ) {
     fun diagnosticText(): String =
         listOf(
-            "Milestone: M6.0b",
+            "Milestone: M6.1e bundle",
             "Package: $applicationId",
             "Version: $versionName ($versionCode)",
             "Git SHA: $gitSha",
@@ -20,12 +20,12 @@ data class PhoneBuildInfo(
             "Built: $buildTimestampUtc",
             "",
             "Gadgetbridge request transport: implemented",
-            "Diesel response correlation: not implemented (M6.0c)",
-            "Gateway timeout/reconnect policy: not implemented (M6.0d)",
-            "Android next-alarm provider: not implemented (M6.1a)",
+            "Diesel response correlation: implemented",
+            "Bounded gateway timeout/session: implemented",
+            "Android next-alarm provider: implemented",
+            "Alarm StateStore sync: implemented",
+            "Alarm change/reconnect resync: implemented",
             "",
             "BLE ownership: stock Gadgetbridge only",
-        ).joinToString(
-            separator = "\n",
-        )
+        ).joinToString(separator = "\n")
 }

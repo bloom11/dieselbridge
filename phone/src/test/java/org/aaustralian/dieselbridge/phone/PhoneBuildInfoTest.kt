@@ -7,17 +7,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhoneBuildInfoTest {
-
     @Test
-    fun diagnosticText_preservesBuildProvenanceAndM6Boundaries() {
+    fun diagnosticTextPreservesBuildProvenanceAndM6Boundaries() {
         val text =
             PhoneBuildInfo(
                 applicationId =
                     "io.github.bloom11.dieselbridge.phone",
                 versionName =
-                    "0.1.0-dev.2",
+                    "0.1.0-dev.4",
                 versionCode =
-                    2L,
+                    4L,
                 gitSha =
                     "0123456789abcdef",
                 ciRunId =
@@ -28,12 +27,7 @@ class PhoneBuildInfoTest {
 
         assertTrue(
             text.contains(
-                "Milestone: M6.0b",
-            ),
-        )
-        assertTrue(
-            text.contains(
-                "Package: io.github.bloom11.dieselbridge.phone",
+                "Milestone: M6.1e bundle",
             ),
         )
         assertTrue(
@@ -43,17 +37,17 @@ class PhoneBuildInfoTest {
         )
         assertTrue(
             text.contains(
-                "Gadgetbridge request transport: implemented",
+                "Diesel response correlation: implemented",
             ),
         )
         assertTrue(
             text.contains(
-                "Diesel response correlation: not implemented",
+                "Android next-alarm provider: implemented",
             ),
         )
         assertTrue(
             text.contains(
-                "Android next-alarm provider: not implemented",
+                "Alarm change/reconnect resync: implemented",
             ),
         )
         assertTrue(
@@ -63,7 +57,7 @@ class PhoneBuildInfoTest {
         )
         assertFalse(
             text.contains(
-                "watch acknowledged",
+                "custom BLE",
             ),
         )
     }

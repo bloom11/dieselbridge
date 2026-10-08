@@ -45,6 +45,8 @@ import org.aaustralian.dieselbridge.debug.SensorObservationSmokeRunner
 import org.aaustralian.dieselbridge.debug.WatchDeveloperExportRegistry
 import org.aaustralian.dieselbridge.integration.legacy.LegacyBatteryProvider
 import org.aaustralian.dieselbridge.integration.legacy.LegacyVibrationProvider
+import org.aaustralian.dieselbridge.companion.CompanionAlarmCommandModule
+import org.aaustralian.dieselbridge.companion.CompanionAlarmStateOwner
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorInventory
 import org.aaustralian.dieselbridge.platform.sensor.AndroidSensorRouteProbe
@@ -89,6 +91,9 @@ class DieselBridgeService : Service() {
 
     private var healthServicesObservationRecoveryController:
         HealthServicesObservationRecoveryController? = null
+
+    private var companionAlarmStateOwner:
+        CompanionAlarmStateOwner? = null
 
     /*
      * Lifecycle scope for Diesel platform routes/modules.
@@ -166,6 +171,14 @@ class DieselBridgeService : Service() {
         startAsForeground()
         val vibrationProvider =
             LegacyVibrationProvider(applicationContext)
+
+        val alarmStateOwner =
+            CompanionAlarmStateOwner(
+                platform.states,
+            )
+
+        companionAlarmStateOwner =
+            alarmStateOwner
 
         val developerRemoteAccessPolicy =
             DeveloperRemoteAccessPolicy(
@@ -533,6 +546,9 @@ class DieselBridgeService : Service() {
                         runner = sensorScanRunner,
                         store = sensorProbeStore,
                     ),
+                    CompanionAlarmCommandModule(
+                        alarmStateOwner,
+                    ),
                 ),
             )
 
@@ -627,6 +643,12 @@ class DieselBridgeService : Service() {
          */
         controller?.shutdown()
         controller = null
+
+        companionAlarmStateOwner
+            ?.close()
+
+        companionAlarmStateOwner =
+            null
 
         /*
          * Detach service-visible references synchronously, then finish sensor

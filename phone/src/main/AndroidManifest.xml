@@ -2,13 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      M6.0b still declares no Bluetooth, alarm, foreground-service, location,
-      notification-listener, or exact-alarm permissions. The companion sends
-      a normal Android broadcast to stock Gadgetbridge; Gadgetbridge remains
-      the only phone-side BLE owner.
+      M6.0c-M6.1e intentionally declares no Bluetooth, exact-alarm,
+      foreground-service or location permissions. Stock Gadgetbridge remains
+      the sole phone BLE owner. AlarmManager is read-only here.
     -->
 
     <application
+        android:name=".DieselBridgePhoneApplication"
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
@@ -23,6 +23,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".gateway.PhoneDieselInboundReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.bloom11.dieselbridge.DIESEL_MESSAGE" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>

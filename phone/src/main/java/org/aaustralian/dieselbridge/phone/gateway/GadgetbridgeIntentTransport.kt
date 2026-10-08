@@ -5,45 +5,35 @@ package org.aaustralian.dieselbridge.phone.gateway
 import android.content.Context
 import android.content.Intent
 
-/**
- * Android -> stock Gadgetbridge Bangle.js request adapter.
- *
- * No package or device-MAC filter is applied in M6.0b. This intentionally
- * matches tools/diesel-adb and keeps target-selection policy out of the first
- * transport proof. M6.0d owns explicit multi-device/session policy.
- */
 class GadgetbridgeIntentTransport(
     context: Context,
+    private val deviceAddress: String? = null,
 ) : PhoneDieselTransport {
+    private val applicationContext = context.applicationContext
 
-    private val applicationContext =
-        context.applicationContext
-
-    override fun submit(
-        line: String,
-    ) {
+    init {
         require(
-            line.isNotBlank(),
-        ) {
-            "Gadgetbridge line must not be blank"
-        }
+            deviceAddress == null ||
+                MAC_ADDRESS.matches(deviceAddress),
+        )
+    }
 
-        applicationContext
-            .sendBroadcast(
-                Intent(
-                    ACTION_UART_TX,
-                ).putExtra(
-                    EXTRA_LINE,
-                    line,
-                ),
-            )
+    override fun submit(line: String) {
+        require(line.isNotBlank())
+        val intent =
+            Intent(ACTION_UART_TX)
+                .putExtra(EXTRA_LINE, line)
+        deviceAddress?.let {
+            intent.putExtra(EXTRA_DEVICE, it)
+        }
+        applicationContext.sendBroadcast(intent)
     }
 
     companion object {
-        const val ACTION_UART_TX =
-            "com.banglejs.uart.tx"
-
-        const val EXTRA_LINE =
-            "line"
+        const val ACTION_UART_TX = "com.banglejs.uart.tx"
+        const val EXTRA_LINE = "line"
+        const val EXTRA_DEVICE = "device"
+        private val MAC_ADDRESS =
+            Regex("(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}")
     }
 }

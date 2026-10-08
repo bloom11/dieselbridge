@@ -32,6 +32,8 @@ import org.aaustralian.dieselbridge.sensor.PublicSensorSubscriptionController
 import org.aaustralian.dieselbridge.sensor.SensorCommandModule
 import org.aaustralian.dieselbridge.sensor.SensorSubscriptionCommandModule
 import org.aaustralian.dieselbridge.protocol.DieselCommandModule
+import org.aaustralian.dieselbridge.protocol.DieselEvent
+import org.aaustralian.dieselbridge.protocol.DieselValue
 import org.aaustralian.dieselbridge.protocol.DieselCommandResult
 import org.aaustralian.dieselbridge.protocol.DieselCommandRegistry
 import org.aaustralian.dieselbridge.protocol.DieselInvalidProtocolDispatch
@@ -100,6 +102,17 @@ class BlePeripheralController(
             sendLine =
                 bangleLineTransport::
                     sendLine,
+        )
+
+    private val companionLifecycleEventTransport =
+        GadgetbridgeDieselEventTransport(
+            sendLine =
+                bangleLineTransport::
+                    sendLine,
+            androidPackage =
+                COMPANION_ANDROID_PACKAGE,
+            androidClass =
+                COMPANION_ANDROID_RECEIVER_CLASS,
         )
 
     private val publicSensorSubscriptionController =
@@ -656,6 +669,21 @@ class BlePeripheralController(
     private fun onSubscribed() {
         sendVer()
         pushBatteryStatus()
+
+        companionLifecycleEventTransport
+            .send(
+                DieselEvent(
+                    topic =
+                        COMPANION_SYNC_TOPIC,
+                    data =
+                        mapOf(
+                            "reason" to
+                                DieselValue.Text(
+                                    "gadgetbridge_subscribed",
+                                ),
+                        ),
+                ),
+            )
     }
 
     private fun sendVer(): Boolean =
@@ -944,5 +972,14 @@ class BlePeripheralController(
 
         const val BATTERY_TX_REASON_SUBSCRIPTION =
             "subscription"
+
+        const val COMPANION_SYNC_TOPIC =
+            "companion.sync.request"
+
+        const val COMPANION_ANDROID_PACKAGE =
+            "io.github.bloom11.dieselbridge.phone"
+
+        const val COMPANION_ANDROID_RECEIVER_CLASS =
+            "org.aaustralian.dieselbridge.phone.gateway.PhoneDieselInboundReceiver"
     }
 }

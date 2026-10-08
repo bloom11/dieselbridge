@@ -6,20 +6,17 @@ import org.aaustralian.dieselbridge.protocol.DieselEvent
 import org.aaustralian.dieselbridge.protocol.DieselEventCodec
 import org.aaustralian.dieselbridge.protocol.DieselEventTransport
 
-/**
- * Diesel event transport backed by the existing bounded NUS line sender.
- */
 class GadgetbridgeDieselEventTransport(
     private val sendLine: (String) -> Boolean,
+    private val androidPackage: String? = null,
+    private val androidClass: String? = null,
 ) : DieselEventTransport {
-
-    override fun send(
-        event: DieselEvent,
-    ): Boolean =
+    override fun send(event: DieselEvent): Boolean =
         sendLine(
-            DieselEventCodec
-                .encodeGadgetbridgeIntent(
-                    event,
-                ),
+            DieselEventCodec.encodeGadgetbridgeIntent(
+                event = event,
+                androidPackage = androidPackage,
+                androidClass = androidClass,
+            ),
         )
 }

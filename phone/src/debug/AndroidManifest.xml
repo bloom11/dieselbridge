@@ -2,13 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
-        <!--
-          Debug-only physical-proof seam. It exposes no generic command input:
-          callers can choose only a bounded request ID; the command is fixed to
-          read-only debug.build.info. Release builds do not contain it.
-        -->
+        <!-- Historical M6.0b one-way proof seam. -->
         <receiver
             android:name=".debug.DebugSendRequestReceiver"
+            android:exported="true" />
+
+        <!-- Debug-only correlated gateway/alarm physical-proof seam. -->
+        <receiver
+            android:name=".debug.DebugCompanionGatewayReceiver"
             android:exported="true" />
     </application>
 </manifest>

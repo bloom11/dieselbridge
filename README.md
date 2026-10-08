@@ -72,13 +72,15 @@ compileSdk      36
 minSdk          28
 targetSdk       36
 
-versionCode     3
-versionName     0.1.0-dev.3
+versionCode     4
+versionName     0.1.0-dev.4
 
 BLE permissions none
-Alarm APIs      not implemented
-Request path    com.banglejs.uart.tx -> stock Gadgetbridge -> watch
-Response client not implemented until M6.0c
+Alarm scheduling permission none
+Request path    companion -> stock Gadgetbridge -> watch
+Response path   watch -> stock Gadgetbridge -> correlated companion response
+Alarm provider  AlarmManager.getNextAlarmClock()
+Alarm change    ACTION_NEXT_ALARM_CLOCK_CHANGED (registered receiver)
 ```
 
 `minSdk=28` means the application keeps an Android 9 / legacy Wear OS floor. `targetSdk=28` is an
@@ -395,6 +397,21 @@ M6.0b physical closure was demonstrated on exact SHA `94becf78ca04c2f0c51a79ce0c
 `status="ok"` and reported `data.gitSha="94becf78ca04c2f0c51a79ce0cf0028d4f093490"`. This proves the one-way companion ->
 stock Gadgetbridge -> BLE/NUS -> watch Diesel execution path. It does not claim that the companion
 received or correlated the response; that remains M6.0c.
+
+The M6.0c-M6.1e bundle builds on that proven transport without adding a second BLE owner. The phone
+keeps a bounded runtime-scoped pending request table and accepts a response only when its request ID,
+command and target match an outstanding request. Generic Diesel requests are never retried
+automatically. Alarm synchronization is deliberately higher-level and idempotent, so it alone uses
+finite retry/backoff semantics.
+
+Android next-alarm truth is normalized as `scheduled`, `none`, or `unavailable`, then written through
+the allowlisted `companion.alarm.next.sync` command into a single-owner watch `DieselStateStore` key.
+Alarm changes are event-driven, not polled. The phone registers
+`AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED`; the watch also emits a package/class-targeted
+`companion.sync.request` event when Gadgetbridge subscribes. That event can start the companion
+receiver after process death and asks for one bounded immediate reconciliation, while the coordinator
+retains finite retries for failed idempotent alarm-state synchronization. Only the latest current
+truth is replayed; intermediate historical alarm states are not queued.
 
 The watch advertises a Bangle-compatible name; current code uses:
 
@@ -1923,12 +1940,13 @@ confused with physical proof.
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
 | M6.0a | phone companion application + CI foundation | **Implemented on M6 branch; exact-SHA CI validates the pushed commit** |
 | M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Complete: exact-SHA stock Gadgetbridge + watch hardware proof (`94becf78`, run `37851876863`)** |
-| M6.0c | watch -> Gadgetbridge -> phone response correlation | **Planned** |
-| M6.0d | bounded gateway timeout/session/reconnect semantics | **Planned** |
-| M6.1a | Android next-alarm provider | **Planned; API boundary studied** |
-| M6.1b | watch `companion.alarm.next` StateStore ownership | **Planned** |
-| M6.1c | initial phone -> watch next-alarm synchronization | **Planned** |
-| M6.1d | automatic alarm-change propagation + reconnect resync | **Planned** |
+| M6.0c | watch -> Gadgetbridge -> phone response correlation | **Implemented in bundled gateway; final exact-SHA physical proof pending** |
+| M6.0d | bounded gateway timeout/session/reconnect semantics | **Implemented; bounded pending map/timeouts and no generic retry** |
+| M6.1a | Android next-alarm provider | **Implemented with scheduled / none / unavailable semantics** |
+| M6.1b | watch `companion.alarm.next` StateStore ownership | **Implemented through allowlisted Diesel sync/get commands** |
+| M6.1c | initial phone -> watch next-alarm synchronization | **Implemented; final exact-SHA physical proof pending** |
+| M6.1d | automatic alarm-change propagation | **Implemented with the protected system change broadcast** |
+| M6.1e | reconnect/process-lifecycle resync | **Implemented with finite retries + targeted watch reconnect event; final physical proof pending** |
 | M7 | Espruino/JavaScript runtime + local Diesel API bindings | **Planned** |
 | M8 | external Wear APK API + provider/plugin IPC | **Planned** |
 | M9 | health/history expansion | **Planned** |
