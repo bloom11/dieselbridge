@@ -389,6 +389,13 @@ slice intentionally mirrors `tools/diesel-adb`: it does not apply a Gadgetbridge
 `device` MAC filter. Android broadcast submission is not treated as watch acknowledgement. M6.0c
 owns response reception/correlation; M6.0d owns timeout, reconnect and target-selection policy.
 
+M6.0b physical closure was demonstrated on exact SHA `94becf78ca04c2f0c51a79ce0cf0028d4f093490` from CI run
+`37851876863`. The companion debug receiver submitted request
+`m60b-d65dcbe13ffe453b9fc36064` for `debug.build.info`; the watch returned the same request ID with
+`status="ok"` and reported `data.gitSha="94becf78ca04c2f0c51a79ce0cf0028d4f093490"`. This proves the one-way companion ->
+stock Gadgetbridge -> BLE/NUS -> watch Diesel execution path. It does not claim that the companion
+received or correlated the response; that remains M6.0c.
+
 The watch advertises a Bangle-compatible name; current code uses:
 
 ```text
@@ -1915,7 +1922,7 @@ confused with physical proof.
 | M5.2b | `ActionDispatcher` | **Implemented + CI verified (`32a1bb1f`, run `37370273364`; implementation `496dd3cc`)** |
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
 | M6.0a | phone companion application + CI foundation | **Implemented on M6 branch; exact-SHA CI validates the pushed commit** |
-| M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Implemented on branch; exact-SHA stock-Gadgetbridge physical proof pending** |
+| M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Complete: exact-SHA stock Gadgetbridge + watch hardware proof (`94becf78`, run `37851876863`)** |
 | M6.0c | watch -> Gadgetbridge -> phone response correlation | **Planned** |
 | M6.0d | bounded gateway timeout/session/reconnect semantics | **Planned** |
 | M6.1a | Android next-alarm provider | **Planned; API boundary studied** |

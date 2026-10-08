@@ -205,13 +205,6 @@ def submit_from_companion(
         result.stderr
     )
 
-    if result.returncode != 0:
-        raise ProofError(
-            "Companion debug receiver could not be invoked. "
-            "Install the exact M6.0b phone APK first.\n" +
-            text
-        )
-
     required = (
         "status=submitted",
         f"id={request_id}",
@@ -219,13 +212,39 @@ def submit_from_companion(
         f"gitSha={expected_sha}",
     )
 
-    for token in required:
-        if token not in text:
+    missing = [
+        token
+        for token in required
+        if token not in text
+    ]
+
+    if missing:
+        if result.returncode != 0:
             raise ProofError(
-                "Companion did not report the expected exact-SHA submission.\n"
-                f"Missing: {token}\n"
+                "Companion debug receiver did not return the expected "
+                "ordered-broadcast success result.\n"
+                f"Process exit code: {result.returncode}\n"
+                f"Missing: {', '.join(missing)}\n"
                 f"Broadcast output:\n{text}"
             )
+
+        raise ProofError(
+            "Companion did not report the expected exact-SHA submission.\n"
+            f"Missing: {', '.join(missing)}\n"
+            f"Broadcast output:\n{text}"
+        )
+
+    # Android's `am broadcast` can return a non-zero shell exit status even
+    # when the ordered receiver itself completed successfully. The receiver's
+    # Activity.RESULT_OK is rendered as `result=-1`; the structured result
+    # data above is therefore the authoritative M6.0b submission proof.
+    if "result=-1" not in text:
+        raise ProofError(
+            "Companion returned the expected data but Android did not report "
+            "Activity.RESULT_OK (result=-1).\n"
+            f"Process exit code: {result.returncode}\n"
+            f"Broadcast output:\n{text}"
+        )
 
     return text.strip()
 
