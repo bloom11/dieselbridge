@@ -413,6 +413,16 @@ receiver after process death and asks for one bounded immediate reconciliation, 
 retains finite retries for failed idempotent alarm-state synchronization. Only the latest current
 truth is replayed; intermediate historical alarm states are not queued.
 
+M6.0c and M6.1a-e physical closure was demonstrated on exact SHA `1c6e5d025b42270f5775d7ae0c0b5068b72966d8` from CI run
+`37857431144`. The companion itself correlated request `phone-bd638342-c45b2d6702164ed4b67248be` with an `ok`
+`debug.build.info` response whose watch Git SHA was the same exact SHA. Initial alarm synchronization
+reached `CONFIRMED` with both desired and confirmed `scheduled@1791583200000`. Changing
+the phone's next alarm then updated the desired/confirmed timestamp automatically without pressing
+the manual sync control, closing M6.1d. A separate disconnect/change/reconnect exercise reconciled the
+latest alarm automatically without manual sync, closing M6.1e. M6.0d's bounded negative cases remain
+primarily unit/CI evidence; the successful correlated round trip and reconnect recovery exercise its
+runtime path but are not a claim that every rejection/timeout edge was separately induced on hardware.
+
 The watch advertises a Bangle-compatible name; current code uses:
 
 ```text
@@ -1435,9 +1445,11 @@ It:
 - waits for the GitHub Actions run belonging to that exact SHA;
 - distinguishes a transient `gh run watch` network interruption from a real CI failure;
 - requires authoritative exact-SHA CI success;
-- downloads both `dieselbridge-bloom-debug` and `dieselbridge-phone-bloom-debug`;
+- treats `dieselbridge-bloom-debug` and `dieselbridge-phone-bloom-debug` independently;
+- reuses each valid local exact-SHA/run artifact cache without downloading that side again;
+- downloads only the watch or phone artifact whose cache is missing, empty, mismatched or explicitly forced;
 - stores them under `<sha>-run-<run>/watch/` and `<sha>-run-<run>/phone/`;
-- stages both downloads before replacing the prior exact-SHA pair;
+- records local per-artifact provenance with Git SHA, CI run, artifact name, APK filename and SHA-256 when available;
 - reports SHA-256 for both APKs when available;
 - copies and verifies the companion APK under
   `Downloads/DieselBridge/Companion/DieselBridge-Companion-<sha>-run-<run>.apk` when Termux shared
@@ -1448,14 +1460,19 @@ Default:
 
     ./tools/diesel-ci-watch-install
 
-Download both artifacts without watch installation:
+Prepare both exact-SHA artifacts without watch installation. Valid watch/phone caches are reused
+independently:
 
     ./tools/diesel-ci-watch-install --download-only
 
-Download both, verify the dedicated Downloads copy, and only then launch Android's package
+Prepare both, verify/reuse the dedicated Downloads copy, and only then launch Android's package
 installer for the companion:
 
     ./tools/diesel-ci-watch-install --download-only --open-phone-installer
+
+Force both CI artifacts to be downloaded again even when valid exact-SHA/run caches exist:
+
+    ./tools/diesel-ci-watch-install --force-download
 
 Canonical artifact layout:
 
@@ -1470,6 +1487,12 @@ Canonical artifact layout:
 The Android Downloads copy is only an installation convenience; the build directory remains the
 provenance-preserving source artifact. The installer is opened only after the copy exists, is
 non-empty, matches the source byte count and, when `sha256sum` is available, matches its SHA-256.
+An already matching Downloads copy is reused rather than recopied.
+
+Each watch/phone cache is validated independently. New downloads create a
+`.diesel-artifact-provenance` sidecar in that artifact directory. A legacy cache already located
+under the canonical exact `<sha>-run-<run>` directory can be adopted once and then receives the same
+provenance sidecar for subsequent invocations.
 
 The helper resolves both ordinary clones and linked Git worktrees. When invoked from outside a
 checkout, set `DIESEL_REPO_ROOT=/path/to/checkout`. `DIESEL_BUILD_ROOT` can override the artifact
@@ -1940,13 +1963,13 @@ confused with physical proof.
 | M5.2c | `ModuleManager` / module lifecycle | **Implemented + CI verified (`89513bc2`, run `37382165935`; implementation `2346a406`)** |
 | M6.0a | phone companion application + CI foundation | **Implemented on M6 branch; exact-SHA CI validates the pushed commit** |
 | M6.0b | phone -> stock Gadgetbridge -> watch Diesel request path | **Complete: exact-SHA stock Gadgetbridge + watch hardware proof (`94becf78`, run `37851876863`)** |
-| M6.0c | watch -> Gadgetbridge -> phone response correlation | **Implemented in bundled gateway; final exact-SHA physical proof pending** |
-| M6.0d | bounded gateway timeout/session/reconnect semantics | **Implemented; bounded pending map/timeouts and no generic retry** |
-| M6.1a | Android next-alarm provider | **Implemented with scheduled / none / unavailable semantics** |
-| M6.1b | watch `companion.alarm.next` StateStore ownership | **Implemented through allowlisted Diesel sync/get commands** |
-| M6.1c | initial phone -> watch next-alarm synchronization | **Implemented; final exact-SHA physical proof pending** |
-| M6.1d | automatic alarm-change propagation | **Implemented with the protected system change broadcast** |
-| M6.1e | reconnect/process-lifecycle resync | **Implemented with finite retries + targeted watch reconnect event; final physical proof pending** |
+| M6.0c | watch -> Gadgetbridge -> phone response correlation | **Complete: exact-SHA companion-side round-trip proof (`1c6e5d02`, run `37857431144`)** |
+| M6.0d | bounded gateway timeout/session/reconnect semantics | **Complete: CI/unit-tested bounds; physical round-trip + reconnect recovery exercised** |
+| M6.1a | Android next-alarm provider | **Complete: exact-SHA physical next-alarm observation (`1c6e5d02`)** |
+| M6.1b | watch `companion.alarm.next` StateStore ownership | **Complete: synchronized watch state physically confirmed (`1c6e5d02`)** |
+| M6.1c | initial phone -> watch next-alarm synchronization | **Complete: exact-SHA `CONFIRMED` hardware proof (`1c6e5d02`)** |
+| M6.1d | automatic alarm-change propagation | **Complete: alarm timestamp changed automatically without manual sync (`1c6e5d02`)** |
+| M6.1e | reconnect/process-lifecycle resync | **Complete: automatic reconnect reconciliation physically proven (`1c6e5d02`)** |
 | M7 | Espruino/JavaScript runtime + local Diesel API bindings | **Planned** |
 | M8 | external Wear APK API + provider/plugin IPC | **Planned** |
 | M9 | health/history expansion | **Planned** |

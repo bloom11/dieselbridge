@@ -9,6 +9,7 @@ diesel_ci_watch_download_install() {
 
   DOWNLOAD_ONLY=0
   OPEN_PHONE_INSTALLER=0
+  FORCE_DOWNLOAD=0
 
   for ARG in "$@"; do
     case "$ARG" in
@@ -18,13 +19,17 @@ diesel_ci_watch_download_install() {
       --open-phone-installer)
         OPEN_PHONE_INSTALLER=1
         ;;
+      --force-download)
+        FORCE_DOWNLOAD=1
+        ;;
       -h|--help)
         echo "Usage:"
-        echo "  ./tools/diesel-ci-watch-install [--download-only] [--open-phone-installer]"
+        echo "  ./tools/diesel-ci-watch-install [--download-only] [--open-phone-installer] [--force-download]"
         echo
-        echo "Default: download exact-SHA watch + phone artifacts, then install the watch."
-        echo "--download-only: download both artifacts without watch ADB/install."
+        echo "Default: reuse valid exact-SHA cached artifacts independently; download only missing/mismatched sides; then install the watch."
+        echo "--download-only: prepare both exact-SHA artifacts without watch ADB/install."
         echo "--open-phone-installer: verify Downloads copy, then open Android installer."
+        echo "--force-download: ignore valid watch/phone caches and redownload both."
         return 0
         ;;
       *)
@@ -98,13 +103,34 @@ diesel_ci_watch_download_install() {
     return 1
   fi
 
-  if [ -n "$(git status --porcelain)" ]; then
-    echo "ERROR: repository has uncommitted changes."
-    echo
-    git status --short
-    echo
-    echo "Commit/push or restore the current work before using this installer."
-    return 1
+  DIRTY_STATUS="$(git status --porcelain)"
+
+  if [ -n "$DIRTY_STATUS" ]; then
+    DIRTY_PATHS="$(
+      {
+        git diff --name-only
+        git diff --cached --name-only
+        git ls-files --others --exclude-standard
+      } |
+        sed '/^$/d' |
+        sort -u
+    )"
+
+    if [ "${DIESEL_ALLOW_DIRTY_INSTALLER:-0}" = "1" ] &&
+       [ "$DIRTY_PATHS" = "tools/diesel-ci-watch-install" ]; then
+      echo "NOTE: allowing the local installer-only development patch."
+      echo "Exact application source HEAD remains unchanged."
+    else
+      echo "ERROR: repository has uncommitted changes."
+      echo
+      git status --short
+      echo
+      echo "Commit/push or restore the current work before using this installer."
+      echo
+      echo "For the temporary local installer-only patch, use:"
+      echo "  DIESEL_ALLOW_DIRTY_INSTALLER=1 ./tools/diesel-ci-watch-install"
+      return 1
+    fi
   fi
 
   BRANCH="$(git branch --show-current)"
@@ -298,82 +324,228 @@ diesel_ci_watch_download_install() {
   PHONE_DIR="$BUILD_DIR/phone"
   TEMP_DIR="$BUILD_DIR/.download-$$"
 
-  printf '\n===== DOWNLOAD EXACT-SHA ARTIFACTS =====\n'
+  printf '\n===== EXACT-SHA ARTIFACT CACHE =====\n'
   echo "Build root: $BUILD_DIR"
   echo "Watch     : $WATCH_DIR"
   echo "Phone     : $PHONE_DIR"
 
+  artifact_write_provenance() {
+    ARTIFACT_DIR="$1"
+    ARTIFACT_NAME="$2"
+    APK_PATH="$3"
+    MARKER="$ARTIFACT_DIR/.diesel-artifact-provenance"
+    APK_FILE="$(basename "$APK_PATH")"
+    APK_SHA=""
+
+    if command -v sha256sum >/dev/null 2>&1; then
+      APK_SHA="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+    fi
+
+    {
+      echo "gitSha=$HEAD"
+      echo "runId=$RUN_ID"
+      echo "artifactName=$ARTIFACT_NAME"
+      echo "apkFile=$APK_FILE"
+      echo "apkSha256=$APK_SHA"
+    } > "$MARKER"
+  }
+
+  artifact_reuse_cached() {
+    ARTIFACT_DIR="$1"
+    ARTIFACT_NAME="$2"
+    LABEL="$3"
+
+    [ -d "$ARTIFACT_DIR" ] || return 1
+
+    APK_COUNT="$(
+      find "$ARTIFACT_DIR" -maxdepth 3 -type f -name '*.apk' |
+        wc -l |
+        tr -d '[:space:]'
+    )"
+
+    [ "$APK_COUNT" -eq 1 ] || return 1
+
+    CACHED_APK="$(
+      find "$ARTIFACT_DIR" -maxdepth 3 -type f -name '*.apk' |
+        head -n1
+    )"
+
+    [ -s "$CACHED_APK" ] || return 1
+
+    MARKER="$ARTIFACT_DIR/.diesel-artifact-provenance"
+
+    if [ -f "$MARKER" ]; then
+      MARKER_SHA="$(sed -n 's/^gitSha=//p' "$MARKER" | head -n1)"
+      MARKER_RUN="$(sed -n 's/^runId=//p' "$MARKER" | head -n1)"
+      MARKER_ARTIFACT="$(sed -n 's/^artifactName=//p' "$MARKER" | head -n1)"
+      MARKER_APK="$(sed -n 's/^apkFile=//p' "$MARKER" | head -n1)"
+      MARKER_APK_SHA="$(sed -n 's/^apkSha256=//p' "$MARKER" | head -n1)"
+
+      if [ "$MARKER_SHA" != "$HEAD" ] ||
+         [ "$MARKER_RUN" != "$RUN_ID" ] ||
+         [ "$MARKER_ARTIFACT" != "$ARTIFACT_NAME" ] ||
+         [ "$MARKER_APK" != "$(basename "$CACHED_APK")" ]; then
+        echo "$LABEL cache provenance does not match current exact SHA/run."
+        return 1
+      fi
+
+      if [ -n "$MARKER_APK_SHA" ] &&
+         command -v sha256sum >/dev/null 2>&1; then
+        CURRENT_APK_SHA="$(sha256sum "$CACHED_APK" | awk '{print $1}')"
+        if [ "$CURRENT_APK_SHA" != "$MARKER_APK_SHA" ]; then
+          echo "$LABEL cached APK SHA-256 no longer matches its provenance marker."
+          return 1
+        fi
+      fi
+    else
+      echo "$LABEL cache is in the canonical exact-SHA/run directory."
+      echo "Adopting legacy cache once and writing local provenance."
+      artifact_write_provenance \
+        "$ARTIFACT_DIR" \
+        "$ARTIFACT_NAME" \
+        "$CACHED_APK"
+    fi
+
+    echo "Reusing $LABEL exact-SHA artifact:"
+    echo "  $CACHED_APK"
+    return 0
+  }
+
+  artifact_download_one() {
+    ARTIFACT_NAME="$1"
+    LABEL="$2"
+    TARGET_DIR="$3"
+    TEMP_SUBDIR="$4"
+
+    rm -rf "$TEMP_SUBDIR"
+    mkdir -p "$TEMP_SUBDIR"
+
+    printf '\nDownloading %s artifact: %s\n' "$LABEL" "$ARTIFACT_NAME"
+
+    gh run download \
+      "$RUN_ID" \
+      --repo "$REPO" \
+      --name "$ARTIFACT_NAME" \
+      --dir "$TEMP_SUBDIR"
+
+    DOWNLOAD_RC=$?
+
+    if [ "$DOWNLOAD_RC" -ne 0 ]; then
+      echo "ERROR: $LABEL artifact download failed."
+      return "$DOWNLOAD_RC"
+    fi
+
+    APK_COUNT="$(
+      find "$TEMP_SUBDIR" -maxdepth 3 -type f -name '*.apk' |
+        wc -l |
+        tr -d '[:space:]'
+    )"
+
+    if [ "$APK_COUNT" -ne 1 ]; then
+      echo "ERROR: expected exactly one $LABEL APK; found $APK_COUNT"
+      find "$TEMP_SUBDIR" -maxdepth 3 -type f
+      return 1
+    fi
+
+    DOWNLOADED_APK="$(
+      find "$TEMP_SUBDIR" -maxdepth 3 -type f -name '*.apk' |
+        head -n1
+    )"
+
+    if [ ! -s "$DOWNLOADED_APK" ]; then
+      echo "ERROR: downloaded $LABEL APK is empty."
+      return 1
+    fi
+
+    mkdir -p "$BUILD_DIR"
+    rm -rf "$TARGET_DIR"
+    mv "$TEMP_SUBDIR" "$TARGET_DIR"
+
+    FINAL_APK="$(
+      find "$TARGET_DIR" -maxdepth 3 -type f -name '*.apk' |
+        head -n1
+    )"
+
+    artifact_write_provenance \
+      "$TARGET_DIR" \
+      "$ARTIFACT_NAME" \
+      "$FINAL_APK"
+
+    DOWNLOADED_APK="$FINAL_APK"
+  }
+
+  WATCH_NEEDS_DOWNLOAD=1
+  PHONE_NEEDS_DOWNLOAD=1
+  WATCH_SOURCE="download"
+  PHONE_SOURCE="download"
+  WATCH_APK=""
+  PHONE_APK=""
+
+  if [ "$FORCE_DOWNLOAD" -ne 1 ]; then
+    if artifact_reuse_cached "$WATCH_DIR" "$WATCH_ARTIFACT" "watch"; then
+      WATCH_APK="$CACHED_APK"
+      WATCH_NEEDS_DOWNLOAD=0
+      WATCH_SOURCE="cache"
+    fi
+
+    if artifact_reuse_cached "$PHONE_DIR" "$PHONE_ARTIFACT" "phone"; then
+      PHONE_APK="$CACHED_APK"
+      PHONE_NEEDS_DOWNLOAD=0
+      PHONE_SOURCE="cache"
+    fi
+  else
+    echo "Forced redownload requested for both artifacts."
+  fi
+
+  if [ "$WATCH_NEEDS_DOWNLOAD" -eq 1 ] ||
+     [ "$PHONE_NEEDS_DOWNLOAD" -eq 1 ]; then
+    rm -rf "$TEMP_DIR"
+    mkdir -p "$TEMP_DIR"
+  fi
+
+  if [ "$WATCH_NEEDS_DOWNLOAD" -eq 1 ]; then
+    if ! artifact_download_one \
+      "$WATCH_ARTIFACT" \
+      "watch" \
+      "$WATCH_DIR" \
+      "$TEMP_DIR/watch"; then
+      rm -rf "$TEMP_DIR"
+      return 1
+    fi
+    WATCH_APK="$DOWNLOADED_APK"
+  fi
+
+  if [ "$PHONE_NEEDS_DOWNLOAD" -eq 1 ]; then
+    if ! artifact_download_one \
+      "$PHONE_ARTIFACT" \
+      "phone" \
+      "$PHONE_DIR" \
+      "$TEMP_DIR/phone"; then
+      rm -rf "$TEMP_DIR"
+      return 1
+    fi
+    PHONE_APK="$DOWNLOADED_APK"
+  fi
+
   rm -rf "$TEMP_DIR"
-  mkdir -p "$TEMP_DIR/watch" "$TEMP_DIR/phone"
 
-  gh run download \
-    "$RUN_ID" \
-    --repo "$REPO" \
-    --name "$WATCH_ARTIFACT" \
-    --dir "$TEMP_DIR/watch"
-
-  WATCH_DOWNLOAD_RC=$?
-
-  if [ "$WATCH_DOWNLOAD_RC" -ne 0 ]; then
-    rm -rf "$TEMP_DIR"
-    echo "ERROR: watch artifact download failed."
-    return "$WATCH_DOWNLOAD_RC"
-  fi
-
-  gh run download \
-    "$RUN_ID" \
-    --repo "$REPO" \
-    --name "$PHONE_ARTIFACT" \
-    --dir "$TEMP_DIR/phone"
-
-  PHONE_DOWNLOAD_RC=$?
-
-  if [ "$PHONE_DOWNLOAD_RC" -ne 0 ]; then
-    rm -rf "$TEMP_DIR"
-    echo "ERROR: phone artifact download failed."
-    return "$PHONE_DOWNLOAD_RC"
-  fi
-
-  WATCH_APK_COUNT="$(
-    find "$TEMP_DIR/watch" -type f -name '*.apk' |
-      wc -l |
-      tr -d '[:space:]'
-  )"
-
-  PHONE_APK_COUNT="$(
-    find "$TEMP_DIR/phone" -type f -name '*.apk' |
-      wc -l |
-      tr -d '[:space:]'
-  )"
-
-  if [ "$WATCH_APK_COUNT" -ne 1 ]; then
-    echo "ERROR: expected exactly one watch APK; found $WATCH_APK_COUNT"
-    find "$TEMP_DIR/watch" -maxdepth 3 -type f
-    rm -rf "$TEMP_DIR"
+  if [ -z "$WATCH_APK" ] || [ ! -s "$WATCH_APK" ]; then
+    echo "ERROR: exact-SHA watch APK is unavailable."
     return 1
   fi
 
-  if [ "$PHONE_APK_COUNT" -ne 1 ]; then
-    echo "ERROR: expected exactly one phone APK; found $PHONE_APK_COUNT"
-    find "$TEMP_DIR/phone" -maxdepth 3 -type f
-    rm -rf "$TEMP_DIR"
+  if [ -z "$PHONE_APK" ] || [ ! -s "$PHONE_APK" ]; then
+    echo "ERROR: exact-SHA phone APK is unavailable."
     return 1
   fi
 
-  mkdir -p "$BUILD_DIR"
-  rm -rf "$WATCH_DIR" "$PHONE_DIR"
-  mv "$TEMP_DIR/watch" "$WATCH_DIR"
-  mv "$TEMP_DIR/phone" "$PHONE_DIR"
-  rmdir "$TEMP_DIR" 2>/dev/null || true
-
-  WATCH_APK="$(find "$WATCH_DIR" -type f -name '*.apk' | head -n1)"
-  PHONE_APK="$(find "$PHONE_DIR" -type f -name '*.apk' | head -n1)"
-
-  printf '\n===== DOWNLOADED WATCH APK =====\n'
+  printf '\n===== EXACT-SHA WATCH APK =====\n'
+  echo "Source: $WATCH_SOURCE"
   echo "$WATCH_APK"
   ls -lh "$WATCH_APK"
 
-  printf '\n===== DOWNLOADED PHONE APK =====\n'
+  printf '\n===== EXACT-SHA PHONE APK =====\n'
+  echo "Source: $PHONE_SOURCE"
   echo "$PHONE_APK"
   ls -lh "$PHONE_APK"
 
@@ -396,13 +568,37 @@ diesel_ci_watch_download_install() {
 
     PHONE_DOWNLOAD_COPY="$PHONE_DOWNLOAD_DIR/DieselBridge-Companion-${SHORT}-run-${RUN_ID}.apk"
 
-    printf '\n===== COPY COMPANION TO ANDROID DOWNLOADS =====\n'
+    printf '\n===== PREPARE COMPANION ANDROID DOWNLOADS COPY =====\n'
     echo "Source : $PHONE_APK"
     echo "Target : $PHONE_DOWNLOAD_COPY"
 
-    if ! cp -f "$PHONE_APK" "$PHONE_DOWNLOAD_COPY"; then
-      echo "ERROR: companion copy failed."
-      return 1
+    COPY_REQUIRED=1
+
+    if [ -s "$PHONE_DOWNLOAD_COPY" ]; then
+      SOURCE_BYTES="$(wc -c < "$PHONE_APK" | tr -d '[:space:]')"
+      COPY_BYTES="$(wc -c < "$PHONE_DOWNLOAD_COPY" | tr -d '[:space:]')"
+
+      if [ "$SOURCE_BYTES" = "$COPY_BYTES" ]; then
+        if command -v sha256sum >/dev/null 2>&1; then
+          SOURCE_SHA="$(sha256sum "$PHONE_APK" | awk '{print $1}')"
+          COPY_SHA="$(sha256sum "$PHONE_DOWNLOAD_COPY" | awk '{print $1}')"
+
+          if [ "$SOURCE_SHA" = "$COPY_SHA" ]; then
+            COPY_REQUIRED=0
+          fi
+        else
+          COPY_REQUIRED=0
+        fi
+      fi
+    fi
+
+    if [ "$COPY_REQUIRED" -eq 0 ]; then
+      echo "Reusing existing verified companion Downloads copy."
+    else
+      if ! cp -f "$PHONE_APK" "$PHONE_DOWNLOAD_COPY"; then
+        echo "ERROR: companion copy failed."
+        return 1
+      fi
     fi
 
     if [ ! -s "$PHONE_DOWNLOAD_COPY" ]; then
