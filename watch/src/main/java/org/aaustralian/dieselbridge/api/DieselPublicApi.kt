@@ -159,9 +159,26 @@ class DieselPublicApi(
             events.values.map { it.descriptor },
         apiVersion,
     )
+    private val dynamicCatalog =
+        DieselDynamicResourceCatalog(
+            catalog.snapshot().resources.map { it.id }.toSet(),
+        )
+    private val publicApiVersion = apiVersion
 
-    fun catalog(): DieselCatalogSnapshot = catalog.snapshot()
-    fun descriptor(id: String): DieselResourceDescriptor? = catalog.find(id)
+    fun catalog(): DieselCatalogSnapshot =
+        DieselCatalogSnapshot(
+            publicApiVersion,
+            (catalog.snapshot().resources + dynamicCatalog.snapshot())
+                .sortedBy { it.id },
+        )
+
+    fun descriptor(id: String): DieselResourceDescriptor? =
+        catalog.find(id) ?: dynamicCatalog.find(id)
+
+    internal fun retainDynamicDescriptor(
+        descriptor: DieselResourceDescriptor,
+    ): DieselDynamicResourceRegistration =
+        dynamicCatalog.retain(descriptor)
     fun getState(id: String): DieselPublicStateResult =
         states[id]?.read?.invoke() ?: DieselPublicStateResult.NotFound(id)
 

@@ -2527,9 +2527,19 @@ event-subscription jobs.
 
 ### M7.4 — external providers
 
-Represent remote providers with local proxy objects registered into the existing core. Start with
-explicit provider roles: state publisher, action handler, event publisher and observation provider.
-DieselBridge controls authorization and effective provider priority.
+M7.4 is intentionally split into two exact-SHA slices. M7.4a establishes the stable provider
+contract and dynamic discovery rules before any Binder provider can mutate the core.
+
+New external resources are confined to `plugin.<package>.*`; new logical observations use
+`sensor.observe.plugin.<package>.*`. The server derives the legal operation set from the resource
+kind. Callers never choose effective provider priority: normal external observation providers will
+be assigned priority -100 by DieselBridge.
+
+Dynamic descriptors are reference-counted discovery metadata only. They do not replace
+`DieselStateStore`, `DieselActionDispatcher`, `DieselEventBus`, `CapabilityRegistry` or
+`SensorObservationManager`. M7.4b binds remote provider callbacks to those existing owners:
+state publisher, bounded action handler, event publisher and real `SensorObservationCapability`
+proxy registrations.
 
 ### M7.5 — generic transport endpoints
 

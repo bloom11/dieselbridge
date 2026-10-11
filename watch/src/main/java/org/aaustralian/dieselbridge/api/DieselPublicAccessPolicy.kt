@@ -41,7 +41,30 @@ internal class DieselPublicAccessPolicy(
                 descriptor.kind == DieselResourceKind.EVENT &&
                     operation == DieselResourceOperation.SUBSCRIBE
 
-            else -> false
+            else ->
+                when {
+                    descriptor.id.startsWith("plugin.") &&
+                        descriptor.kind == DieselResourceKind.STATE ->
+                        operation == DieselResourceOperation.READ
+
+                    descriptor.id.startsWith("plugin.") &&
+                        descriptor.kind == DieselResourceKind.ACTION ->
+                        operation == DieselResourceOperation.INVOKE
+
+                    descriptor.id.startsWith("plugin.") &&
+                        descriptor.kind == DieselResourceKind.EVENT ->
+                        operation == DieselResourceOperation.SUBSCRIBE
+
+                    descriptor.id.startsWith("sensor.observe.plugin.") &&
+                        descriptor.kind == DieselResourceKind.OBSERVATION ->
+                        operation == DieselResourceOperation.SUBSCRIBE
+
+                    descriptor.kind == DieselResourceKind.TRANSPORT ->
+                        operation == DieselResourceOperation.OPEN
+
+                    else ->
+                        false
+                }
         }
     }
 
