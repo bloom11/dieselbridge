@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Public Diesel Binder clients explicitly opt in to the API contract. -->
+    <permission
+        android:name="io.github.bloom11.dieselbridge.permission.USE_DIESEL_API"
+        android:protectionLevel="normal" />
+
     <!-- Wear OS device + BLE hardware requirement -->
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
@@ -111,6 +116,15 @@
             android:name=".service.DieselBridgeService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <service
+            android:name=".ipc.DieselPublicApiService"
+            android:exported="true"
+            android:permission="io.github.bloom11.dieselbridge.permission.USE_DIESEL_API">
+            <intent-filter>
+                <action android:name="io.github.bloom11.dieselbridge.PUBLIC_API" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".tile.PixelBridgeTileService"

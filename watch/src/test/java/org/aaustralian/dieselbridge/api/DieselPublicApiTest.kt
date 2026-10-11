@@ -174,7 +174,8 @@ class DieselPublicApiTest {
         )
 
         val api = DieselDefaultPublicApi.create(platform)
-        assertEquals(DieselDefaultPublicApi.COMPANION_NEXT_ALARM, api.catalog().resources.single())
+        assertTrue(api.catalog().resources.contains(DieselDefaultPublicApi.COMPANION_NEXT_ALARM))
+        assertTrue(api.catalog().resources.contains(DieselDefaultPublicApi.WATCH_VIBRATION))
 
         val result = api.getState(CompanionAlarmStateOwner.KEY.id)
         assertTrue(result is DieselPublicStateResult.Success)

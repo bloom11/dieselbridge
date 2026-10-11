@@ -136,6 +136,8 @@ class DieselPublicApi(
 
     fun catalog(): DieselCatalogSnapshot = catalog.snapshot()
 
+    fun descriptor(id: String): DieselResourceDescriptor? = catalog.find(id)
+
     fun getState(id: String): DieselPublicStateResult =
         states[id]?.read?.invoke()
             ?: DieselPublicStateResult.NotFound(resourceId = id)

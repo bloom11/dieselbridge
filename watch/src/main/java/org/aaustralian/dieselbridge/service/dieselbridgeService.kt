@@ -27,6 +27,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import org.aaustralian.dieselbridge.R
+import org.aaustralian.dieselbridge.api.DieselDefaultPublicApi
+import org.aaustralian.dieselbridge.api.DieselPublicRuntimeAccess
+import org.aaustralian.dieselbridge.api.DieselPublicRuntimeContext
+import org.aaustralian.dieselbridge.platform.action.DieselActionRegistration
+import org.aaustralian.dieselbridge.platform.action.WatchVibrationAction
 import org.aaustralian.dieselbridge.ble.BatteryReader
 import org.aaustralian.dieselbridge.ble.BlePeripheralController
 import org.aaustralian.dieselbridge.data.MusicStore
@@ -95,6 +100,9 @@ class DieselBridgeService : Service() {
     private var companionAlarmStateOwner:
         CompanionAlarmStateOwner? = null
 
+    private var vibrationActionRegistration: DieselActionRegistration? = null
+    private var publicRuntimeContext: DieselPublicRuntimeContext? = null
+
     /*
      * Lifecycle scope for Diesel platform routes/modules.
      * This service owns and cancels it.
@@ -124,6 +132,11 @@ class DieselBridgeService : Service() {
      * dispatcher.
      */
     private val protocolScope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Default,
+        )
+
+    private val publicApiScope =
         CoroutineScope(
             SupervisorJob() + Dispatchers.Default,
         )
@@ -494,6 +507,8 @@ class DieselBridgeService : Service() {
             priority = LegacyBatteryProvider.PRIORITY,
         )
 
+        vibrationActionRegistration = WatchVibrationAction.register(platform)
+
         DeveloperRuntimeAccess.attachSensorMatrixExperiment(
             SensorMatrixExperiment(platform.capabilities),
         )
@@ -504,6 +519,13 @@ class DieselBridgeService : Service() {
             sensorInventory = sensorInventory,
             developerRemoteAccessPolicy = developerRemoteAccessPolicy,
         )
+
+        val publicRuntime = DieselPublicRuntimeContext(
+            api = DieselDefaultPublicApi.create(platform),
+            scope = publicApiScope,
+        )
+        publicRuntimeContext = publicRuntime
+        DieselPublicRuntimeAccess.attach(publicRuntime)
 
         val developerExportRegistry =
             WatchDeveloperExportRegistry.create(
@@ -629,6 +651,12 @@ class DieselBridgeService : Service() {
         NotificationActions.callHandler = null
         NotificationActions.musicHandler = null
         tileScope.cancel()
+
+        publicRuntimeContext?.let(DieselPublicRuntimeAccess::detach)
+        publicRuntimeContext = null
+        publicApiScope.cancel()
+        vibrationActionRegistration?.close()
+        vibrationActionRegistration = null
 
         healthServicesObservationRecoveryController
             ?.close()

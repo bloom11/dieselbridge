@@ -38,8 +38,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge"
         minSdk = 28          // Android 9 API floor for legacy Wear OS compatibility
         targetSdk = 28       // Intentional legacy target behavior; compileSdk remains 36
-        versionCode = 27
-        versionName = "1.0.0-dev.22"
+        versionCode = 28
+        versionName = "1.0.0-dev.23"
 
         buildConfigField(
             "String",
@@ -95,6 +95,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true
     }
 
     // Match Gadgetbridge's toolchain style: Java 17 source/target, built with JDK 21.
