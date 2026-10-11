@@ -5,6 +5,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import org.aaustralian.dieselbridge.platform.action.DieselActionDispatcher
 import org.aaustralian.dieselbridge.platform.action.DieselActionKey
 import org.aaustralian.dieselbridge.platform.action.DieselActionResult
+import org.aaustralian.dieselbridge.platform.event.DieselEvent
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorBufferPolicy
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationClient
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscription
@@ -113,20 +114,49 @@ sealed interface DieselPublicObservationOpenResult {
     data class Rejected(val reason: String) : DieselPublicObservationOpenResult
 }
 
+data class DieselPublicEncodedEvent(
+    val resourceId: String,
+    val timestampMs: Long,
+    val value: DieselValue,
+)
+
+class DieselPublicEventBinding(
+    val descriptor: DieselResourceDescriptor,
+    private val matches: (DieselEvent) -> Boolean,
+    private val encode: (DieselEvent) -> DieselValue,
+) {
+    init {
+        require(descriptor.kind == DieselResourceKind.EVENT)
+        require(DieselResourceOperation.SUBSCRIBE in descriptor.operations)
+    }
+
+    internal fun encodeIfMatches(event: DieselEvent): DieselPublicEncodedEvent? {
+        if (!matches(event)) return null
+        return try {
+            DieselPublicEncodedEvent(descriptor.id, event.timestampMs, encode(event))
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
 class DieselPublicApi(
     stateBindings: Iterable<DieselPublicStateBinding> = emptyList(),
     actionBindings: Iterable<DieselPublicActionBinding> = emptyList(),
     observationBindings: Iterable<DieselPublicObservationBinding> = emptyList(),
+    eventBindings: Iterable<DieselPublicEventBinding> = emptyList(),
     apiVersion: DieselApiVersion = DieselApiVersion.CURRENT,
     private val observationLimits: DieselPublicObservationLimits = DieselPublicObservationLimits(),
 ) {
     private val states = stateBindings.toList().associateBy { it.descriptor.id }
     private val actions = actionBindings.toList().associateBy { it.descriptor.id }
     private val observations = observationBindings.toList().associateBy { it.descriptor.id }
+    private val events = eventBindings.toList().associateBy { it.descriptor.id }
     private val catalog = DieselApiCatalog(
         states.values.map { it.descriptor } +
             actions.values.map { it.descriptor } +
-            observations.values.map { it.descriptor },
+            observations.values.map { it.descriptor } +
+            events.values.map { it.descriptor },
         apiVersion,
     )
 
@@ -166,4 +196,9 @@ class DieselPublicApi(
             DieselPublicObservationOpenResult.Rejected("invalid_observation_request")
         }
     }
+
+    fun hasEvent(resourceId: String): Boolean = resourceId in events
+
+    fun encodeEvent(resourceId: String, event: DieselEvent): DieselPublicEncodedEvent? =
+        events[resourceId]?.encodeIfMatches(event)
 }

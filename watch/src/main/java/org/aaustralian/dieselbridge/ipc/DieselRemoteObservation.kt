@@ -80,11 +80,13 @@ internal class DieselRemoteObservation(
                             )
                         }
                     } catch (_: RemoteException) {
+                        close("callback_dead", false)
                         onCallbackDead(id)
                         return@launch
                     }
 
                     if (state?.phase == SensorSubscriptionPhase.CLOSED) {
+                        close("subscription_closed", false)
                         onTerminal(id)
                         return@launch
                     }
@@ -94,7 +96,13 @@ internal class DieselRemoteObservation(
         }
     }
 
-    override fun binderDied() { onCallbackDead(id) }
+    val isClosed: Boolean
+        get() = closed.get()
+
+    override fun binderDied() {
+        close("callback_died", false)
+        onCallbackDead(id)
+    }
 
     fun close(reason: String, notify: Boolean) {
         if (!closed.compareAndSet(false, true)) return

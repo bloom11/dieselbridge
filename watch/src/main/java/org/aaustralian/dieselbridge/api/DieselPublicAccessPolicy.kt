@@ -37,6 +37,10 @@ internal class DieselPublicAccessPolicy(
             in DieselDefaultPublicApi.OBSERVATION_IDS ->
                 canObserve(identity, descriptor, operation)
 
+            in DieselDefaultPublicApi.EVENT_IDS ->
+                descriptor.kind == DieselResourceKind.EVENT &&
+                    operation == DieselResourceOperation.SUBSCRIBE
+
             else -> false
         }
     }

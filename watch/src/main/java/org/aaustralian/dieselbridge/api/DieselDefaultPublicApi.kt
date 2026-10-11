@@ -7,6 +7,8 @@ import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.action.WatchVibrationAction
 import org.aaustralian.dieselbridge.platform.action.WatchVibrationRequest
 import org.aaustralian.dieselbridge.platform.action.WatchVibrationResult
+import org.aaustralian.dieselbridge.platform.event.SensorObservationSampleEvent
+import org.aaustralian.dieselbridge.platform.event.SensorObservationStateEvent
 import org.aaustralian.dieselbridge.platform.sensor.SensorCapabilityCatalog
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
 import org.aaustralian.dieselbridge.protocol.DieselValue
@@ -27,6 +29,24 @@ object DieselDefaultPublicApi {
         setOf(DieselResourceOperation.INVOKE),
         "Request bounded watch vibration through the active Diesel provider",
     )
+
+    val SENSOR_SAMPLE_EVENT = DieselResourceDescriptor(
+        SensorObservationSampleEvent.TYPE,
+        DieselResourceKind.EVENT,
+        "sensor.sample.v1",
+        setOf(DieselResourceOperation.SUBSCRIBE),
+        "Samples from sensor observations owned by the same public session",
+    )
+
+    val SENSOR_STATE_EVENT = DieselResourceDescriptor(
+        SensorObservationStateEvent.TYPE,
+        DieselResourceKind.EVENT,
+        "sensor.subscription.state.v1",
+        setOf(DieselResourceOperation.SUBSCRIBE),
+        "Lifecycle changes from sensor observations owned by the same public session",
+    )
+
+    val EVENT_IDS: Set<String> = setOf(SENSOR_SAMPLE_EVENT.id, SENSOR_STATE_EVENT.id)
 
     val OBSERVATIONS: List<DieselPublicObservationBinding> =
         SensorCapabilityCatalog.standardLogicalIds.map { logicalId ->
@@ -64,6 +84,18 @@ object DieselDefaultPublicApi {
             ),
         ),
         observationBindings = OBSERVATIONS,
+        eventBindings = listOf(
+            DieselPublicEventBinding(
+                SENSOR_SAMPLE_EVENT,
+                { it is SensorObservationSampleEvent },
+                { encodeSampleEvent(it as SensorObservationSampleEvent) },
+            ),
+            DieselPublicEventBinding(
+                SENSOR_STATE_EVENT,
+                { it is SensorObservationStateEvent },
+                { encodeStateEvent(it as SensorObservationStateEvent) },
+            ),
+        ),
     )
 
     private fun decodeVibration(value: DieselValue): DieselPublicDecodeResult<WatchVibrationRequest> {
@@ -91,4 +123,39 @@ object DieselDefaultPublicApi {
                 state.reason?.let { put("reason", DieselValue.Text(it)) }
             },
         )
+
+    private fun encodeSampleEvent(event: SensorObservationSampleEvent): DieselValue {
+        val reading = event.sample.reading
+        return DieselValue.ObjectValue(
+            linkedMapOf<String, DieselValue>().apply {
+                put("subscriptionId", DieselValue.Integer(event.subscriptionId))
+                put("logicalId", DieselValue.Text(event.logicalId))
+                put("sequence", DieselValue.Integer(event.sample.sequence))
+                put("timestampNanos", DieselValue.Integer(reading.timestampNanos))
+                reading.accuracy?.let { put("accuracy", DieselValue.Integer(it.toLong())) }
+                put("values", DieselValue.ListValue(reading.values.map { DieselValue.Decimal(it.toDouble()) }))
+                put("providerDroppedTotal", DieselValue.Integer(event.providerDroppedTotal))
+                put("subscriptionDroppedTotal", DieselValue.Integer(event.subscriptionDroppedTotal))
+            },
+        )
+    }
+
+    private fun encodeStateEvent(event: SensorObservationStateEvent): DieselValue {
+        val state = event.state
+        return DieselValue.ObjectValue(
+            linkedMapOf<String, DieselValue>().apply {
+                put("subscriptionId", DieselValue.Integer(event.subscriptionId))
+                put("logicalId", DieselValue.Text(event.logicalId))
+                put("phase", DieselValue.Text(state.phase.name.lowercase()))
+                put("requestedPeriodMs", DieselValue.Integer(state.requestedPeriodMs))
+                state.acquisitionPeriodMs?.let { put("acquisitionPeriodMs", DieselValue.Integer(it)) }
+                state.providerEffectivePeriodMs?.let { put("providerEffectivePeriodMs", DieselValue.Integer(it)) }
+                state.providerConfiguredPeriodMs?.let { put("providerConfiguredPeriodMs", DieselValue.Integer(it)) }
+                state.reason?.let { put("reason", DieselValue.Text(it)) }
+                put("providerDroppedTotal", DieselValue.Integer(event.providerDroppedTotal))
+                put("subscriptionDroppedTotal", DieselValue.Integer(event.subscriptionDroppedTotal))
+            },
+        )
+    }
+
 }

@@ -383,6 +383,12 @@ class DieselPublicApiService :
         private val observations =
             linkedMapOf<Long, DieselRemoteObservation>()
 
+        private val eventSubscriptions =
+            linkedMapOf<Long, DieselRemoteEventSubscription>()
+
+        private var nextEventSubscriptionId =
+            1L
+
         fun linkClientDeath() {
             clientToken.linkToDeath(
                 this,
@@ -639,6 +645,11 @@ class DieselPublicApiService :
             }
 
             synchronized(resourceLock) {
+                if (remote.isClosed) {
+                    return DieselIpcObservationCodec.encodeOpen(
+                        DieselPublicObservationOpenResult.Rejected("callback_dead"),
+                    )
+                }
                 if (closed.get() || observations.size >= MAX_OBSERVATIONS) {
                     remote.close("session_closed_or_limit", false)
                     return DieselIpcObservationCodec.encodeOpen(
@@ -671,6 +682,65 @@ class DieselPublicApiService :
         private fun removeObservation(id: Long, reason: String, notify: Boolean): Boolean {
             val remote = synchronized(resourceLock) { observations.remove(id) } ?: return false
             remote.close(reason, notify)
+            return true
+        }
+
+        override fun subscribeEvents(
+            resourceIds: Array<out String>?,
+            callback: IDieselEventCallback?,
+        ): Bundle {
+            enforceCaller()
+            val cb = callback ?: return DieselIpcEventCodec.rejected("callback_required")
+            val supplied = resourceIds?.toList().orEmpty()
+            if (supplied.isEmpty() || supplied.size > MAX_EVENT_TOPICS) {
+                return DieselIpcEventCodec.rejected("invalid_event_topics")
+            }
+            val requested = supplied.toSet()
+            val valid = requested.all { id ->
+                val descriptor = runtime.api.descriptor(id)
+                descriptor != null &&
+                    descriptor.kind == DieselResourceKind.EVENT &&
+                    runtime.api.hasEvent(id) &&
+                    accessPolicy.canAccess(identity, descriptor, DieselResourceOperation.SUBSCRIBE)
+            }
+            if (!valid) return DieselIpcEventCodec.rejected("event_not_found_or_denied")
+
+            val id = synchronized(resourceLock) {
+                if (eventSubscriptions.size >= MAX_EVENT_SUBSCRIPTIONS) {
+                    return DieselIpcEventCodec.rejected("session_event_subscription_limit")
+                }
+                nextEventSubscriptionId++
+            }
+
+            val remote = try {
+                DieselRemoteEventSubscription(
+                    id, requested, cb, runtime.eventBus, runtime.api, scope,
+                    ownsObservation = { observationId -> synchronized(resourceLock) { observationId in observations } },
+                    onCallbackDead = { eventId -> removeEventSubscription(eventId) },
+                )
+            } catch (_: RemoteException) {
+                return DieselIpcEventCodec.rejected("callback_dead")
+            }
+
+            synchronized(resourceLock) {
+                if (remote.isClosed) return DieselIpcEventCodec.rejected("callback_dead")
+                if (closed.get() || eventSubscriptions.size >= MAX_EVENT_SUBSCRIPTIONS) {
+                    remote.close()
+                    return DieselIpcEventCodec.rejected("session_event_subscription_limit")
+                }
+                eventSubscriptions[id] = remote
+            }
+            return DieselIpcEventCodec.opened(id)
+        }
+
+        override fun unsubscribeEvents(subscriptionId: Long): Boolean {
+            enforceCaller()
+            return removeEventSubscription(subscriptionId)
+        }
+
+        private fun removeEventSubscription(id: Long): Boolean {
+            val remote = synchronized(resourceLock) { eventSubscriptions.remove(id) } ?: return false
+            remote.close()
             return true
         }
 
@@ -752,11 +822,14 @@ class DieselPublicApiService :
             }
 
             val observationsToClose: List<DieselRemoteObservation>
+            val eventsToClose: List<DieselRemoteEventSubscription>
             val clientToClose: SensorObservationClient?
 
             synchronized(resourceLock) {
                 observationsToClose = observations.values.toList()
                 observations.clear()
+                eventsToClose = eventSubscriptions.values.toList()
+                eventSubscriptions.clear()
                 clientToClose = observationClient
                 observationClient = null
             }
@@ -764,6 +837,7 @@ class DieselPublicApiService :
             observationsToClose.forEach {
                 it.close(reason = reason, notify = false)
             }
+            eventsToClose.forEach { it.close() }
             clientToClose?.close()
 
             sessionJob.cancel()
@@ -779,6 +853,12 @@ class DieselPublicApiService :
 
 
             const val MAX_OBSERVATIONS =
+                4
+
+            const val MAX_EVENT_SUBSCRIPTIONS =
+                4
+
+            const val MAX_EVENT_TOPICS =
                 4
         }
     }

@@ -1974,7 +1974,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.0 | public Diesel architecture/catalog contract | **Current implementation line** |
 | M7.1 | process-local `DieselPublicApi` + stable public value/resource model | **Current implementation slice** |
 | M7.2 | external Wear consumer Binder/session API | **Implemented + hardened on M7 branch; exact-SHA CI is authoritative** |
-| M7.3 | external observation/event delivery over the existing core | **M7.3a observations implemented on M7 branch; event delivery pending** |
+| M7.3 | external observation/event delivery over the existing core | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.4 | external state/action/event/observation provider proxies | **Planned** |
 | M7.5 | generic bounded transport endpoint API | **Planned** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Planned** |
@@ -2514,8 +2514,16 @@ the caller's `ACTIVITY_RECOGNITION` permission on Android 10+. These checks rema
 
 #### M7.3b — public event subscriptions
 
-Generic external subscriptions to selected `DieselEventBus` resources remain pending. Sensor events
-must be bounded independently and restricted to observation IDs owned by that same Binder session.
+The first public event resources are `sensor.sample` and `sensor.subscription.state`, both adapted
+from the existing `DieselEventBus`. Each Binder session may own at most four event subscriptions and
+request at most four event resource IDs per subscription.
+
+Event delivery has its own 32-event drop-oldest IPC queue, 100 ms coalescing window and batches of at
+most eight events. Its `ipcDroppedTotal` is independent from the observation callback queue. Sensor
+events are visible only while the receiving Binder session owns the referenced observation ID, so
+one external client cannot consume another client's sensor stream. Public event values omit concrete
+provider IDs. Callback death, explicit unsubscribe, client death and runtime teardown close the
+event-subscription jobs.
 
 ### M7.4 — external providers
 

@@ -14,6 +14,8 @@ class DieselPublicAccessPolicyTest {
         assertTrue(policy.canAccess(app, DieselDefaultPublicApi.WATCH_VIBRATION, DieselResourceOperation.INVOKE))
         val accel = requireNotNull(DieselDefaultPublicApi.OBSERVATIONS.firstOrNull { it.logicalId == "accelerometer" })
         assertTrue(policy.canAccess(app, accel.descriptor, DieselResourceOperation.SUBSCRIBE))
+        assertTrue(policy.canAccess(app, DieselDefaultPublicApi.SENSOR_SAMPLE_EVENT, DieselResourceOperation.SUBSCRIBE))
+        assertTrue(policy.canAccess(app, DieselDefaultPublicApi.SENSOR_STATE_EVENT, DieselResourceOperation.SUBSCRIBE))
     }
 
     @Test fun sensitiveObservationUsesCallerPermission() {
