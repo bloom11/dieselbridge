@@ -15,7 +15,7 @@ data class DieselApiVersion(
     }
 
     companion object {
-        val CURRENT = DieselApiVersion(major = 1, minor = 0)
+        val CURRENT = DieselApiVersion(major = 1, minor = 1)
     }
 }
 

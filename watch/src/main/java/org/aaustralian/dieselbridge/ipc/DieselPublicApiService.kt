@@ -4,7 +4,9 @@ package org.aaustralian.dieselbridge.ipc
 
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Binder
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.RemoteException
@@ -20,14 +22,17 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.aaustralian.dieselbridge.api.DieselCallerIdentity
+import org.aaustralian.dieselbridge.api.DieselPermissionChecker
 import org.aaustralian.dieselbridge.api.DieselPublicAccessPolicy
 import org.aaustralian.dieselbridge.api.DieselPublicActionResult
 import org.aaustralian.dieselbridge.api.DieselPublicDecodeResult
+import org.aaustralian.dieselbridge.api.DieselPublicObservationOpenResult
 import org.aaustralian.dieselbridge.api.DieselPublicRuntimeAccess
 import org.aaustralian.dieselbridge.api.DieselPublicRuntimeContext
 import org.aaustralian.dieselbridge.api.DieselPublicStateResult
 import org.aaustralian.dieselbridge.api.DieselResourceKind
 import org.aaustralian.dieselbridge.api.DieselResourceOperation
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationClient
 
 /**
  * Exported Binder adapter for the one DieselBridgeService-owned runtime.
@@ -53,8 +58,8 @@ class DieselPublicApiService :
     private var nextSessionId =
         1L
 
-    private val accessPolicy =
-        DieselPublicAccessPolicy()
+    private lateinit var accessPolicy:
+        DieselPublicAccessPolicy
 
     private var observedRuntime:
         DieselPublicRuntimeContext? =
@@ -62,6 +67,16 @@ class DieselPublicApiService :
 
     override fun onCreate() {
         super.onCreate()
+
+        accessPolicy =
+            DieselPublicAccessPolicy(
+                sdkInt = Build.VERSION.SDK_INT,
+                permissionChecker =
+                    DieselPermissionChecker { uid, permission ->
+                        applicationContext.checkPermission(permission, -1, uid) ==
+                            PackageManager.PERMISSION_GRANTED
+                    },
+            )
 
         observedRuntime =
             DieselPublicRuntimeAccess
@@ -358,6 +373,16 @@ class DieselPublicApiService :
         private val actionGate =
             DieselActionInvocationGate()
 
+        private val resourceLock =
+            Any()
+
+        private var observationClient:
+            SensorObservationClient? =
+            null
+
+        private val observations =
+            linkedMapOf<Long, DieselRemoteObservation>()
+
         fun linkClientDeath() {
             clientToken.linkToDeath(
                 this,
@@ -555,6 +580,100 @@ class DieselPublicApiService :
             }
         }
 
+        override fun subscribeObservation(
+            resourceId: String,
+            periodMs: Long,
+            callback: IDieselObservationCallback?,
+        ): Bundle {
+            enforceCaller()
+
+            val resultCallback = callback
+                ?: return DieselIpcObservationCodec.encodeOpen(
+                    DieselPublicObservationOpenResult.Rejected("callback_required"),
+                )
+
+            val descriptor = runtime.api.descriptor(resourceId)
+            if (
+                descriptor == null ||
+                descriptor.kind != DieselResourceKind.OBSERVATION ||
+                !accessPolicy.canAccess(identity, descriptor, DieselResourceOperation.SUBSCRIBE)
+            ) {
+                return DieselIpcObservationCodec.encodeOpen(
+                    DieselPublicObservationOpenResult.NotFound(resourceId),
+                )
+            }
+
+            synchronized(resourceLock) {
+                if (observations.size >= MAX_OBSERVATIONS) {
+                    return DieselIpcObservationCodec.encodeOpen(
+                        DieselPublicObservationOpenResult.Rejected("session_observation_limit"),
+                    )
+                }
+            }
+
+            val client = getOrCreateObservationClient()
+                ?: return DieselIpcObservationCodec.encodeOpen(
+                    DieselPublicObservationOpenResult.Rejected("observation_client_limit"),
+                )
+
+            val opened = runtime.api.openObservation(client, resourceId, periodMs)
+            if (opened !is DieselPublicObservationOpenResult.Opened) {
+                return DieselIpcObservationCodec.encodeOpen(opened)
+            }
+
+            val remote = try {
+                DieselRemoteObservation(
+                    subscription = opened.subscription,
+                    callback = resultCallback,
+                    eventBus = runtime.eventBus,
+                    eventBridge = runtime.observationEventBridge,
+                    parentScope = scope,
+                    onCallbackDead = { id -> removeObservation(id, "callback_died", false) },
+                    onTerminal = { id -> removeObservation(id, "subscription_closed", false) },
+                )
+            } catch (_: RemoteException) {
+                opened.subscription.close()
+                return DieselIpcObservationCodec.encodeOpen(
+                    DieselPublicObservationOpenResult.Rejected("callback_dead"),
+                )
+            }
+
+            synchronized(resourceLock) {
+                if (closed.get() || observations.size >= MAX_OBSERVATIONS) {
+                    remote.close("session_closed_or_limit", false)
+                    return DieselIpcObservationCodec.encodeOpen(
+                        DieselPublicObservationOpenResult.Rejected("session_observation_limit"),
+                    )
+                }
+                observations[remote.id] = remote
+            }
+
+            return DieselIpcObservationCodec.encodeOpen(opened)
+        }
+
+        override fun unsubscribeObservation(subscriptionId: Long): Boolean {
+            enforceCaller()
+            return removeObservation(subscriptionId, "client_unsubscribe", true)
+        }
+
+        private fun getOrCreateObservationClient(): SensorObservationClient? =
+            synchronized(resourceLock) {
+                observationClient?.let { return@synchronized it }
+                try {
+                    runtime.observationManager
+                        .openClient("ipc:$sessionId:${identity.uid}")
+                        .also { observationClient = it }
+                } catch (_: IllegalStateException) {
+                    null
+                }
+            }
+
+        private fun removeObservation(id: Long, reason: String, notify: Boolean): Boolean {
+            val remote = synchronized(resourceLock) { observations.remove(id) } ?: return false
+            remote.close(reason, notify)
+            return true
+        }
+
         override fun close() {
             enforceCaller()
 
@@ -632,6 +751,21 @@ class DieselPublicApiService :
                 )
             }
 
+            val observationsToClose: List<DieselRemoteObservation>
+            val clientToClose: SensorObservationClient?
+
+            synchronized(resourceLock) {
+                observationsToClose = observations.values.toList()
+                observations.clear()
+                clientToClose = observationClient
+                observationClient = null
+            }
+
+            observationsToClose.forEach {
+                it.close(reason = reason, notify = false)
+            }
+            clientToClose?.close()
+
             sessionJob.cancel()
 
             onClosed(
@@ -642,6 +776,10 @@ class DieselPublicApiService :
         private companion object {
             const val ACTION_TIMEOUT_MS =
                 5_000L
+
+
+            const val MAX_OBSERVATIONS =
+                4
         }
     }
 }

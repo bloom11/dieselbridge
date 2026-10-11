@@ -1974,7 +1974,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.0 | public Diesel architecture/catalog contract | **Current implementation line** |
 | M7.1 | process-local `DieselPublicApi` + stable public value/resource model | **Current implementation slice** |
 | M7.2 | external Wear consumer Binder/session API | **Implemented + hardened on M7 branch; exact-SHA CI is authoritative** |
-| M7.3 | external observation/event delivery over the existing core | **Planned** |
+| M7.3 | external observation/event delivery over the existing core | **M7.3a observations implemented on M7 branch; event delivery pending** |
 | M7.4 | external state/action/event/observation provider proxies | **Planned** |
 | M7.5 | generic bounded transport endpoint API | **Planned** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Planned** |
@@ -2493,9 +2493,29 @@ server-side external-consumer/session contract that those clients will use.
 
 ### M7.3 — observation and event delivery
 
-Expose existing `SensorObservationManager` subscriptions and `DieselEventBus` events through bounded
-IPC delivery. Do not create another sensor subscription runtime. IPC buffering may be stricter than
-core limits but may never bypass them.
+#### M7.3a — external observation sessions
+
+A Binder session lazily opens one ordinary `SensorObservationClient` from the existing
+`SensorObservationManager`; sessions that never observe a sensor consume no observation-client slot.
+The public API exposes the established `sensor.observe.<logicalId>` IDs and imposes a stricter
+four-observation-per-session boundary.
+
+`SensorSubscription.samples` is single-consumer. The Binder adapter therefore does not collect that
+flow in parallel. The existing `SensorObservationEventBridge` is the one subscription consumer,
+publishes ordered state/sample events into the existing `DieselEventBus`, and the remote adapter
+filters those events by its owned subscription ID.
+
+The cross-process boundary has a separate 32-sample drop-oldest queue, a 100 ms coalescing window and
+batches of at most eight samples. `ipcDroppedTotal` is reported separately from provider-ingress and
+subscription-queue loss. Provider IDs are not included in ordinary public observation Bundles.
+
+Heart-rate access checks the external caller's `BODY_SENSORS` permission. Step-counter access checks
+the caller's `ACTIVITY_RECOGNITION` permission on Android 10+. These checks remain outside the core.
+
+#### M7.3b — public event subscriptions
+
+Generic external subscriptions to selected `DieselEventBus` resources remain pending. Sensor events
+must be bounded independently and restricted to observation IDs owned by that same Binder session.
 
 ### M7.4 — external providers
 

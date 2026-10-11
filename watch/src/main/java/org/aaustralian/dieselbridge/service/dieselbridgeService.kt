@@ -520,10 +520,21 @@ class DieselBridgeService : Service() {
             developerRemoteAccessPolicy = developerRemoteAccessPolicy,
         )
 
-        val publicRuntime = DieselPublicRuntimeContext(
-            api = DieselDefaultPublicApi.create(platform),
-            scope = publicApiScope,
-        )
+        val publicRuntime =
+            DieselPublicRuntimeContext(
+                api =
+                    DieselDefaultPublicApi.create(
+                        platform,
+                    ),
+                scope =
+                    publicApiScope,
+                observationManager =
+                    observationManager,
+                eventBus =
+                    platform.events,
+                observationEventBridge =
+                    platform.sensorObservationEvents,
+            )
         publicRuntimeContext = publicRuntime
         DieselPublicRuntimeAccess.attach(publicRuntime)
 
