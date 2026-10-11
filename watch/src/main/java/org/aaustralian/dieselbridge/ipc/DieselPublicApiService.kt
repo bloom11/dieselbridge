@@ -17,15 +17,15 @@ class DieselPublicApiService:Service(){
     private val root=object:IDieselPublicService.Stub(){
         override fun getServiceInfo():Bundle=DieselIpcCodec.encodeServiceInfo(DieselPublicRuntimeAccess.runtime.value?.isActive==true)
         override fun openSession(clientMinMajor:Int,clientMaxMajor:Int,clientToken:IDieselClientToken?):IDieselSession{
-            val v=DieselApiVersion.CURRENT;if(clientMinMajor>v.major||clientMaxMajor<v.major)throw ServiceSpecificException(2,"No compatible Diesel API major version")
-            val token=clientToken?:throw ServiceSpecificException(4,"Client death token required")
-            val runtime=DieselPublicRuntimeAccess.runtime.value?.takeIf{it.isActive}?:throw ServiceSpecificException(1,"Diesel runtime is not active")
+            val v=DieselApiVersion.CURRENT;if(clientMinMajor>v.major||clientMaxMajor<v.major)throw IllegalArgumentException("No compatible Diesel API major version")
+            val token=clientToken?:throw IllegalArgumentException("Client death token required")
+            val runtime=DieselPublicRuntimeAccess.runtime.value?.takeIf{it.isActive}?:throw IllegalStateException("Diesel runtime is not active")
             val uid=Binder.getCallingUid(); val ident=DieselCallerIdentity(uid,packageManager.getPackagesForUid(uid)?.toList()?.sorted().orEmpty())
-            val id=synchronized(lock){if(sessions.size>=8)throw ServiceSpecificException(3,"Session limit reached");nextId++}
+            val id=synchronized(lock){if(sessions.size>=8)throw IllegalStateException("Session limit reached");nextId++}
             lateinit var s:RemoteSession
             s=RemoteSession(id,ident,runtime,policy,token.asBinder()){closedId->synchronized(lock){if(sessions[closedId]===s)sessions.remove(closedId)}}
-            try{s.link()}catch(e:RemoteException){s.closeInternal("client_already_dead");throw ServiceSpecificException(4,"Client already dead")}
-            synchronized(lock){if(DieselPublicRuntimeAccess.runtime.value!==runtime||!runtime.isActive){s.closeInternal("runtime_changed");throw ServiceSpecificException(1,"Runtime changed")};sessions[id]=s}
+            try{s.link()}catch(e:RemoteException){s.closeInternal("client_already_dead");throw IllegalStateException("Client already dead")}
+            synchronized(lock){if(DieselPublicRuntimeAccess.runtime.value!==runtime||!runtime.isActive){s.closeInternal("runtime_changed");throw IllegalStateException("Runtime changed")};sessions[id]=s}
             return s
         }
     }
