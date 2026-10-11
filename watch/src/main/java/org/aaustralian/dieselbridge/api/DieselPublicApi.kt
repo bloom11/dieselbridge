@@ -7,6 +7,7 @@ import org.aaustralian.dieselbridge.platform.action.DieselActionKey
 import org.aaustralian.dieselbridge.platform.action.DieselActionResult
 import org.aaustralian.dieselbridge.platform.event.DieselEvent
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorBufferPolicy
+import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationClient
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscription
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscriptionRequest
@@ -153,6 +154,7 @@ class DieselPublicApi(
     eventBindings: Iterable<DieselPublicEventBinding> = emptyList(),
     apiVersion: DieselApiVersion = DieselApiVersion.CURRENT,
     private val dynamicStates: DieselStateStore? = null,
+    private val dynamicActions: DieselActionDispatcher? = null,
     private val observationLimits: DieselPublicObservationLimits = DieselPublicObservationLimits(),
 ) {
     private val states = stateBindings.toList().associateBy { it.descriptor.id }
@@ -186,6 +188,29 @@ class DieselPublicApi(
         descriptor: DieselResourceDescriptor,
     ): DieselDynamicResourceRegistration =
         dynamicCatalog.retain(descriptor)
+
+    internal fun retainProviderDescriptor(
+        descriptor: DieselResourceDescriptor,
+    ): DieselDynamicResourceRegistration {
+        val static = catalog.find(descriptor.id)
+        if (static != null) {
+            require(static == descriptor) {
+                "Static public resource contract mismatch for '${descriptor.id}'"
+            }
+
+            return object : DieselDynamicResourceRegistration {
+                private var closed = false
+                override val isClosed: Boolean
+                    get() = closed
+
+                override fun close() {
+                    closed = true
+                }
+            }
+        }
+
+        return dynamicCatalog.retain(descriptor)
+    }
 
     fun getState(id: String): DieselPublicStateResult {
         states[id]?.let {
@@ -230,16 +255,81 @@ class DieselPublicApi(
         }
     }
 
-    suspend fun invokeAction(id: String, input: DieselValue): DieselPublicActionResult =
-        actions[id]?.invoke?.invoke(input) ?: DieselPublicActionResult.NotFound(id)
+    suspend fun invokeAction(
+        id: String,
+        input: DieselValue,
+    ): DieselPublicActionResult {
+        actions[id]?.let {
+            return it.invoke(input)
+        }
+
+        val descriptor = dynamicCatalog.find(id)
+        if (descriptor?.kind != DieselResourceKind.ACTION) {
+            return DieselPublicActionResult.NotFound(id)
+        }
+
+        val dispatcher =
+            dynamicActions
+                ?: return DieselPublicActionResult.Failed(
+                    "dynamic_action_runtime_unavailable",
+                )
+
+        return when (
+            val result =
+                dispatcher.dispatch(
+                    DieselActionKey(
+                        id,
+                        DieselValue::class.java,
+                        DieselValue::class.java,
+                    ),
+                    input,
+                )
+        ) {
+            is DieselActionResult.Success ->
+                DieselPublicActionResult.Success(
+                    result.value,
+                )
+
+            DieselActionResult.Unavailable ->
+                DieselPublicActionResult.Unavailable
+
+            is DieselActionResult.Rejected ->
+                DieselPublicActionResult.Rejected(
+                    result.reason,
+                )
+
+            is DieselActionResult.Failed ->
+                DieselPublicActionResult.Failed(
+                    "handler_failed",
+                )
+        }
+    }
 
     fun openObservation(
         client: SensorObservationClient,
         resourceId: String,
         periodMs: Long,
     ): DieselPublicObservationOpenResult {
-        val binding = observations[resourceId]
-            ?: return DieselPublicObservationOpenResult.NotFound(resourceId)
+        val logicalId =
+            observations[resourceId]
+                ?.logicalId
+                ?: dynamicCatalog
+                    .find(resourceId)
+                    ?.takeIf {
+                        it.kind == DieselResourceKind.OBSERVATION
+                    }
+                    ?.let {
+                        try {
+                            SensorObservationCapabilityId(
+                                resourceId,
+                            ).logicalId
+                        } catch (_: IllegalArgumentException) {
+                            null
+                        }
+                    }
+                ?: return DieselPublicObservationOpenResult.NotFound(
+                    resourceId,
+                )
 
         if (periodMs !in observationLimits.minPeriodMs..observationLimits.maxPeriodMs) {
             return DieselPublicObservationOpenResult.Rejected("period_out_of_bounds")
@@ -249,7 +339,7 @@ class DieselPublicApi(
             DieselPublicObservationOpenResult.Opened(
                 client.subscribe(
                     SensorSubscriptionRequest(
-                        logicalId = binding.logicalId,
+                        logicalId = logicalId,
                         periodMs = periodMs,
                         bufferPolicy = SensorBufferPolicy.Latest,
                     ),

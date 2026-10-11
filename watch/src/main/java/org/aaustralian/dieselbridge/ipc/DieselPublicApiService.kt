@@ -795,6 +795,45 @@ class DieselPublicApiService :
             )
         }
 
+        override fun completeProviderAction(
+            registrationId: Long,
+            requestId: Long,
+            result: Bundle,
+        ): Bundle {
+            enforceCaller()
+            return providerHost.completeAction(
+                registrationId,
+                requestId,
+                result,
+            )
+        }
+
+        override fun pushProviderObservation(
+            registrationId: Long,
+            acquisitionId: Long,
+            update: Bundle,
+        ): Bundle {
+            enforceCaller()
+            return providerHost.pushObservation(
+                registrationId,
+                acquisitionId,
+                update,
+            )
+        }
+
+        override fun setProviderAvailability(
+            registrationId: Long,
+            availability: String?,
+            reason: String?,
+        ): Bundle {
+            enforceCaller()
+            return providerHost.setAvailability(
+                registrationId,
+                availability,
+                reason,
+            )
+        }
+
         override fun close() {
             enforceCaller()
 

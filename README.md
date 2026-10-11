@@ -2541,10 +2541,26 @@ New external resources remain confined to `plugin.<package>.*`; the server deriv
 the resource kind. Dynamic descriptors remain discovery metadata only and disappear with their final
 registration.
 
-M7.4b2 completes the callback-driven roles: a bounded remote action handler registered in the
-existing `DieselActionDispatcher`, and a real external `SensorObservationCapability` proxy registered
-in `CapabilityRegistry` with DieselBridge-assigned priority -100. M7.5 remains blocked until b2 is
-green.
+M7.4b2 completes the callback-driven roles. A remote action provider is an ordinary
+`DieselActionDispatcher` handler using `DieselValue` input/output. Each registration permits at most
+four pending remote requests and each request has a five-second deadline; callback death removes the
+handler and completes pending work as unavailable.
+
+An external observation provider is a real local `SensorObservationCapability` plus `DieselProvider`
+registered in the existing `CapabilityRegistry`. Standard observation resources now explicitly
+advertise `PROVIDE`; dynamic observations remain under `sensor.observe.plugin.<package>.*`.
+DieselBridge assigns external observation priority -100, injects the authoritative proxy provider ID
+and logical `SensorCapabilityId` into every accepted sample, and exposes provider
+available/unavailable/error changes through the registry's existing fallback logic.
+
+Provider observation ingress is bounded to 32 queued updates per active acquisition. When a sample
+cannot be admitted, the push is rejected as `provider_ingress_full` and the server-side loss counter
+is folded into the next accepted source-drop total rather than silently growing memory.
+
+State, action, event and observation registrations are all session-owned. Explicit unregister,
+provider callback death, whole client-token death and runtime teardown close their existing-core
+handles. M7.4 is therefore complete once this exact-SHA slice is green; M7.5 can then introduce the
+generic transport capability/lease layer.
 
 ### M7.5 — generic transport endpoints
 

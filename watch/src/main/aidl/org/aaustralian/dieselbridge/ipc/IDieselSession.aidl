@@ -49,5 +49,23 @@ interface IDieselSession {
         in Bundle value
     );
 
+    Bundle completeProviderAction(
+        long registrationId,
+        long requestId,
+        in Bundle result
+    );
+
+    Bundle pushProviderObservation(
+        long registrationId,
+        long acquisitionId,
+        in Bundle update
+    );
+
+    Bundle setProviderAvailability(
+        long registrationId,
+        String availability,
+        String reason
+    );
+
     void close();
 }

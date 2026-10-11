@@ -56,7 +56,10 @@ object DieselDefaultPublicApi {
                     id,
                     DieselResourceKind.OBSERVATION,
                     "sensor.reading.v1",
-                    setOf(DieselResourceOperation.SUBSCRIBE),
+                    setOf(
+                        DieselResourceOperation.SUBSCRIBE,
+                        DieselResourceOperation.PROVIDE,
+                    ),
                     "Provider-neutral logical $logicalId observation",
                 ),
                 logicalId,
@@ -85,6 +88,7 @@ object DieselDefaultPublicApi {
         ),
         observationBindings = OBSERVATIONS,
         dynamicStates = platform.states,
+        dynamicActions = platform.actions,
         eventBindings = listOf(
             DieselPublicEventBinding(
                 SENSOR_SAMPLE_EVENT,
