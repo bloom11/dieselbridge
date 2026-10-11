@@ -1973,7 +1973,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M6.1e | reconnect/process-lifecycle resync | **Complete: automatic reconnect reconciliation physically proven (`1c6e5d02`)** |
 | M7.0 | public Diesel architecture/catalog contract | **Current implementation line** |
 | M7.1 | process-local `DieselPublicApi` + stable public value/resource model | **Current implementation slice** |
-| M7.2 | external Wear consumer Binder/session API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
+| M7.2 | external Wear consumer Binder/session API | **Implemented + hardened on M7 branch; exact-SHA CI is authoritative** |
 | M7.3 | external observation/event delivery over the existing core | **Planned** |
 | M7.4 | external state/action/event/observation provider proxies | **Planned** |
 | M7.5 | generic bounded transport endpoint API | **Planned** |
@@ -2470,12 +2470,26 @@ adapters.
 The watch exposes a permission-gated Binder/AIDL boundary without exporting the BLE foreground
 service or constructing another `DieselPlatform`. A client opens a version-negotiated session with
 a client-owned Binder death token. The service captures caller UID/package identity, bounds active
-sessions, and closes them when the client process, public service, or owning runtime disappears.
+sessions to eight, and closes them when the client process, public service, or owning runtime
+disappears.
 
-M7.2 exposes catalogue discovery, current-state reads and asynchronous action invocation. The first
-production public action is `watch.vibration.buzz`; it enters the existing `ActionDispatcher`, whose
-handler resolves the normal provider-neutral vibration capability. IPC never calls Android's
-vibrator/provider directly.
+Expected session-admission failures are returned as stable Bundle statuses (`invalid_request`,
+`unsupported_version`, `invalid_client`, `runtime_unavailable`, `session_limit`) rather than relying
+on Binder's Java-exception marshalling. A successful result carries the `IDieselSession` Binder plus
+the negotiated public API version.
+
+The manifest-level `USE_DIESEL_API` normal permission is only an explicit client opt-in. The
+process-local access policy separately defaults to deny and currently exposes exactly the established
+M7.2 resources: read `companion.alarm.next` and invoke `watch.vibration.buzz`. Adding a resource to
+the catalogue therefore does not automatically authorize it.
+
+Remote actions remain asynchronous, are limited to four concurrent invocations per session, and have
+a five-second IPC deadline. Excess calls are rejected rather than queued. `watch.vibration.buzz`
+still enters the existing `DieselActionDispatcher`, whose handler resolves the normal
+provider-neutral vibration capability; IPC never calls Android's vibrator/provider directly.
+
+The public client SDK/reference APK is still downstream work. M7.2 here establishes and hardens the
+server-side external-consumer/session contract that those clients will use.
 
 ### M7.3 — observation and event delivery
 

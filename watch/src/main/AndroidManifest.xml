@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Public Diesel Binder clients explicitly opt in to the API contract. -->
+    <!-- Normal permission is client opt-in; resource authorization remains server-side. -->
     <permission
         android:name="io.github.bloom11.dieselbridge.permission.USE_DIESEL_API"
         android:protectionLevel="normal" />
