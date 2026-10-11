@@ -84,6 +84,7 @@ object DieselDefaultPublicApi {
             ),
         ),
         observationBindings = OBSERVATIONS,
+        dynamicStates = platform.states,
         eventBindings = listOf(
             DieselPublicEventBinding(
                 SENSOR_SAMPLE_EVENT,

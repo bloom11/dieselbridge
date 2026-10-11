@@ -2527,19 +2527,24 @@ event-subscription jobs.
 
 ### M7.4 — external providers
 
-M7.4 is intentionally split into two exact-SHA slices. M7.4a establishes the stable provider
-contract and dynamic discovery rules before any Binder provider can mutate the core.
+M7.4 is implemented in CI-gated slices. M7.4a established the provider contract, caller-owned
+namespaces and reference-counted dynamic discovery metadata.
 
-New external resources are confined to `plugin.<package>.*`; new logical observations use
-`sensor.observe.plugin.<package>.*`. The server derives the legal operation set from the resource
-kind. Callers never choose effective provider priority: normal external observation providers will
-be assigned priority -100 by DieselBridge.
+M7.4b1 now activates the first two provider roles. A remote state registration owns an ordinary
+`DieselStatePublisher<DieselValue>` from the existing `DieselStateStore`; session death or explicit
+unregister closes that publisher and therefore clears its current value using the normal stale-handle
+rules. A remote event registration validates a bounded `DieselValue` then publishes a
+server-timestamped `DieselPublicIngressEvent` into the existing `DieselEventBus`. Existing M7.3
+event subscribers consume those dynamic events through the same bounded IPC queue.
 
-Dynamic descriptors are reference-counted discovery metadata only. They do not replace
-`DieselStateStore`, `DieselActionDispatcher`, `DieselEventBus`, `CapabilityRegistry` or
-`SensorObservationManager`. M7.4b binds remote provider callbacks to those existing owners:
-state publisher, bounded action handler, event publisher and real `SensorObservationCapability`
-proxy registrations.
+New external resources remain confined to `plugin.<package>.*`; the server derives operations from
+the resource kind. Dynamic descriptors remain discovery metadata only and disappear with their final
+registration.
+
+M7.4b2 completes the callback-driven roles: a bounded remote action handler registered in the
+existing `DieselActionDispatcher`, and a real external `SensorObservationCapability` proxy registered
+in `CapabilityRegistry` with DieselBridge-assigned priority -100. M7.5 remains blocked until b2 is
+green.
 
 ### M7.5 — generic transport endpoints
 

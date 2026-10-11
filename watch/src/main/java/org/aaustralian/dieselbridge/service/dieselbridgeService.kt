@@ -534,6 +534,8 @@ class DieselBridgeService : Service() {
                     platform.events,
                 observationEventBridge =
                     platform.sensorObservationEvents,
+                states =
+                    platform.states,
             )
         publicRuntimeContext = publicRuntime
         DieselPublicRuntimeAccess.attach(publicRuntime)

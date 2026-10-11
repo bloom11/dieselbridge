@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.aaustralian.dieselbridge.platform.event.DieselEventBus
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
+import org.aaustralian.dieselbridge.platform.state.DieselStateStore
 
 internal class DieselPublicRuntimeContext(
     val api: DieselPublicApi,
@@ -16,6 +17,7 @@ internal class DieselPublicRuntimeContext(
     val observationManager: SensorObservationManager,
     val eventBus: DieselEventBus,
     val observationEventBridge: SensorObservationEventBridge,
+    val states: DieselStateStore,
 ) {
     private val active = AtomicBoolean(true)
     val isActive: Boolean get() = active.get()

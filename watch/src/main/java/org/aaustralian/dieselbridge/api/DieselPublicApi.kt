@@ -120,6 +120,12 @@ data class DieselPublicEncodedEvent(
     val value: DieselValue,
 )
 
+data class DieselPublicIngressEvent(
+    override val type: String,
+    override val timestampMs: Long,
+    val value: DieselValue,
+) : DieselEvent
+
 class DieselPublicEventBinding(
     val descriptor: DieselResourceDescriptor,
     private val matches: (DieselEvent) -> Boolean,
@@ -146,6 +152,7 @@ class DieselPublicApi(
     observationBindings: Iterable<DieselPublicObservationBinding> = emptyList(),
     eventBindings: Iterable<DieselPublicEventBinding> = emptyList(),
     apiVersion: DieselApiVersion = DieselApiVersion.CURRENT,
+    private val dynamicStates: DieselStateStore? = null,
     private val observationLimits: DieselPublicObservationLimits = DieselPublicObservationLimits(),
 ) {
     private val states = stateBindings.toList().associateBy { it.descriptor.id }
@@ -179,8 +186,49 @@ class DieselPublicApi(
         descriptor: DieselResourceDescriptor,
     ): DieselDynamicResourceRegistration =
         dynamicCatalog.retain(descriptor)
-    fun getState(id: String): DieselPublicStateResult =
-        states[id]?.read?.invoke() ?: DieselPublicStateResult.NotFound(id)
+
+    fun getState(id: String): DieselPublicStateResult {
+        states[id]?.let {
+            return it.read()
+        }
+
+        val descriptor = dynamicCatalog.find(id)
+        if (descriptor?.kind != DieselResourceKind.STATE) {
+            return DieselPublicStateResult.NotFound(id)
+        }
+
+        val store =
+            dynamicStates
+                ?: return DieselPublicStateResult.Failed(
+                    "dynamic_state_runtime_unavailable",
+                )
+
+        val snapshot =
+            store.current(
+                DieselStateKey(
+                    id,
+                    DieselValue::class.java,
+                ),
+            )
+
+        return if (snapshot == null) {
+            DieselPublicStateResult.Success(
+                DieselPublicStateSnapshot(
+                    null,
+                    null,
+                    null,
+                ),
+            )
+        } else {
+            DieselPublicStateResult.Success(
+                DieselPublicStateSnapshot(
+                    snapshot.value,
+                    snapshot.revision,
+                    snapshot.updatedAtMs,
+                ),
+            )
+        }
+    }
 
     suspend fun invokeAction(id: String, input: DieselValue): DieselPublicActionResult =
         actions[id]?.invoke?.invoke(input) ?: DieselPublicActionResult.NotFound(id)
@@ -214,8 +262,34 @@ class DieselPublicApi(
         }
     }
 
-    fun hasEvent(resourceId: String): Boolean = resourceId in events
+    fun hasEvent(resourceId: String): Boolean =
+        resourceId in events ||
+            dynamicCatalog.find(resourceId)?.kind == DieselResourceKind.EVENT
 
-    fun encodeEvent(resourceId: String, event: DieselEvent): DieselPublicEncodedEvent? =
-        events[resourceId]?.encodeIfMatches(event)
+    fun encodeEvent(
+        resourceId: String,
+        event: DieselEvent,
+    ): DieselPublicEncodedEvent? {
+        events[resourceId]
+            ?.encodeIfMatches(event)
+            ?.let {
+                return it
+            }
+
+        val descriptor = dynamicCatalog.find(resourceId)
+
+        if (
+            descriptor?.kind == DieselResourceKind.EVENT &&
+            event is DieselPublicIngressEvent &&
+            event.type == resourceId
+        ) {
+            return DieselPublicEncodedEvent(
+                resourceId,
+                event.timestampMs,
+                event.value,
+            )
+        }
+
+        return null
+    }
 }

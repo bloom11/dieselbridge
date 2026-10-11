@@ -389,6 +389,13 @@ class DieselPublicApiService :
         private var nextEventSubscriptionId =
             1L
 
+        private val providerHost =
+            DieselProviderSessionHost(
+                sessionId,
+                identity,
+                runtime,
+            )
+
         fun linkClientDeath() {
             clientToken.linkToDeath(
                 this,
@@ -744,6 +751,50 @@ class DieselPublicApiService :
             return true
         }
 
+        override fun registerProviderResource(
+            request: Bundle,
+            callback: IDieselProviderCallback?,
+        ): Bundle {
+            enforceCaller()
+            return providerHost.register(
+                request,
+                callback,
+            )
+        }
+
+        override fun unregisterProviderResource(
+            registrationId: Long,
+        ): Boolean {
+            enforceCaller()
+            return providerHost.unregister(
+                registrationId,
+            )
+        }
+
+        override fun publishProviderState(
+            registrationId: Long,
+            value: Bundle,
+            clear: Boolean,
+        ): Bundle {
+            enforceCaller()
+            return providerHost.publishState(
+                registrationId,
+                value,
+                clear,
+            )
+        }
+
+        override fun publishProviderEvent(
+            registrationId: Long,
+            value: Bundle,
+        ): Bundle {
+            enforceCaller()
+            return providerHost.publishEvent(
+                registrationId,
+                value,
+            )
+        }
+
         override fun close() {
             enforceCaller()
 
@@ -839,6 +890,7 @@ class DieselPublicApiService :
             }
             eventsToClose.forEach { it.close() }
             clientToClose?.close()
+            providerHost.close()
 
             sessionJob.cancel()
 
