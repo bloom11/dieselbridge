@@ -2684,10 +2684,12 @@ The observation resource deliberately uses the exact 64-character caller-owned i
 `sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x`; JVM coverage guards both the
 Diesel identifier limit and caller namespace shape.
 
-`ReferenceDeathService` runs in the APK's separate `:death` process. In `session_death` mode it opens
-a real accelerometer observation and then kills its own process without closing the session. In
-`provider_death` mode it registers all four synthetic resources, publishes state and then kills its
-own process without unregistering anything. The death is intentionally abrupt: the only cleanup
+`ReferenceDeathService` runs in the APK's separate `:death` process. The launcher activity binds to
+it rather than starting a background service, so the death proof remains valid under modern Wear OS
+background-execution limits without adding foreground-service privileges. In `session_death` mode it
+opens a real accelerometer observation and then kills its own process without closing the session.
+In `provider_death` mode it registers all four synthetic resources, publishes state and then kills
+its own process without unregistering anything. The death is intentionally abrupt: the only cleanup
 signal available to DieselBridge is Binder death of the client token/provider callbacks.
 
 M7.7c is the remaining closure. It will install the exact CI-signed watch/reference APKs on the

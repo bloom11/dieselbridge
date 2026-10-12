@@ -4,6 +4,7 @@ package org.aaustralian.dieselbridge.reference
 
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
 import android.os.IBinder
 import android.os.Process
 import android.util.Log
@@ -20,6 +21,11 @@ import org.aaustralian.dieselbridge.ipc.IDieselObservationCallback
  * Deliberate process-death harness. It runs in :death so killing itself
  * destroys the remote Binder client token/provider callbacks while the
  * launcher activity can remain alive in the main reference process.
+ *
+ * This is deliberately a bound service. Android's background-service start
+ * restrictions can reject startService() for an activity launched by ADB on
+ * Wear OS; bindService() is the correct lifecycle for this process-owned
+ * Binder proof and needs no foreground-service privilege.
  */
 class ReferenceDeathService :
     Service() {
@@ -44,19 +50,14 @@ class ReferenceDeathService :
 
     override fun onBind(
         intent: Intent?,
-    ): IBinder? =
-        null
-
-    override fun onStartCommand(
-        intent: Intent?,
-        flags: Int,
-        startId: Int,
-    ): Int {
+    ): IBinder {
         val mode =
             intent?.getStringExtra(
                 ReferenceActivity.EXTRA_MODE,
             )
-                ?: return START_NOT_STICKY
+                ?: error(
+                    "missing_death_mode",
+                )
 
         activeJob?.cancel()
 
@@ -88,14 +89,10 @@ class ReferenceDeathService :
                             ),
                         error,
                     )
-
-                    stopSelf(
-                        startId,
-                    )
                 }
             }
 
-        return START_NOT_STICKY
+        return Binder()
     }
 
     override fun onDestroy() {

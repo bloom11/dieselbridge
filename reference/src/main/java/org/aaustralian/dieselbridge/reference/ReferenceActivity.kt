@@ -3,8 +3,12 @@
 package org.aaustralian.dieselbridge.reference
 
 import android.app.Activity
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.Button
@@ -33,6 +37,10 @@ class ReferenceActivity :
 
     private var activeJob:
         Job? =
+        null
+
+    private var deathConnection:
+        ServiceConnection? =
         null
 
     override fun onCreate(
@@ -147,6 +155,18 @@ class ReferenceActivity :
 
     override fun onDestroy() {
         activeJob?.cancel()
+
+        deathConnection?.let {
+            connection ->
+            runCatching {
+                unbindService(
+                    connection,
+                )
+            }
+        }
+        deathConnection =
+            null
+
         scope.cancel()
         super.onDestroy()
     }
@@ -297,6 +317,21 @@ class ReferenceActivity :
     private fun startDeathMode(
         mode: String,
     ) {
+        if (deathConnection != null) {
+            val message =
+                "M77_DEATH FAIL mode=$mode death_mode_already_active"
+
+            output.text =
+                message
+
+            Log.e(
+                TAG,
+                message,
+            )
+
+            return
+        }
+
         val intent =
             Intent(
                 this,
@@ -308,9 +343,68 @@ class ReferenceActivity :
                 )
             }
 
-        startService(
-            intent,
-        )
+        lateinit var connection:
+            ServiceConnection
+
+        connection =
+            object :
+                ServiceConnection {
+
+                override fun onServiceConnected(
+                    name: ComponentName,
+                    service: IBinder,
+                ) = Unit
+
+                override fun onServiceDisconnected(
+                    name: ComponentName,
+                ) {
+                    if (
+                        deathConnection ===
+                        connection
+                    ) {
+                        deathConnection =
+                            null
+                    }
+                }
+
+                override fun onBindingDied(
+                    name: ComponentName,
+                ) {
+                    if (
+                        deathConnection ===
+                        connection
+                    ) {
+                        deathConnection =
+                            null
+                    }
+                }
+
+                override fun onNullBinding(
+                    name: ComponentName,
+                ) {
+                    if (
+                        deathConnection ===
+                        connection
+                    ) {
+                        deathConnection =
+                            null
+                    }
+                }
+            }
+
+        val bound =
+            bindService(
+                intent,
+                connection,
+                Context.BIND_AUTO_CREATE,
+            )
+
+        check(bound) {
+            "death_service_bind_failed"
+        }
+
+        deathConnection =
+            connection
 
         val message =
             "M77_DEATH START mode=$mode\n" +
