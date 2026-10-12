@@ -540,6 +540,8 @@ class DieselBridgeService : Service() {
                     platform.actions,
                 capabilities =
                     platform.capabilities,
+                transports =
+                    platform.transports,
             )
         publicRuntimeContext = publicRuntime
         DieselPublicRuntimeAccess.attach(publicRuntime)
@@ -671,6 +673,7 @@ class DieselBridgeService : Service() {
 
         publicRuntimeContext?.let(DieselPublicRuntimeAccess::detach)
         publicRuntimeContext = null
+        platform.transports.close()
         publicApiScope.cancel()
         vibrationActionRegistration?.close()
         vibrationActionRegistration = null

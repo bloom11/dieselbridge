@@ -1975,8 +1975,8 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.1 | process-local `DieselPublicApi` + stable public value/resource model | **Current implementation slice** |
 | M7.2 | external Wear consumer Binder/session API | **Implemented + hardened on M7 branch; exact-SHA CI is authoritative** |
 | M7.3 | external observation/event delivery over the existing core | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.4 | external state/action/event/observation provider proxies | **Planned** |
-| M7.5 | generic bounded transport endpoint API | **Planned** |
+| M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
+| M7.5 | generic bounded transport endpoint API | **M7.5a process-local transport foundation implemented on M7 branch; Binder delivery pending** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Planned** |
 | M7.7 | reference external consumer/provider APK + failure/physical closure | **Planned** |
 | M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
@@ -2564,9 +2564,25 @@ generic transport capability/lease layer.
 
 ### M7.5 — generic transport endpoints
 
-Expose bounded, owned transport sessions such as a future `gadgetbridge.bangle.console`. A transport
-endpoint moves bytes/events through a controlled route; it does not hand Android BLE ownership to the
-client.
+#### M7.5a — process-local transport capability and lease ownership
+
+`DieselTransportCapability` is resolved through the existing `CapabilityRegistry` when a new lease
+opens. The returned endpoint is pinned for that lease, so provider fallback affects later opens but
+does not move an active byte protocol between providers.
+
+`DieselTransportManager` owns bounded clients and leases: 16 clients, 16 total leases, four leases
+per client, four concurrent sends per client, 4096-byte frames, and five-second open/send deadlines.
+Closing a client closes all of its leases. The canonical `DieselPlatform` owns one manager backed by
+its existing capability registry.
+
+Transport frames are loss-intolerant. Oversized incoming frames close the lease rather than being
+truncated or silently dropped. No Android BLE/GATT object is exposed through this abstraction.
+
+#### M7.5b — Binder transport sessions
+
+Pending: expose session-owned transport clients and leases through Binder with bounded incoming-frame
+queues, asynchronous send results, and Binder-death cleanup. The Binder layer must consume this
+manager rather than create a second transport runtime.
 
 ### M7.6 — public phone client
 

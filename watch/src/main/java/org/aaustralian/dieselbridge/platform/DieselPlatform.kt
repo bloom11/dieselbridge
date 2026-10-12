@@ -12,6 +12,7 @@ import org.aaustralian.dieselbridge.platform.module.DieselModuleContext
 import org.aaustralian.dieselbridge.platform.module.DieselModuleManager
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.state.DieselStateStore
+import org.aaustralian.dieselbridge.platform.transport.DieselTransportManager
 
 /**
  * Process-local Diesel runtime context.
@@ -30,6 +31,11 @@ class DieselPlatform(
     val capabilities =
         CapabilityRegistry(
             diagnostics = diagnostics,
+        )
+
+    val transports =
+        DieselTransportManager(
+            registry = capabilities,
         )
 
     val modules =

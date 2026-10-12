@@ -12,6 +12,7 @@ import org.aaustralian.dieselbridge.platform.event.DieselEventBus
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationEventBridge
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationManager
 import org.aaustralian.dieselbridge.platform.state.DieselStateStore
+import org.aaustralian.dieselbridge.platform.transport.DieselTransportManager
 
 internal class DieselPublicRuntimeContext(
     val api: DieselPublicApi,
@@ -22,6 +23,7 @@ internal class DieselPublicRuntimeContext(
     val states: DieselStateStore,
     val actions: DieselActionDispatcher,
     val capabilities: CapabilityRegistry,
+    val transports: DieselTransportManager,
 ) {
     private val active = AtomicBoolean(true)
     val isActive: Boolean get() = active.get()
