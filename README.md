@@ -1977,7 +1977,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.3 | external observation/event delivery over the existing core | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.5 | generic bounded transport endpoint API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **M7.6a process-local public facade implemented on M7 branch; Binder client pending** |
+| M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.7 | reference external consumer/provider APK + failure/physical closure | **Planned** |
 | M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
 | M9 | health/history expansion | **Planned** |
@@ -2626,11 +2626,30 @@ version.
 
 #### M7.6b — external phone Binder client
 
-Pending: expose the M7.6a facade through an exported, permission-gated, caller-bound Binder session.
-Each external session will own bounded asynchronous invocations and a client-death token; cancellation
-must flow into the existing gateway so `PhoneDieselResponseRouter` removes that pending request.
-Stock Gadgetbridge remains the sole phone BLE central and no Bluetooth permission or BLE object is
-added to the public service.
+The phone APK now exports an explicit-bind `PhoneDieselPublicService` guarded by
+`io.github.bloom11.dieselbridge.phone.permission.USE_DIESEL_PHONE_API`. The permission is normal-level
+explicit opt-in rather than strong trust; the narrow M7.6a command policy remains the actual
+capability boundary.
+
+Clients negotiate the independent phone API major version and open a caller-UID-bound session using
+a Binder death token. At most eight sessions exist globally. Each session exposes the current public
+command catalog and accepts asynchronous structured requests with a one-way result callback. A
+non-queuing gate permits four concurrent calls per session; the existing `PhoneDieselResponseRouter`
+still owns its separate global maximum of eight pending watch requests.
+
+Request/result Bundles encode the existing `PhoneDieselValue` semantic tree with explicit type tags
+and the same depth, node, collection, field-name and UTF-8 text limits as Diesel v1. Internal
+Gadgetbridge framing, generated gateway request IDs and Java exception details never cross Binder.
+
+Each invocation callback is death-linked. Callback death cancels only that invocation; whole client
+token death or explicit session close cancels every invocation in the session. Cancellation flows
+through `PhoneDieselPublicApi` into the existing `PhoneDieselGateway`, whose established cancellation
+path removes the response-router registration. No second request map or timeout engine exists.
+
+The phone manifest still declares no Bluetooth permissions and the Binder service exposes no Android
+BLE object. Stock Gadgetbridge remains the sole phone BLE central. With M7.6b green, M7.6 is complete
+and the remaining M7 work is the M7.7 reference external consumer/provider and deliberate
+process-death physical closure.
 
 ### M7.7 — reference external client/provider closure
 

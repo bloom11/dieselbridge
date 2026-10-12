@@ -2,10 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      M6.0c-M6.1e intentionally declares no Bluetooth, exact-alarm,
-      foreground-service or location permissions. Stock Gadgetbridge remains
-      the sole phone BLE owner. AlarmManager is read-only here.
+      M6+ intentionally declares no Bluetooth, exact-alarm, foreground-service
+      or location permissions. Stock Gadgetbridge remains the sole phone BLE
+      owner. The normal-level public API permission is explicit opt-in, while
+      per-command policy remains the actual capability boundary.
     -->
+    <permission
+        android:name="io.github.bloom11.dieselbridge.phone.permission.USE_DIESEL_PHONE_API"
+        android:protectionLevel="normal" />
 
     <application
         android:name=".DieselBridgePhoneApplication"
@@ -31,6 +35,11 @@
                 <action android:name="io.github.bloom11.dieselbridge.DIESEL_MESSAGE" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".ipc.PhoneDieselPublicService"
+            android:exported="true"
+            android:permission="io.github.bloom11.dieselbridge.phone.permission.USE_DIESEL_PHONE_API" />
 
     </application>
 </manifest>
