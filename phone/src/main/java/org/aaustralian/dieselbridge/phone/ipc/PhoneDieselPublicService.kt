@@ -99,8 +99,8 @@ class PhoneDieselPublicService :
                         decision is
                         PhoneDieselSessionOpenDecision.Rejected
                     ) {
-                        return@synchronized
-                            PhoneDieselIpcCodec.sessionOpenRejected(
+                        return@synchronized PhoneDieselIpcCodec
+                            .sessionOpenRejected(
                                 decision.reason,
                             )
                     }
@@ -135,8 +135,8 @@ class PhoneDieselPublicService :
                     try {
                         session.linkClientDeath()
                     } catch (_: RemoteException) {
-                        return@synchronized
-                            PhoneDieselIpcCodec.sessionOpenRejected(
+                        return@synchronized PhoneDieselIpcCodec
+                            .sessionOpenRejected(
                                 PhoneDieselSessionOpenRejection
                                     .INVALID_CLIENT,
                             )
