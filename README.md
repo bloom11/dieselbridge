@@ -1938,10 +1938,11 @@ reimplementing its provider selection, observation ownership, state, action or e
 
 # Roadmap / project hand-off
 
-The provider-neutral observation foundation, process-local Diesel runtime core and M6 phone/alarm
-transport path are implemented and verified. The active architecture milestone is M7: define and
-expose one stable public Diesel platform boundary for external Wear consumers/providers and phone
-clients. Espruino is intentionally deferred until that boundary is proven.
+The provider-neutral observation foundation, process-local Diesel runtime core, M6 phone/alarm
+transport path and M7 public Diesel platform are implemented and verified. M7 closed with exact-SHA
+CI plus a physical TicWatch Pro 5 consumer/provider/process-death campaign. The active architecture
+milestone is now M8: run a real external Espruino/Bangle.js environment as an ordinary public Diesel
+client/provider without giving it private DieselBridge access or physical BLE ownership.
 
 ## Current milestone status
 
@@ -1971,15 +1972,15 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M6.1c | initial phone -> watch next-alarm synchronization | **Complete: exact-SHA `CONFIRMED` hardware proof (`1c6e5d02`)** |
 | M6.1d | automatic alarm-change propagation | **Complete: alarm timestamp changed automatically without manual sync (`1c6e5d02`)** |
 | M6.1e | reconnect/process-lifecycle resync | **Complete: automatic reconnect reconciliation physically proven (`1c6e5d02`)** |
-| M7.0 | public Diesel architecture/catalog contract | **Current implementation line** |
-| M7.1 | process-local `DieselPublicApi` + stable public value/resource model | **Current implementation slice** |
-| M7.2 | external Wear consumer Binder/session API | **Implemented + hardened on M7 branch; exact-SHA CI is authoritative** |
-| M7.3 | external observation/event delivery over the existing core | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.5 | generic bounded transport endpoint API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.7 | reference external consumer/provider APK + failure/physical closure | **M7.7b provider/death harness implemented on M7 branch; physical closure pending** |
-| M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
+| M7.0 | public Diesel architecture/catalog contract | **Complete + CI verified** |
+| M7.1 | process-local `DieselPublicApi` + stable public value/resource model | **Complete + CI verified** |
+| M7.2 | external Wear consumer Binder/session API | **Complete + exact-SHA CI verified** |
+| M7.3 | external observation/event delivery over the existing core | **Complete + exact-SHA CI verified** |
+| M7.4 | external state/action/event/observation provider proxies | **Complete + exact-SHA CI verified** |
+| M7.5 | generic bounded transport endpoint API | **Complete + exact-SHA CI verified** |
+| M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Complete + exact-SHA CI verified** |
+| M7.7 | reference external consumer/provider APK + failure/physical closure | **Complete: physical TicWatch Pro 5 closure (`25936692`, run `38297193842`)** |
+| M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Current implementation line** |
 | M9 | health/history expansion | **Planned** |
 | M10A | vendor/private capability providers | **Planned** |
 | M10B | TicWatch ULP display research | **Planned** |
@@ -2711,8 +2712,8 @@ change the closure criteria above. M7 is closed. M8 is now unblocked.
 
 ## M8 — external Espruino/Bangle.js runtime
 
-M8 is intentionally downstream of M7. The Espruino APK is an ordinary external Diesel client and,
-when useful, provider:
+M8 starts from the closed M7 public boundary. The Espruino APK is an ordinary external Diesel client
+and, where useful, provider:
 
 ```text
 Bangle.js application
@@ -2725,10 +2726,54 @@ Bangle.js application
 
 The Espruino port owns JavaScript execution, `Storage`, modules, graphics, widgets, its Wear UI and
 other runtime-internal behavior. It must not duplicate SensorManager, Health Services, battery,
-vibration or other capabilities already exposed by Diesel.
+vibration or other capabilities already exposed by Diesel. It must not link against `:watch`, reach
+private DieselBridge classes, or become another BLE central.
 
-Bangle/App-Loader console traffic should use the generic M7 transport API rather than an
-Espruino-specific privileged Binder contract.
+### M8.0 — runtime and adapter contract
+
+Freeze the external-process architecture before importing a runtime. Decide the concrete upstream
+Espruino runtime substrate, Android/native build boundary and license/notice obligations. A generic
+JavaScript engine with a few Bangle-shaped globals is not sufficient evidence for this milestone:
+the implementation must either run the real Espruino runtime or document a narrowly justified,
+testable compatibility boundary.
+
+The public Diesel API remains the only capability bridge. Logical resource IDs are resolved through
+the M7 catalog; the runtime never chooses SensorManager/Health Services providers directly.
+
+### M8.1 — independent runtime application
+
+Add an independently installable Wear application with its own package identity and no dependency on
+`:watch`. Bring up the selected Espruino runtime, deterministic start/stop ownership, bounded script
+execution, a small persistent `Storage` implementation, and CI coverage. The first proof is local JS
+execution only; hardware capability access stays downstream.
+
+### M8.2 — Diesel-backed Bangle capability adapter
+
+Map the first Bangle-facing capabilities onto public Diesel resources: observation subscriptions for
+motion/sensor data, public actions for vibration and other bounded commands, public state reads, and
+event subscriptions. Adapter code translates Bangle/Espruino semantics but does not duplicate
+provider selection, sensor acquisition, state ownership or action routing.
+
+### M8.3 — Bangle application compatibility surface
+
+Implement the minimum real Bangle application surface needed by selected representative apps:
+timers/events, `Storage`, graphics/display lifecycle, widgets and the `Bangle` object. Compatibility
+is expanded from observed app requirements rather than by inventing APIs. Each added surface gets
+runtime tests using actual application JavaScript.
+
+### M8.4 — generic console/App-Loader transport
+
+Expose the concrete Bangle/App-Loader console as an internal Diesel transport provider and consume it
+from the external runtime through M7 `TRANSPORT/OPEN`. The provider may adapt the already-owned
+Gadgetbridge/Bangle line path, but stock Gadgetbridge remains the phone BLE central. No raw Android
+BLE/GATT object crosses the public boundary and transport frames remain loss-intolerant.
+
+### M8.5 — physical runtime closure
+
+Install exact CI-signed DieselBridge and Espruino artifacts on the physical watch. Prove a real
+Bangle application executes, receives Diesel-backed sensor data, invokes a Diesel-backed action,
+survives runtime/application restart, and exercises the generic console transport. Record exact
+artifact SHA/run IDs and physical logs before M8 is closed.
 
 ## M9 — health/history expansion
 
