@@ -63,6 +63,7 @@ import org.aaustralian.dieselbridge.platform.sensor.HealthServicesObservationRec
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
 import org.aaustralian.dieselbridge.platform.sensor.healthServicesObservationCapabilities
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationService
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerLogicalRouteSelector
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerObservationDispatcher
@@ -99,6 +100,9 @@ class DieselBridgeService : Service() {
 
     private var companionAlarmStateOwner:
         CompanionAlarmStateOwner? = null
+
+    private var phoneNotificationService:
+        PhoneNotificationService? = null
 
     private var vibrationActionRegistration: DieselActionRegistration? = null
     private var publicRuntimeContext: DieselPublicRuntimeContext? = null
@@ -509,6 +513,29 @@ class DieselBridgeService : Service() {
 
         vibrationActionRegistration = WatchVibrationAction.register(platform)
 
+        val notificationOwner =
+            PhoneNotificationService(
+                platform =
+                    platform,
+                sendAction =
+                    {
+                            id,
+                            action,
+                            reply,
+                        ->
+                        controller
+                            ?.sendAction(
+                                id,
+                                action,
+                                reply,
+                            )
+                            ?: false
+                    },
+            )
+
+        phoneNotificationService =
+            notificationOwner
+
         DeveloperRuntimeAccess.attachSensorMatrixExperiment(
             SensorMatrixExperiment(platform.capabilities),
         )
@@ -574,6 +601,10 @@ class DieselBridgeService : Service() {
                     observationManager,
                 sensorObservationEventBridge = platform.sensorObservationEvents,
                 sensorObservationEventBus = platform.events,
+                onNotificationUpsert =
+                    notificationOwner::receive,
+                onNotificationRemove =
+                    notificationOwner::removeFromPhone,
                 additionalCommandModules = listOf(
                     DeveloperSensorProbeCommandModule(
                         authorization = developerRemoteAccessPolicy,
@@ -636,7 +667,19 @@ class DieselBridgeService : Service() {
 
         bleController.start()
         // Route UI action taps (dismiss / reply / open) to the controller's BLE back-channel.
-        NotificationActions.handler = { id, action, reply -> controller?.sendAction(id, action, reply) }
+        NotificationActions.handler =
+            {
+                    id,
+                    action,
+                    reply,
+                ->
+                notificationOwner.performLegacyAction(
+                    id,
+                    action,
+                    reply,
+                )
+                Unit
+            }
         // Route find-phone taps to the controller so the watch can buzz the phone over BLE.
         NotificationActions.findPhoneHandler = { active -> controller?.sendFindPhone(active) }
         // Route call action taps (accept / reject / ignore / end) over the BLE back-channel.
@@ -691,6 +734,12 @@ class DieselBridgeService : Service() {
          */
         controller?.shutdown()
         controller = null
+
+        phoneNotificationService
+            ?.close()
+
+        phoneNotificationService =
+            null
 
         companionAlarmStateOwner
             ?.close()

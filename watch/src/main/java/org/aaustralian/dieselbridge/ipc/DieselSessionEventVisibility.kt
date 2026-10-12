@@ -4,6 +4,7 @@ package org.aaustralian.dieselbridge.ipc
 import org.aaustralian.dieselbridge.api.DieselPublicIngressEvent
 import org.aaustralian.dieselbridge.platform.event.DieselEvent
 import org.aaustralian.dieselbridge.platform.event.SensorObservationEvent
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationEvent
 
 internal object DieselSessionEventVisibility {
     fun isVisible(
@@ -15,6 +16,9 @@ internal object DieselSessionEventVisibility {
                 ownsObservation(
                     event.subscriptionId,
                 )
+
+            is PhoneNotificationEvent ->
+                true
 
             is DieselPublicIngressEvent ->
                 true

@@ -16,6 +16,27 @@ class DieselPublicAccessPolicyTest {
         assertTrue(policy.canAccess(app, accel.descriptor, DieselResourceOperation.SUBSCRIBE))
         assertTrue(policy.canAccess(app, DieselDefaultPublicApi.SENSOR_SAMPLE_EVENT, DieselResourceOperation.SUBSCRIBE))
         assertTrue(policy.canAccess(app, DieselDefaultPublicApi.SENSOR_STATE_EVENT, DieselResourceOperation.SUBSCRIBE))
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_NOTIFICATION_SUMMARY,
+                DieselResourceOperation.READ,
+            ),
+        )
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_NOTIFICATION_DISMISS,
+                DieselResourceOperation.INVOKE,
+            ),
+        )
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_NOTIFICATION_RECEIVED,
+                DieselResourceOperation.SUBSCRIBE,
+            ),
+        )
     }
 
     @Test fun sensitiveObservationUsesCallerPermission() {

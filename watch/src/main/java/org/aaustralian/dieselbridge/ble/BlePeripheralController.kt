@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.aaustralian.dieselbridge.BuildConfig
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
+import org.aaustralian.dieselbridge.data.WatchNotification
 import org.aaustralian.dieselbridge.debug.DeveloperCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessAuthorization
 import org.aaustralian.dieselbridge.debug.DeveloperExportCommandModule
@@ -73,6 +74,20 @@ class BlePeripheralController(
         SensorObservationManager? = null,
     private val sensorObservationEventBridge: SensorObservationEventBridge? = null,
     private val sensorObservationEventBus: DieselEventBus? = null,
+    private val onNotificationUpsert:
+        (WatchNotification) -> Unit =
+        {
+            NotificationStore.upsert(
+                it,
+            )
+        },
+    private val onNotificationRemove:
+        (Long) -> Unit =
+        {
+            NotificationStore.remove(
+                it,
+            )
+        },
     additionalCommandModules: List<DieselCommandModule> = emptyList(),
 ) {
     private var advertiser: NusAdvertiser? = null
@@ -236,6 +251,10 @@ class BlePeripheralController(
             onActivityControl = { control ->
                 if (gattServer?.connectedDevice != null) activitySession?.apply(control)
             },
+            onNotificationUpsert =
+                onNotificationUpsert,
+            onNotificationRemove =
+                onNotificationRemove,
         )
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.
@@ -324,11 +343,19 @@ class BlePeripheralController(
         val sent = bangleLineTransport.sendLine(line)
         Log.i(TAG, "action TX: $line (sent=$sent)")
         ProbeStateHolder.log("action $action #$id (sent=$sent)")
-        if (action == NotificationActions.ACTION_DISMISS) {
+        if (
+            sent &&
+            action ==
+            NotificationActions.ACTION_DISMISS
+        ) {
             NotificationStore.remove(id)
             notifier.cancel(id)
         }
-        if (action == NotificationActions.ACTION_DISMISS_ALL) {
+        if (
+            sent &&
+            action ==
+            NotificationActions.ACTION_DISMISS_ALL
+        ) {
             // Cancel only the cards we posted (never NotificationManagerCompat.cancelAll()).
             NotificationStore.items.value.forEach { notifier.cancel(it.id) }
             NotificationStore.clear()

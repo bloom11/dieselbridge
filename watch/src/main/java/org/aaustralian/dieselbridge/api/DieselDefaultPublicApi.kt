@@ -3,12 +3,20 @@ package org.aaustralian.dieselbridge.api
 
 import org.aaustralian.dieselbridge.companion.CompanionAlarmStateOwner
 import org.aaustralian.dieselbridge.companion.CompanionNextAlarmState
+import org.aaustralian.dieselbridge.data.WatchNotification
 import org.aaustralian.dieselbridge.platform.DieselPlatform
 import org.aaustralian.dieselbridge.platform.action.WatchVibrationAction
 import org.aaustralian.dieselbridge.platform.action.WatchVibrationRequest
 import org.aaustralian.dieselbridge.platform.action.WatchVibrationResult
 import org.aaustralian.dieselbridge.platform.event.SensorObservationSampleEvent
 import org.aaustralian.dieselbridge.platform.event.SensorObservationStateEvent
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationActionResult
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationDismissRequest
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationReceivedEvent
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationRemovedEvent
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationReplyRequest
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationService
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationSummary
 import org.aaustralian.dieselbridge.platform.sensor.SensorCapabilityCatalog
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationCapabilityId
 import org.aaustralian.dieselbridge.protocol.DieselValue
@@ -30,6 +38,54 @@ object DieselDefaultPublicApi {
         "Request bounded watch vibration through the active Diesel provider",
     )
 
+    val PHONE_NOTIFICATION_SUMMARY = DieselResourceDescriptor(
+        PhoneNotificationService.SUMMARY_KEY.id,
+        DieselResourceKind.STATE,
+        "phone.notification.summary.v1",
+        setOf(DieselResourceOperation.READ),
+        "Current summary of active phone notifications bridged to the watch",
+    )
+
+    val PHONE_NOTIFICATION_DISMISS = DieselResourceDescriptor(
+        PhoneNotificationService.DISMISS_KEY.id,
+        DieselResourceKind.ACTION,
+        "phone.notification.dismiss.v1",
+        setOf(DieselResourceOperation.INVOKE),
+        "Dismiss one active phone notification",
+    )
+
+    val PHONE_NOTIFICATION_REPLY = DieselResourceDescriptor(
+        PhoneNotificationService.REPLY_KEY.id,
+        DieselResourceKind.ACTION,
+        "phone.notification.reply.v1",
+        setOf(DieselResourceOperation.INVOKE),
+        "Reply to one active replyable phone notification",
+    )
+
+    val PHONE_NOTIFICATION_DISMISS_ALL = DieselResourceDescriptor(
+        PhoneNotificationService.DISMISS_ALL_KEY.id,
+        DieselResourceKind.ACTION,
+        "phone.notification.dismiss-all.v1",
+        setOf(DieselResourceOperation.INVOKE),
+        "Dismiss all active phone notifications",
+    )
+
+    val PHONE_NOTIFICATION_RECEIVED = DieselResourceDescriptor(
+        PhoneNotificationReceivedEvent.RECEIVED_EVENT_ID,
+        DieselResourceKind.EVENT,
+        "phone.notification.received.v1",
+        setOf(DieselResourceOperation.SUBSCRIBE),
+        "A phone notification was received or updated",
+    )
+
+    val PHONE_NOTIFICATION_REMOVED = DieselResourceDescriptor(
+        PhoneNotificationRemovedEvent.REMOVED_EVENT_ID,
+        DieselResourceKind.EVENT,
+        "phone.notification.removed.v1",
+        setOf(DieselResourceOperation.SUBSCRIBE),
+        "An active phone notification was removed",
+    )
+
     val SENSOR_SAMPLE_EVENT = DieselResourceDescriptor(
         SensorObservationSampleEvent.TYPE,
         DieselResourceKind.EVENT,
@@ -46,7 +102,30 @@ object DieselDefaultPublicApi {
         "Lifecycle changes from sensor observations owned by the same public session",
     )
 
-    val EVENT_IDS: Set<String> = setOf(SENSOR_SAMPLE_EVENT.id, SENSOR_STATE_EVENT.id)
+    val NOTIFICATION_STATE_IDS =
+        setOf(
+            PHONE_NOTIFICATION_SUMMARY.id,
+        )
+
+    val NOTIFICATION_ACTION_IDS =
+        setOf(
+            PHONE_NOTIFICATION_DISMISS.id,
+            PHONE_NOTIFICATION_REPLY.id,
+            PHONE_NOTIFICATION_DISMISS_ALL.id,
+        )
+
+    val NOTIFICATION_EVENT_IDS =
+        setOf(
+            PHONE_NOTIFICATION_RECEIVED.id,
+            PHONE_NOTIFICATION_REMOVED.id,
+        )
+
+    val EVENT_IDS: Set<String> =
+        setOf(
+            SENSOR_SAMPLE_EVENT.id,
+            SENSOR_STATE_EVENT.id,
+        ) +
+            NOTIFICATION_EVENT_IDS
 
     val OBSERVATIONS: List<DieselPublicObservationBinding> =
         SensorCapabilityCatalog.standardLogicalIds.map { logicalId ->
@@ -76,6 +155,12 @@ object DieselDefaultPublicApi {
                 CompanionAlarmStateOwner.KEY,
                 ::encodeAlarm,
             ),
+            DieselPublicStateBinding.fromStateStore(
+                platform.states,
+                PHONE_NOTIFICATION_SUMMARY,
+                PhoneNotificationService.SUMMARY_KEY,
+                ::encodeNotificationSummary,
+            ),
         ),
         actionBindings = listOf(
             DieselPublicActionBinding.fromActionDispatcher(
@@ -84,6 +169,27 @@ object DieselDefaultPublicApi {
                 WatchVibrationAction.KEY,
                 ::decodeVibration,
                 ::encodeVibration,
+            ),
+            DieselPublicActionBinding.fromActionDispatcher(
+                platform.actions,
+                PHONE_NOTIFICATION_DISMISS,
+                PhoneNotificationService.DISMISS_KEY,
+                ::decodeNotificationDismiss,
+                ::encodeNotificationActionResult,
+            ),
+            DieselPublicActionBinding.fromActionDispatcher(
+                platform.actions,
+                PHONE_NOTIFICATION_REPLY,
+                PhoneNotificationService.REPLY_KEY,
+                ::decodeNotificationReply,
+                ::encodeNotificationActionResult,
+            ),
+            DieselPublicActionBinding.fromActionDispatcher(
+                platform.actions,
+                PHONE_NOTIFICATION_DISMISS_ALL,
+                PhoneNotificationService.DISMISS_ALL_KEY,
+                ::decodeNotificationDismissAll,
+                ::encodeNotificationActionResult,
             ),
         ),
         observationBindings = OBSERVATIONS,
@@ -100,6 +206,24 @@ object DieselDefaultPublicApi {
                 { it is SensorObservationStateEvent },
                 { encodeStateEvent(it as SensorObservationStateEvent) },
             ),
+            DieselPublicEventBinding(
+                PHONE_NOTIFICATION_RECEIVED,
+                { it is PhoneNotificationReceivedEvent },
+                {
+                    encodeNotification(
+                        (it as PhoneNotificationReceivedEvent).notification,
+                    )
+                },
+            ),
+            DieselPublicEventBinding(
+                PHONE_NOTIFICATION_REMOVED,
+                { it is PhoneNotificationRemovedEvent },
+                {
+                    encodeNotificationRemoved(
+                        it as PhoneNotificationRemovedEvent,
+                    )
+                },
+            ),
         ),
     )
 
@@ -115,8 +239,93 @@ object DieselDefaultPublicApi {
         return DieselPublicDecodeResult.Value(WatchVibrationRequest(duration))
     }
 
+    private fun decodeNotificationDismiss(
+        value: DieselValue,
+    ): DieselPublicDecodeResult<PhoneNotificationDismissRequest> {
+        val fields =
+            (value as? DieselValue.ObjectValue)?.value
+                ?: return DieselPublicDecodeResult.Invalid("object_required")
+
+        if (fields.keys != setOf("id")) {
+            return DieselPublicDecodeResult.Invalid("invalid_fields")
+        }
+
+        val id =
+            (fields["id"] as? DieselValue.Integer)?.value
+                ?: return DieselPublicDecodeResult.Invalid("id_integer_required")
+
+        return DieselPublicDecodeResult.Value(
+            PhoneNotificationDismissRequest(
+                id = id,
+            ),
+        )
+    }
+
+    private fun decodeNotificationReply(
+        value: DieselValue,
+    ): DieselPublicDecodeResult<PhoneNotificationReplyRequest> {
+        val fields =
+            (value as? DieselValue.ObjectValue)?.value
+                ?: return DieselPublicDecodeResult.Invalid("object_required")
+
+        if (fields.keys != setOf("id", "text")) {
+            return DieselPublicDecodeResult.Invalid("invalid_fields")
+        }
+
+        val id =
+            (fields["id"] as? DieselValue.Integer)?.value
+                ?: return DieselPublicDecodeResult.Invalid("id_integer_required")
+
+        val text =
+            (fields["text"] as? DieselValue.Text)?.value
+                ?: return DieselPublicDecodeResult.Invalid("text_required")
+
+        if (text.isEmpty()) {
+            return DieselPublicDecodeResult.Invalid("reply_empty")
+        }
+
+        if (text.toByteArray(Charsets.UTF_8).size > PhoneNotificationService.MAX_REPLY_BYTES) {
+            return DieselPublicDecodeResult.Invalid("reply_too_large")
+        }
+
+        return DieselPublicDecodeResult.Value(
+            PhoneNotificationReplyRequest(
+                id = id,
+                text = text,
+            ),
+        )
+    }
+
+    private fun decodeNotificationDismissAll(
+        value: DieselValue,
+    ): DieselPublicDecodeResult<Unit> =
+        when (value) {
+            DieselValue.Null ->
+                DieselPublicDecodeResult.Value(Unit)
+
+            is DieselValue.ObjectValue ->
+                if (value.value.isEmpty()) {
+                    DieselPublicDecodeResult.Value(Unit)
+                } else {
+                    DieselPublicDecodeResult.Invalid("empty_object_required")
+                }
+
+            else ->
+                DieselPublicDecodeResult.Invalid("null_or_empty_object_required")
+        }
+
     private fun encodeVibration(result: WatchVibrationResult): DieselValue =
         DieselValue.ObjectValue(mapOf("durationMs" to DieselValue.Integer(result.durationMs)))
+
+    private fun encodeNotificationActionResult(
+        result: PhoneNotificationActionResult,
+    ): DieselValue =
+        DieselValue.ObjectValue(
+            linkedMapOf(
+                "sent" to DieselValue.Flag(result.sent),
+                "affectedCount" to DieselValue.Integer(result.affectedCount.toLong()),
+            ),
+        )
 
     private fun encodeAlarm(state: CompanionNextAlarmState): DieselValue =
         DieselValue.ObjectValue(
@@ -127,6 +336,44 @@ object DieselDefaultPublicApi {
                 state.triggerAtMs?.let { put("triggerAtMs", DieselValue.Integer(it)) }
                 state.reason?.let { put("reason", DieselValue.Text(it)) }
             },
+        )
+
+    private fun encodeNotificationSummary(
+        summary: PhoneNotificationSummary,
+    ): DieselValue =
+        DieselValue.ObjectValue(
+            linkedMapOf(
+                "activeCount" to DieselValue.Integer(summary.activeCount.toLong()),
+                "latest" to (
+                    summary.latest?.let(::encodeNotification)
+                        ?: DieselValue.Null
+                ),
+            ),
+        )
+
+    private fun encodeNotification(
+        notification: WatchNotification,
+    ): DieselValue =
+        DieselValue.ObjectValue(
+            linkedMapOf<String, DieselValue>().apply {
+                put("id", DieselValue.Integer(notification.id))
+                put("receivedAtMs", DieselValue.Integer(notification.receivedAt))
+                put("replyable", DieselValue.Flag(notification.replyable))
+                notification.app?.let { put("app", DieselValue.Text(it)) }
+                notification.title?.let { put("title", DieselValue.Text(it)) }
+                notification.body?.let { put("body", DieselValue.Text(it)) }
+                notification.sender?.let { put("sender", DieselValue.Text(it)) }
+            },
+        )
+
+    private fun encodeNotificationRemoved(
+        event: PhoneNotificationRemovedEvent,
+    ): DieselValue =
+        DieselValue.ObjectValue(
+            linkedMapOf(
+                "id" to DieselValue.Integer(event.notificationId),
+                "reason" to DieselValue.Text(event.reason),
+            ),
         )
 
     private fun encodeSampleEvent(event: SensorObservationSampleEvent): DieselValue {
@@ -162,5 +409,4 @@ object DieselDefaultPublicApi {
             },
         )
     }
-
 }

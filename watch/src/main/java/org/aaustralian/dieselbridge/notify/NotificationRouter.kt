@@ -15,9 +15,9 @@ import org.aaustralian.dieselbridge.protocol.GbMessage
 import org.aaustralian.dieselbridge.protocol.GbProtocol
 
 /**
- * Applies one inbound `GB({...})` line to the [NotificationStore] + system notifications. Shared by
- * the BLE controller (real notifications from Gadgetbridge) and the debug inject receiver (simulated
- * ones), so both drive the exact same pipeline. Returns the parsed message so callers can log.
+ * Applies one inbound Gadgetbridge/Bangle line. Notification mutations can be
+ * redirected into the Diesel notification owner while debug/legacy callers
+ * keep safe defaults.
  */
 class NotificationRouter(
     private val context: Context,
@@ -28,6 +28,20 @@ class NotificationRouter(
     private val onInvalidDieselRequest:
         (DieselInvalidRequest) -> Unit = {},
     private val onActivityControl: (GbMessage.ActivityControl) -> Unit = {},
+    private val onNotificationUpsert:
+        (WatchNotification) -> Unit =
+        {
+            NotificationStore.upsert(
+                it,
+            )
+        },
+    private val onNotificationRemove:
+        (Long) -> Unit =
+        {
+            NotificationStore.remove(
+                it,
+            )
+        },
 ) {
 
     fun handle(line: String): GbMessage? {
@@ -43,11 +57,11 @@ class NotificationRouter(
                     receivedAt = System.currentTimeMillis(),
                     replyable = msg.replyable,
                 )
-                NotificationStore.upsert(wn)
+                onNotificationUpsert(wn)
                 notifier.show(wn)
             }
             is GbMessage.NotifyDelete -> {
-                NotificationStore.remove(msg.id)
+                onNotificationRemove(msg.id)
                 notifier.cancel(msg.id)
             }
             is GbMessage.Find -> if (msg.active) FindAlertController.start(context) else FindAlertController.stop(context)
@@ -58,8 +72,6 @@ class NotificationRouter(
                 if (vibration != null) {
                     vibration.vibrate()
                 } else {
-                    // Transitional fallback: preserve legacy behaviour if the
-                    // platform registry has not been supplied.
                     FindAlertController.buzzOnce(context)
                 }
             }

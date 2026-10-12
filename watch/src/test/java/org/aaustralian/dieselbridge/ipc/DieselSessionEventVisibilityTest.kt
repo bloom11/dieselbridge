@@ -2,7 +2,9 @@
 package org.aaustralian.dieselbridge.ipc
 
 import org.aaustralian.dieselbridge.api.DieselPublicIngressEvent
+import org.aaustralian.dieselbridge.data.WatchNotification
 import org.aaustralian.dieselbridge.platform.event.SensorObservationStateEvent
+import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationReceivedEvent
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscriptionPhase
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscriptionState
 import org.aaustralian.dieselbridge.protocol.DieselValue
@@ -38,6 +40,30 @@ class DieselSessionEventVisibilityTest {
         )
 
         assertFalse(
+            DieselSessionEventVisibility.isVisible(
+                event,
+            ) {
+                false
+            },
+        )
+    }
+
+    @Test
+    fun builtInNotificationEventIsVisibleWithoutSensorOwnership() {
+        val event =
+            PhoneNotificationReceivedEvent(
+                WatchNotification(
+                    id = 9L,
+                    app = "messages",
+                    title = "hello",
+                    body = "body",
+                    sender = "alice",
+                    receivedAt = 1_500L,
+                    replyable = true,
+                ),
+            )
+
+        assertTrue(
             DieselSessionEventVisibility.isVisible(
                 event,
             ) {

@@ -2800,6 +2800,38 @@ The first implementation slice is notifications: define stable notification reso
 `notify`/`notify-` through Diesel-owned state/event semantics, and expose dismiss/reply through public
 Diesel actions without duplicating outbound Gadgetbridge framing.
 
+#### M8.1a — notification service contract
+
+M8.1a is the first concrete migration slice. It adds six stable public resources and raises the
+backward-compatible Wear API minor from 1.6 to 1.7:
+
+```text
+phone.notification.summary       STATE / READ
+phone.notification.received      EVENT / SUBSCRIBE
+phone.notification.removed       EVENT / SUBSCRIBE
+phone.notification.dismiss       ACTION / INVOKE
+phone.notification.reply         ACTION / INVOKE
+phone.notification.dismiss_all   ACTION / INVOKE
+```
+
+`phone.notification.summary` exposes bounded current truth only: active count plus the newest active
+notification. The full active-notification list intentionally remains the existing bounded
+`NotificationStore` projection until M8.4 introduces the generic collection/history query contract.
+
+One `PhoneNotificationService` owns the Diesel state publisher and all three action registrations.
+Production `notify` / `notify-` mutations pass through that owner before the existing Wear notifier
+projection is updated. Native UI dismiss/reply and public Binder actions share the same owner and the
+same existing Gadgetbridge/Bangle outbound `sendAction` transport; no second notification-control
+wire path is introduced.
+
+Notification events are ordinary built-in Diesel events, visible to public event subscriptions after
+normal resource-policy admission. M8.1a uses the existing M7 public-service permission boundary;
+M8.6 remains responsible for stronger per-service authorization for notification content and other
+sensitive resources.
+
+With the six notification descriptors added, the static public catalog grows from the M7 baseline of
+10 resources to 16 before any dynamic plugin resources are registered.
+
 ### M8.2 — complete native watch/device services
 
 Expose canonical battery/charging, device/build information, time-related state, bounded alarm
