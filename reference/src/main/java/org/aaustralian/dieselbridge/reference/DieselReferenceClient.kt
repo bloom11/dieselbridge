@@ -193,13 +193,12 @@ internal class DieselReferenceClient private constructor(
                                 ?.firstOrNull()
 
                         if (first != null) {
-                            return@withTimeout
-                                first
-                                    .getDoubleArray(
-                                        "values",
-                                    )
-                                    ?.size
-                                    ?: 0
+                            return@withTimeout first
+                                .getDoubleArray(
+                                    "values",
+                                )
+                                ?.size
+                                ?: 0
                         }
                     }
 
