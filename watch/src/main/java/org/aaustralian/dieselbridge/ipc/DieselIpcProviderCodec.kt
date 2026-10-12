@@ -130,8 +130,8 @@ internal object DieselIpcProviderCodec {
         logicalId: String,
         providerId: String,
         serverDroppedTotal: Long,
-    ): DieselPublicDecodeResult<SensorObservationUpdate> =
-        when (bundle.getString("type")) {
+    ): DieselPublicDecodeResult<SensorObservationUpdate> {
+        return when (bundle.getString("type")) {
             "started" -> {
                 val effective =
                     if (bundle.containsKey("effectiveSamplePeriodMs")) {
@@ -292,6 +292,7 @@ internal object DieselIpcProviderCodec {
                     "invalid_observation_update_type",
                 )
         }
+    }
 
     private fun boundedText(
         value: String?,
