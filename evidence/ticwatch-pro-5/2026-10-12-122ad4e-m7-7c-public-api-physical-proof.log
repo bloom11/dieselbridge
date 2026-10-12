@@ -1,0 +1,590 @@
+M7.7c physical proof
+Expected M7.7b SHA: 122ad4e1ca17da3bfc9e8763f56802285ee9f1e8
+Expected CI run: 38283383950
+Reference package: io.github.bloom11.dieselbridge.reference
+Cycles: 10
+Launch flags: 0x10008000
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:48:12.959 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:48:13.171 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=66 accelerometerValues=3
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:48:18.045 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:48:19.047 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== session_death cycle 1 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:48:28.222 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:48:30.692 I/DieselM77Ref(19030): M77_SESSION_OPEN api=1.6
+10-12 19:48:30.697 I/DieselM77Ref(19030): M77_SESSION_DEATH READY subscriptionId=68
+10-12 19:48:32.908 W/DieselM77Ref(19030): M77_SESSION_DEATH KILL pid=19030
+
+===== session_death cycle 1 completed death =====
+--------- beginning of main
+10-12 19:48:28.222 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:48:30.692 I/DieselM77Ref(19030): M77_SESSION_OPEN api=1.6
+10-12 19:48:30.697 I/DieselM77Ref(19030): M77_SESSION_DEATH READY subscriptionId=68
+10-12 19:48:32.908 W/DieselM77Ref(19030): M77_SESSION_DEATH KILL pid=19030
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:48:37.977 W/DieselM77Ref(19071): M77_SESSION_DEATH KILL pid=19071
+10-12 19:48:38.145 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:48:38.405 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=70 accelerometerValues=3
+
+===== session recovery cycle 1 =====
+--------- beginning of main
+10-12 19:48:37.977 W/DieselM77Ref(19071): M77_SESSION_DEATH KILL pid=19071
+10-12 19:48:38.145 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:48:38.405 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=70 accelerometerValues=3
+
+===== session_death cycle 2 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:48:46.993 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:48:49.558 I/DieselM77Ref(19155): M77_SESSION_OPEN api=1.6
+10-12 19:48:49.562 I/DieselM77Ref(19155): M77_SESSION_DEATH READY subscriptionId=71
+10-12 19:48:51.150 W/DieselM77Ref(19155): M77_SESSION_DEATH KILL pid=19155
+10-12 19:48:53.683 I/DieselM77Ref(19195): M77_SESSION_OPEN api=1.6
+10-12 19:48:53.689 I/DieselM77Ref(19195): M77_SESSION_DEATH READY subscriptionId=72
+
+===== session_death cycle 2 completed death =====
+--------- beginning of main
+10-12 19:48:46.993 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:48:49.558 I/DieselM77Ref(19155): M77_SESSION_OPEN api=1.6
+10-12 19:48:49.562 I/DieselM77Ref(19155): M77_SESSION_DEATH READY subscriptionId=71
+10-12 19:48:51.150 W/DieselM77Ref(19155): M77_SESSION_DEATH KILL pid=19155
+10-12 19:48:53.683 I/DieselM77Ref(19195): M77_SESSION_OPEN api=1.6
+10-12 19:48:53.689 I/DieselM77Ref(19195): M77_SESSION_DEATH READY subscriptionId=72
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:48:55.907 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:48:56.156 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=73 accelerometerValues=3
+
+===== session recovery cycle 2 =====
+--------- beginning of main
+10-12 19:48:55.907 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:48:56.156 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=73 accelerometerValues=3
+
+===== session_death cycle 3 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:05.123 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:07.565 I/DieselM77Ref(19272): M77_SESSION_OPEN api=1.6
+10-12 19:49:07.570 I/DieselM77Ref(19272): M77_SESSION_DEATH READY subscriptionId=74
+10-12 19:49:09.160 W/DieselM77Ref(19272): M77_SESSION_DEATH KILL pid=19272
+
+===== session_death cycle 3 completed death =====
+--------- beginning of main
+10-12 19:49:05.123 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:07.565 I/DieselM77Ref(19272): M77_SESSION_OPEN api=1.6
+10-12 19:49:07.570 I/DieselM77Ref(19272): M77_SESSION_DEATH READY subscriptionId=74
+10-12 19:49:09.160 W/DieselM77Ref(19272): M77_SESSION_DEATH KILL pid=19272
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:14.112 E/DieselM77Ref(19315): M77_DEATH FAIL mode=session_death StandaloneCoroutine was cancelled
+10-12 19:49:14.112 E/DieselM77Ref(19315): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:49:14.231 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:14.392 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=76 accelerometerValues=3
+
+===== session recovery cycle 3 =====
+--------- beginning of main
+10-12 19:49:14.112 E/DieselM77Ref(19315): M77_DEATH FAIL mode=session_death StandaloneCoroutine was cancelled
+10-12 19:49:14.112 E/DieselM77Ref(19315): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:49:14.231 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:14.392 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=76 accelerometerValues=3
+
+===== session_death cycle 4 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:24.601 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:24.618 I/DieselM77Ref(19315): M77_SESSION_OPEN api=1.6
+10-12 19:49:24.626 I/DieselM77Ref(19315): M77_SESSION_DEATH READY subscriptionId=77
+10-12 19:49:26.129 W/DieselM77Ref(19315): M77_SESSION_DEATH KILL pid=19315
+10-12 19:49:27.636 I/DieselM77Ref(19395): M77_SESSION_OPEN api=1.6
+10-12 19:49:27.641 I/DieselM77Ref(19395): M77_SESSION_DEATH READY subscriptionId=78
+
+===== session_death cycle 4 completed death =====
+--------- beginning of main
+10-12 19:49:24.601 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:24.618 I/DieselM77Ref(19315): M77_SESSION_OPEN api=1.6
+10-12 19:49:24.626 I/DieselM77Ref(19315): M77_SESSION_DEATH READY subscriptionId=77
+10-12 19:49:26.129 W/DieselM77Ref(19315): M77_SESSION_DEATH KILL pid=19315
+10-12 19:49:27.636 I/DieselM77Ref(19395): M77_SESSION_OPEN api=1.6
+10-12 19:49:27.641 I/DieselM77Ref(19395): M77_SESSION_DEATH READY subscriptionId=78
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:30.501 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:30.658 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=79 accelerometerValues=3
+
+===== session recovery cycle 4 =====
+--------- beginning of main
+10-12 19:49:30.501 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:30.658 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=79 accelerometerValues=3
+
+===== session_death cycle 5 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:38.827 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:41.454 I/DieselM77Ref(19462): M77_SESSION_OPEN api=1.6
+10-12 19:49:41.459 I/DieselM77Ref(19462): M77_SESSION_DEATH READY subscriptionId=80
+10-12 19:49:42.997 W/DieselM77Ref(19462): M77_SESSION_DEATH KILL pid=19462
+
+===== session_death cycle 5 completed death =====
+--------- beginning of main
+10-12 19:49:38.827 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:41.454 I/DieselM77Ref(19462): M77_SESSION_OPEN api=1.6
+10-12 19:49:41.459 I/DieselM77Ref(19462): M77_SESSION_DEATH READY subscriptionId=80
+10-12 19:49:42.997 W/DieselM77Ref(19462): M77_SESSION_DEATH KILL pid=19462
+10-12 19:49:44.492 I/DieselM77Ref(19493): M77_SESSION_OPEN api=1.6
+10-12 19:49:44.497 I/DieselM77Ref(19493): M77_SESSION_DEATH READY subscriptionId=81
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:46.688 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:46.836 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=82 accelerometerValues=3
+
+===== session recovery cycle 5 =====
+--------- beginning of main
+10-12 19:49:46.688 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:46.836 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=82 accelerometerValues=3
+
+===== session_death cycle 6 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:52.038 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:52.543 I/DieselM77Ref(19572): M77_SESSION_OPEN api=1.6
+10-12 19:49:52.547 I/DieselM77Ref(19572): M77_SESSION_DEATH READY subscriptionId=83
+
+===== session_death cycle 6 completed death =====
+--------- beginning of main
+10-12 19:49:52.038 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:52.543 I/DieselM77Ref(19572): M77_SESSION_OPEN api=1.6
+10-12 19:49:52.547 I/DieselM77Ref(19572): M77_SESSION_DEATH READY subscriptionId=83
+10-12 19:49:54.055 W/DieselM77Ref(19572): M77_SESSION_DEATH KILL pid=19572
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:57.061 W/DieselM77Ref(19608): M77_SESSION_DEATH KILL pid=19608
+10-12 19:49:57.199 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:57.378 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=85 accelerometerValues=3
+
+===== session recovery cycle 6 =====
+--------- beginning of main
+10-12 19:49:57.061 W/DieselM77Ref(19608): M77_SESSION_DEATH KILL pid=19608
+10-12 19:49:57.199 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:49:57.378 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=85 accelerometerValues=3
+
+===== session_death cycle 7 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:49:58.414 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:58.869 I/DieselM77Ref(19664): M77_SESSION_OPEN api=1.6
+10-12 19:49:58.873 I/DieselM77Ref(19664): M77_SESSION_DEATH READY subscriptionId=86
+
+===== session_death cycle 7 completed death =====
+--------- beginning of main
+10-12 19:49:58.414 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:49:58.869 I/DieselM77Ref(19664): M77_SESSION_OPEN api=1.6
+10-12 19:49:58.873 I/DieselM77Ref(19664): M77_SESSION_DEATH READY subscriptionId=86
+10-12 19:50:00.381 W/DieselM77Ref(19664): M77_SESSION_DEATH KILL pid=19664
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:03.001 E/DieselM77Ref(19709): M77_DEATH FAIL mode=session_death StandaloneCoroutine was cancelled
+10-12 19:50:03.001 E/DieselM77Ref(19709): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:50:03.127 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:03.268 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=88 accelerometerValues=3
+
+===== session recovery cycle 7 =====
+--------- beginning of main
+10-12 19:50:03.001 E/DieselM77Ref(19709): M77_DEATH FAIL mode=session_death StandaloneCoroutine was cancelled
+10-12 19:50:03.001 E/DieselM77Ref(19709): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:50:03.127 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:03.268 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=88 accelerometerValues=3
+
+===== session_death cycle 8 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:08.174 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:09.377 I/DieselM77Ref(19709): M77_SESSION_OPEN api=1.6
+10-12 19:50:09.383 I/DieselM77Ref(19709): M77_SESSION_DEATH READY subscriptionId=89
+10-12 19:50:10.925 W/DieselM77Ref(19709): M77_SESSION_DEATH KILL pid=19709
+10-12 19:50:13.707 I/DieselM77Ref(19774): M77_SESSION_OPEN api=1.6
+10-12 19:50:13.712 I/DieselM77Ref(19774): M77_SESSION_DEATH READY subscriptionId=90
+
+===== session_death cycle 8 completed death =====
+--------- beginning of main
+10-12 19:50:08.174 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:09.377 I/DieselM77Ref(19709): M77_SESSION_OPEN api=1.6
+10-12 19:50:09.383 I/DieselM77Ref(19709): M77_SESSION_DEATH READY subscriptionId=89
+10-12 19:50:10.925 W/DieselM77Ref(19709): M77_SESSION_DEATH KILL pid=19709
+10-12 19:50:13.707 I/DieselM77Ref(19774): M77_SESSION_OPEN api=1.6
+10-12 19:50:13.712 I/DieselM77Ref(19774): M77_SESSION_DEATH READY subscriptionId=90
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:16.658 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:16.911 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=91 accelerometerValues=3
+
+===== session recovery cycle 8 =====
+--------- beginning of main
+10-12 19:50:16.658 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:16.911 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=91 accelerometerValues=3
+
+===== session_death cycle 9 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:20.792 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:24.412 I/DieselM77Ref(19836): M77_SESSION_OPEN api=1.6
+10-12 19:50:24.420 I/DieselM77Ref(19836): M77_SESSION_DEATH READY subscriptionId=92
+10-12 19:50:26.167 W/DieselM77Ref(19836): M77_SESSION_DEATH KILL pid=19836
+
+===== session_death cycle 9 completed death =====
+--------- beginning of main
+10-12 19:50:20.792 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:24.412 I/DieselM77Ref(19836): M77_SESSION_OPEN api=1.6
+10-12 19:50:24.420 I/DieselM77Ref(19836): M77_SESSION_DEATH READY subscriptionId=92
+10-12 19:50:26.167 W/DieselM77Ref(19836): M77_SESSION_DEATH KILL pid=19836
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:29.984 W/DieselM77Ref(19879): M77_SESSION_DEATH KILL pid=19879
+10-12 19:50:30.272 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:30.536 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=94 accelerometerValues=3
+
+===== session recovery cycle 9 =====
+--------- beginning of main
+10-12 19:50:29.984 W/DieselM77Ref(19879): M77_SESSION_DEATH KILL pid=19879
+10-12 19:50:30.272 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:30.536 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=94 accelerometerValues=3
+
+===== session_death cycle 10 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:38.808 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:40.605 I/DieselM77Ref(19947): M77_SESSION_OPEN api=1.6
+10-12 19:50:41.339 I/DieselM77Ref(19947): M77_SESSION_DEATH READY subscriptionId=95
+10-12 19:50:42.942 W/DieselM77Ref(19947): M77_SESSION_DEATH KILL pid=19947
+
+===== session_death cycle 10 completed death =====
+--------- beginning of main
+10-12 19:50:38.808 I/DieselM77Ref(18755): M77_DEATH START mode=session_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:40.605 I/DieselM77Ref(19947): M77_SESSION_OPEN api=1.6
+10-12 19:50:41.339 I/DieselM77Ref(19947): M77_SESSION_DEATH READY subscriptionId=95
+10-12 19:50:42.942 W/DieselM77Ref(19947): M77_SESSION_DEATH KILL pid=19947
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:46.811 E/DieselM77Ref(19985): M77_DEATH FAIL mode=session_death StandaloneCoroutine was cancelled
+10-12 19:50:46.811 E/DieselM77Ref(19985): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:50:46.933 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:47.178 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=97 accelerometerValues=3
+
+===== session recovery cycle 10 =====
+--------- beginning of main
+10-12 19:50:46.811 E/DieselM77Ref(19985): M77_DEATH FAIL mode=session_death StandaloneCoroutine was cancelled
+10-12 19:50:46.811 E/DieselM77Ref(19985): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:50:46.933 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:50:47.178 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=97 accelerometerValues=3
+
+===== provider_death cycle 1 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:50:51.960 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:51.977 I/DieselM77Ref(19985): M77_SESSION_OPEN api=1.6
+10-12 19:50:52.034 I/DieselM77Ref(19985): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:50:55.451 W/DieselM77Ref(19985): M77_PROVIDER_DEATH KILL pid=19985
+
+===== provider_death cycle 1 completed death =====
+--------- beginning of main
+10-12 19:50:51.960 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:50:51.977 I/DieselM77Ref(19985): M77_SESSION_OPEN api=1.6
+10-12 19:50:52.034 I/DieselM77Ref(19985): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:50:55.451 W/DieselM77Ref(19985): M77_PROVIDER_DEATH KILL pid=19985
+10-12 19:51:00.777 I/DieselM77Ref(20060): M77_SESSION_OPEN api=1.6
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:51:02.923 E/DieselM77Ref(20060): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:51:02.923 E/DieselM77Ref(20060): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:51:03.039 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:51:04.191 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 1 attempt 1 =====
+--------- beginning of main
+10-12 19:51:02.923 E/DieselM77Ref(20060): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:51:02.923 E/DieselM77Ref(20060): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:51:03.039 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:51:04.191 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 2 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:51:15.142 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:51:15.157 I/DieselM77Ref(20060): M77_SESSION_OPEN api=1.6
+10-12 19:51:15.172 I/DieselM77Ref(20060): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:51:20.775 W/DieselM77Ref(20060): M77_PROVIDER_DEATH KILL pid=20060
+10-12 19:51:25.278 I/DieselM77Ref(20159): M77_SESSION_OPEN api=1.6
+10-12 19:51:25.329 I/DieselM77Ref(20159): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider_death cycle 2 completed death =====
+--------- beginning of main
+10-12 19:51:15.142 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:51:15.157 I/DieselM77Ref(20060): M77_SESSION_OPEN api=1.6
+10-12 19:51:15.172 I/DieselM77Ref(20060): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:51:20.775 W/DieselM77Ref(20060): M77_PROVIDER_DEATH KILL pid=20060
+10-12 19:51:25.278 I/DieselM77Ref(20159): M77_SESSION_OPEN api=1.6
+10-12 19:51:25.329 I/DieselM77Ref(20159): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:51:28.002 E/DieselM77Ref(20159): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:51:28.002 E/DieselM77Ref(20159): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:51:28.098 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:51:29.292 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 2 attempt 1 =====
+--------- beginning of main
+10-12 19:51:28.002 E/DieselM77Ref(20159): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:51:28.002 E/DieselM77Ref(20159): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:51:28.098 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:51:29.292 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 3 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:51:39.700 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:51:39.718 I/DieselM77Ref(20159): M77_SESSION_OPEN api=1.6
+10-12 19:51:40.842 I/DieselM77Ref(20159): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:51:45.553 W/DieselM77Ref(20159): M77_PROVIDER_DEATH KILL pid=20159
+
+===== provider_death cycle 3 completed death =====
+--------- beginning of main
+10-12 19:51:39.700 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:51:39.718 I/DieselM77Ref(20159): M77_SESSION_OPEN api=1.6
+10-12 19:51:40.842 I/DieselM77Ref(20159): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:51:45.553 W/DieselM77Ref(20159): M77_PROVIDER_DEATH KILL pid=20159
+10-12 19:51:50.744 I/DieselM77Ref(20257): M77_SESSION_OPEN api=1.6
+10-12 19:51:50.799 I/DieselM77Ref(20257): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:51:52.835 E/DieselM77Ref(20257): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:51:52.835 E/DieselM77Ref(20257): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:51:52.940 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:51:54.203 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 3 attempt 1 =====
+--------- beginning of main
+10-12 19:51:52.835 E/DieselM77Ref(20257): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:51:52.835 E/DieselM77Ref(20257): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:51:52.940 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:51:54.203 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 4 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:52:01.804 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:52:01.821 I/DieselM77Ref(20257): M77_SESSION_OPEN api=1.6
+10-12 19:52:01.836 I/DieselM77Ref(20257): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:52:04.377 W/DieselM77Ref(20257): M77_PROVIDER_DEATH KILL pid=20257
+10-12 19:52:06.811 I/DieselM77Ref(20336): M77_SESSION_OPEN api=1.6
+10-12 19:52:06.860 I/DieselM77Ref(20336): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider_death cycle 4 completed death =====
+--------- beginning of main
+10-12 19:52:01.804 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:52:01.821 I/DieselM77Ref(20257): M77_SESSION_OPEN api=1.6
+10-12 19:52:01.836 I/DieselM77Ref(20257): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:52:04.377 W/DieselM77Ref(20257): M77_PROVIDER_DEATH KILL pid=20257
+10-12 19:52:06.811 I/DieselM77Ref(20336): M77_SESSION_OPEN api=1.6
+10-12 19:52:06.860 I/DieselM77Ref(20336): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:52:09.705 W/DieselM77Ref(20336): M77_PROVIDER_DEATH KILL pid=20336
+10-12 19:52:09.859 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:52:11.170 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 4 attempt 1 =====
+--------- beginning of main
+10-12 19:52:09.705 W/DieselM77Ref(20336): M77_PROVIDER_DEATH KILL pid=20336
+10-12 19:52:09.859 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:52:11.170 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 5 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:52:21.320 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:52:23.822 I/DieselM77Ref(20414): M77_SESSION_OPEN api=1.6
+10-12 19:52:23.874 I/DieselM77Ref(20414): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:52:29.361 W/DieselM77Ref(20414): M77_PROVIDER_DEATH KILL pid=20414
+
+===== provider_death cycle 5 completed death =====
+--------- beginning of main
+10-12 19:52:21.320 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:52:23.822 I/DieselM77Ref(20414): M77_SESSION_OPEN api=1.6
+10-12 19:52:23.874 I/DieselM77Ref(20414): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:52:29.361 W/DieselM77Ref(20414): M77_PROVIDER_DEATH KILL pid=20414
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:52:34.724 E/DieselM77Ref(20453): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:52:34.724 E/DieselM77Ref(20453): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:52:35.943 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:52:37.292 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 5 attempt 1 =====
+--------- beginning of main
+10-12 19:52:34.724 E/DieselM77Ref(20453): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:52:34.724 E/DieselM77Ref(20453): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:52:35.943 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:52:37.292 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 6 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:52:47.596 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:52:47.791 I/DieselM77Ref(20453): M77_SESSION_OPEN api=1.6
+10-12 19:52:47.809 I/DieselM77Ref(20453): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:52:52.608 W/DieselM77Ref(20453): M77_PROVIDER_DEATH KILL pid=20453
+
+===== provider_death cycle 6 completed death =====
+--------- beginning of main
+10-12 19:52:47.596 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:52:47.791 I/DieselM77Ref(20453): M77_SESSION_OPEN api=1.6
+10-12 19:52:47.809 I/DieselM77Ref(20453): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:52:52.608 W/DieselM77Ref(20453): M77_PROVIDER_DEATH KILL pid=20453
+10-12 19:52:56.919 I/DieselM77Ref(20550): M77_SESSION_OPEN api=1.6
+10-12 19:52:57.006 I/DieselM77Ref(20550): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:52:59.041 E/DieselM77Ref(20550): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:52:59.041 E/DieselM77Ref(20550): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:53:00.190 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:00.486 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 6 attempt 1 =====
+--------- beginning of main
+10-12 19:52:59.041 E/DieselM77Ref(20550): M77_DEATH FAIL mode=provider_death StandaloneCoroutine was cancelled
+10-12 19:52:59.041 E/DieselM77Ref(20550): kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@bcd9e0d
+10-12 19:53:00.190 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:00.486 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 7 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:53:08.510 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:53:08.526 I/DieselM77Ref(20550): M77_SESSION_OPEN api=1.6
+10-12 19:53:08.541 I/DieselM77Ref(20550): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:53:12.875 W/DieselM77Ref(20550): M77_PROVIDER_DEATH KILL pid=20550
+10-12 19:53:16.715 I/DieselM77Ref(20643): M77_SESSION_OPEN api=1.6
+10-12 19:53:16.764 I/DieselM77Ref(20643): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider_death cycle 7 completed death =====
+--------- beginning of main
+10-12 19:53:08.510 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:53:08.526 I/DieselM77Ref(20550): M77_SESSION_OPEN api=1.6
+10-12 19:53:08.541 I/DieselM77Ref(20550): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:53:12.875 W/DieselM77Ref(20550): M77_PROVIDER_DEATH KILL pid=20550
+10-12 19:53:16.715 I/DieselM77Ref(20643): M77_SESSION_OPEN api=1.6
+10-12 19:53:16.764 I/DieselM77Ref(20643): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:53:19.568 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:20.782 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 7 attempt 1 =====
+--------- beginning of main
+10-12 19:53:19.568 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:20.782 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 8 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:53:27.650 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:53:28.108 I/DieselM77Ref(20717): M77_SESSION_OPEN api=1.6
+10-12 19:53:28.158 I/DieselM77Ref(20717): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:53:31.026 W/DieselM77Ref(20717): M77_PROVIDER_DEATH KILL pid=20717
+10-12 19:53:32.509 I/DieselM77Ref(20747): M77_SESSION_OPEN api=1.6
+10-12 19:53:32.561 I/DieselM77Ref(20747): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider_death cycle 8 completed death =====
+--------- beginning of main
+10-12 19:53:27.650 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:53:28.108 I/DieselM77Ref(20717): M77_SESSION_OPEN api=1.6
+10-12 19:53:28.158 I/DieselM77Ref(20717): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:53:31.026 W/DieselM77Ref(20717): M77_PROVIDER_DEATH KILL pid=20717
+10-12 19:53:32.509 I/DieselM77Ref(20747): M77_SESSION_OPEN api=1.6
+10-12 19:53:32.561 I/DieselM77Ref(20747): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:53:36.352 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:37.693 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 8 attempt 1 =====
+--------- beginning of main
+10-12 19:53:36.352 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:37.693 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 9 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:53:45.276 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:53:45.706 I/DieselM77Ref(20815): M77_SESSION_OPEN api=1.6
+10-12 19:53:45.757 I/DieselM77Ref(20815): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:53:50.864 W/DieselM77Ref(20815): M77_PROVIDER_DEATH KILL pid=20815
+
+===== provider_death cycle 9 completed death =====
+--------- beginning of main
+10-12 19:53:45.276 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:53:45.706 I/DieselM77Ref(20815): M77_SESSION_OPEN api=1.6
+10-12 19:53:45.757 I/DieselM77Ref(20815): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:53:50.864 W/DieselM77Ref(20815): M77_PROVIDER_DEATH KILL pid=20815
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:53:57.201 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:58.376 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 9 attempt 1 =====
+--------- beginning of main
+10-12 19:53:57.201 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:53:58.376 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider_death cycle 10 READY launch attempt 1 =====
+--------- beginning of main
+10-12 19:54:05.894 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:54:08.529 I/DieselM77Ref(20901): M77_SESSION_OPEN api=1.6
+10-12 19:54:08.578 I/DieselM77Ref(20901): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:54:13.947 W/DieselM77Ref(20901): M77_PROVIDER_DEATH KILL pid=20901
+10-12 19:54:15.438 I/DieselM77Ref(20938): M77_SESSION_OPEN api=1.6
+
+===== provider_death cycle 10 completed death =====
+--------- beginning of main
+10-12 19:54:05.894 I/DieselM77Ref(18755): M77_DEATH START mode=provider_death Watch logcat tag DieselM77Ref for READY/KILL.
+10-12 19:54:08.529 I/DieselM77Ref(20901): M77_SESSION_OPEN api=1.6
+10-12 19:54:08.578 I/DieselM77Ref(20901): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+10-12 19:54:13.947 W/DieselM77Ref(20901): M77_PROVIDER_DEATH KILL pid=20901
+10-12 19:54:15.438 I/DieselM77Ref(20938): M77_SESSION_OPEN api=1.6
+10-12 19:54:15.493 I/DieselM77Ref(20938): M77_PROVIDER_DEATH READY resources=plugin.io.github.bloom11.dieselbridge.reference.state,plugin.io.github.bloom11.dieselbridge.reference.action,plugin.io.github.bloom11.dieselbridge.reference.event,sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:54:17.721 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:54:18.863 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider recovery cycle 10 attempt 1 =====
+--------- beginning of main
+10-12 19:54:17.721 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:54:18.863 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== provider proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:54:30.171 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:54:31.470 I/DieselM77Ref(18755): M77_PROVIDER PASS stateRegistrationId=1 actionRegistrationId=2 eventRegistrationId=3 observationRegistrationId=4 stateValue=reference-state actionValue=pong eventObserved=true observationValues=3
+
+===== consumer proof launch attempt 1 =====
+--------- beginning of main
+10-12 19:54:41.735 I/DieselM77Ref(18755): M77_SESSION_OPEN api=1.6
+10-12 19:54:41.985 I/DieselM77Ref(18755): M77_CONSUMER PASS catalogSize=10 alarmPresent=true vibrationStatus=ok observationSubscriptionId=109 accelerometerValues=3
+
+===== FINAL SUMMARY =====
+M77C PHYSICAL PASS
+session_death_cycles=10
+provider_death_cycles=10
+final_provider_pass=true
+final_consumer_pass=true
+final_catalog_size=10

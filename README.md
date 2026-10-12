@@ -2450,7 +2450,7 @@ Do not publish `android_type_<n>` as a stable semantic capability merely because
 ## M7 — public Diesel platform API
 
 M7 turns the existing process-local core into a stable public platform without changing the core's
-ownership model.
+ownership model. M7 is closed by the M7.7c physical proof below; M8 is now unblocked.
 
 ### M7.0 — public contract and catalogue
 
@@ -2692,10 +2692,22 @@ In `provider_death` mode it registers all four synthetic resources, publishes st
 its own process without unregistering anything. The death is intentionally abrupt: the only cleanup
 signal available to DieselBridge is Binder death of the client token/provider callbacks.
 
-M7.7c is the remaining closure. It will install the exact CI-signed watch/reference APKs on the
-physical watch, run consumer/provider proofs, repeat both deliberate death modes enough times to
-detect leaked session/provider ownership, confirm provider resources disappear after death, and
-record the exact commands/log markers before M7 is declared closed.
+#### M7.7c — physical closure
+
+M7.7c is closed on the physical TicWatch Pro 5 using the CI-signed reference APK built from
+`122ad4e1ca17da3bfc9e8763f56802285ee9f1e8` by `DieselBridge CI` run `38283383950`. Baseline external consumer and synthetic provider
+proofs passed. Ten counted `session_death` READY -> KILL cycles each recovered to a successful
+consumer proof, and ten counted `provider_death` READY -> KILL cycles each recovered to a
+successful provider proof.
+
+The final provider proof passed, the final consumer proof passed, and the public catalog returned
+to exactly 10 resources. This confirms dead session ownership is reclaimed and caller-owned dynamic
+provider descriptors do not remain leaked after abrupt provider-process death. Raw evidence is
+committed at `evidence/ticwatch-pro-5/2026-10-12-122ad4e-m7-7c-public-api-physical-proof.log`.
+
+Android may transiently recreate the bound `:death` service after a deliberate process kill while
+the activity still owns the binding; those extra instances are outside the counted cycles and do not
+change the closure criteria above. M7 is closed. M8 is now unblocked.
 
 ## M8 — external Espruino/Bangle.js runtime
 
