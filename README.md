@@ -1941,8 +1941,10 @@ reimplementing its provider selection, observation ownership, state, action or e
 The provider-neutral observation foundation, process-local Diesel runtime core, M6 phone/alarm
 transport path and M7 public Diesel platform are implemented and verified. M7 closed with exact-SHA
 CI plus a physical TicWatch Pro 5 consumer/provider/process-death campaign. The active architecture
-milestone is now M8: run a real external Espruino/Bangle.js environment as an ordinary public Diesel
-client/provider without giving it private DieselBridge access or physical BLE ownership.
+milestone is now M8: make DieselBridge a complete watch service layer, use the stock Gadgetbridge
+Bangle.js profile as the first full external compatibility target, and expose the same logical
+services through the public Diesel API. The standalone Espruino/Bangle.js runtime is intentionally
+deferred until this service layer is complete.
 
 ## Current milestone status
 
@@ -1980,7 +1982,7 @@ client/provider without giving it private DieselBridge access or physical BLE ow
 | M7.5 | generic bounded transport endpoint API | **Complete + exact-SHA CI verified** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Complete + exact-SHA CI verified** |
 | M7.7 | reference external consumer/provider APK + failure/physical closure | **Complete: physical TicWatch Pro 5 closure (`25936692`, run `38297193842`)** |
-| M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Current implementation line** |
+| M8 | complete Diesel watch service layer + stock Gadgetbridge Bangle.js parity | **Current implementation line** |
 | M9 | health/history expansion | **Planned** |
 | M10A | vendor/private capability providers | **Planned** |
 | M10B | TicWatch ULP display research | **Planned** |
@@ -2710,70 +2712,143 @@ Android may transiently recreate the bound `:death` service after a deliberate p
 the activity still owns the binding; those extra instances are outside the counted cycles and do not
 change the closure criteria above. M7 is closed. M8 is now unblocked.
 
-## M8 — external Espruino/Bangle.js runtime
+## M8 — complete Diesel watch service layer + Gadgetbridge Bangle.js parity
 
-M8 starts from the closed M7 public boundary. The Espruino APK is an ordinary external Diesel client
-and, where useful, provider:
+M8 deliberately shifts the next implementation priority away from the standalone JavaScript runtime.
+The immediate goal is to make DieselBridge itself a complete provider-neutral watch service layer.
+Stock Gadgetbridge's Bangle.js profile is the first full external compatibility target because it
+already defines a useful phone/watch feature set and DieselBridge already owns the corresponding
+Gadgetbridge/NUS transport path.
+
+The architectural rule is:
 
 ```text
-Bangle.js application
-    -> real Espruino runtime
-    -> Android/Bangle compatibility adapter
-    -> public Diesel client SDK
-    -> DieselBridge
-    -> existing Diesel core/providers
+stock Gadgetbridge                 external Wear APKs
+       |                                  |
+ Bangle protocol                     public Binder
+       |                                  |
+       +--------------+-------------------+
+                      |
+               Diesel service layer
+                      |
+      +---------------+----------------+
+      |               |                |
+    state           actions       observations/events
+      |               |                |
+      +---------------+----------------+
+                      |
+        providers / Android platform
 ```
 
-The Espruino port owns JavaScript execution, `Storage`, modules, graphics, widgets, its Wear UI and
-other runtime-internal behavior. It must not duplicate SensorManager, Health Services, battery,
-vibration or other capabilities already exposed by Diesel. It must not link against `:watch`, reach
-private DieselBridge classes, or become another BLE central.
+Gadgetbridge-specific adapters must translate wire messages into Diesel resources instead of owning
+parallel feature state. DieselBridge UI code and external Wear clients must consume those same
+resources wherever practical. A feature is not considered migrated merely because the legacy
+Gadgetbridge path still works.
 
-### M8.0 — runtime and adapter contract
+The standalone Espruino/Bangle.js APK remains a later consumer of this platform. Espruino-specific
+JavaScript execution, `Storage`, graphics/widgets, App Loader files and runtime HTTP are deferred; M8
+first completes the underlying watch services they would consume.
 
-Freeze the external-process architecture before importing a runtime. Decide the concrete upstream
-Espruino runtime substrate, Android/native build boundary and license/notice obligations. A generic
-JavaScript engine with a few Bangle-shaped globals is not sufficient evidence for this milestone:
-the implementation must either run the real Espruino runtime or document a narrowly justified,
-testable compatibility boundary.
+### M8.0 — authoritative service/parity contract
 
-The public Diesel API remains the only capability bridge. Logical resource IDs are resolved through
-the M7 catalog; the runtime never chooses SensorManager/Health Services providers directly.
+Freeze the service inventory before migrating code. The target is the useful non-JavaScript portion
+of stock Gadgetbridge's Bangle.js profile plus the native watch capabilities already present in
+DieselBridge.
 
-### M8.1 — independent runtime application
+Initial parity inventory:
 
-Add an independently installable Wear application with its own package identity and no dependency on
-`:watch`. Bring up the selected Espruino runtime, deterministic start/stop ownership, bounded script
-execution, a small persistent `Storage` implementation, and CI coverage. The first proof is local JS
-execution only; hardware capability access stays downstream.
+| Service family | Current DieselBridge path | M8 public-service target |
+|---|---|---|
+| provider-neutral sensors / HR / motion | Diesel observations | keep as public observations |
+| realtime HR + steps for Gadgetbridge `act` | Diesel-backed activity controller | keep; treat as reference architecture |
+| vibration | public Diesel action | keep |
+| notifications + deletion | legacy `NotificationStore` / router | Diesel events + queryable/current notification model |
+| notification dismiss/reply | legacy `NotificationActions` | Diesel actions |
+| canned replies | legacy `CannedResponsesStore` | Diesel state/collection |
+| phone call state | legacy `CallController` | Diesel state/event |
+| answer/reject/ignore/end call | legacy handlers | Diesel actions |
+| music metadata/playback | legacy `MusicStore` | Diesel state |
+| music controls | legacy handlers | Diesel actions |
+| find watch / find phone | legacy controller/handler | Diesel state/actions |
+| watch battery/status + build/device info | partial protocol/debug paths | canonical public state |
+| alarms | partial next-alarm synchronization | complete bounded alarm service |
+| weather | missing | public phone-provided state/collection |
+| calendar | missing | public bounded collection/events |
+| navigation | missing | current navigation state/event |
+| phone GPS | missing | public observation/state |
+| recorded activity history | missing | bounded collection/history query |
+| workout/activity tracks | missing | bounded history/track query |
+| catalog changes | pull-only `getCatalog()` | catalog-change event + refresh contract |
+| resource authorization | initial M7 access policy | per-service sensitivity/control policy |
+| screenshots | not implemented | optional native service after core parity |
+| loyalty cards | not implemented | optional collection after core parity |
+| Sleep as Android bridge | not implemented | later integration above public services |
+| Espruino files/App Loader/HTTP/runtime | deferred | later runtime milestone, not M8 blocker |
 
-### M8.2 — Diesel-backed Bangle capability adapter
+M8.0 also freezes one important platform extension: live state/action/observation/event resources are
+not sufficient for durable lists and time-ranged data. M8 will add a bounded collection/history
+query contract rather than forcing activity history, workouts, calendar entries and notification
+lists through unbounded actions.
 
-Map the first Bangle-facing capabilities onto public Diesel resources: observation subscriptions for
-motion/sensor data, public actions for vibration and other bounded commands, public state reads, and
-event subscriptions. Adapter code translates Bangle/Espruino semantics but does not duplicate
-provider selection, sensor acquisition, state ownership or action routing.
+### M8.1 — migrate existing interactive Gadgetbridge features into Diesel
 
-### M8.3 — Bangle application compatibility surface
+Move the already-working notification, canned-response, call, music and find-device behavior behind
+`DieselStateStore`, `DieselActionDispatcher` and `DieselEventBus` resources. Keep Gadgetbridge as an
+adapter and keep existing UI behavior working during migration.
 
-Implement the minimum real Bangle application surface needed by selected representative apps:
-timers/events, `Storage`, graphics/display lifecycle, widgets and the `Bangle` object. Compatibility
-is expanded from observed app requirements rather than by inventing APIs. Each added surface gets
-runtime tests using actual application JavaScript.
+The first implementation slice is notifications: define stable notification resources, route inbound
+`notify`/`notify-` through Diesel-owned state/event semantics, and expose dismiss/reply through public
+Diesel actions without duplicating outbound Gadgetbridge framing.
 
-### M8.4 — generic console/App-Loader transport
+### M8.2 — complete native watch/device services
 
-Expose the concrete Bangle/App-Loader console as an internal Diesel transport provider and consume it
-from the external runtime through M7 `TRANSPORT/OPEN`. The provider may adapt the already-owned
-Gadgetbridge/Bangle line path, but stock Gadgetbridge remains the phone BLE central. No raw Android
-BLE/GATT object crosses the public boundary and transport frames remain loss-intolerant.
+Expose canonical battery/charging, device/build information, time-related state, bounded alarm
+management and remaining native watch controls through the public catalog. Prefer existing platform
+owners/providers; do not add feature-specific global stores when a core primitive fits.
 
-### M8.5 — physical runtime closure
+### M8.3 — phone-provided context services over stock Gadgetbridge
 
-Install exact CI-signed DieselBridge and Espruino artifacts on the physical watch. Prove a real
-Bangle application executes, receives Diesel-backed sensor data, invokes a Diesel-backed action,
-survives runtime/application restart, and exercises the generic console transport. Record exact
-artifact SHA/run IDs and physical logs before M8 is closed.
+Add weather, calendar, navigation and phone-GPS adapters for the stock Gadgetbridge Bangle profile.
+Represent current truth as state, changes as events, and continuous location as an observation where
+appropriate. Gadgetbridge wire schemas remain adapter details and do not become the public Diesel
+schema.
+
+### M8.4 — bounded collection/history API + activity history
+
+Introduce a first-class bounded query model for durable/multi-record resources. Queries must have
+explicit limits/cursors and time bounds where applicable. Use it first for recorded activity/history
+instead of creating unbounded Binder payloads or feature-specific side channels.
+
+This generic contract is also the foundation for later M9 health history, but M8 only implements the
+history needed for Bangle/Gadgetbridge parity.
+
+### M8.5 — workout/activity tracks
+
+Map Gadgetbridge/Bangle activity-track fetching onto the bounded history/collection layer, including
+track metadata and bounded point retrieval. Keep live sensor observation separate from durable
+recorded workouts.
+
+### M8.6 — discovery + authorization hardening
+
+Add catalog-change notification so long-lived clients can refresh after providers/resources appear or
+disappear. Extend the M7 access-policy boundary for sensitive services such as notifications,
+calendar, location, calls and health data. "Public API" means a stable documented boundary, not
+unconditional access by every installed APK.
+
+### M8.7 — stock Gadgetbridge physical parity closure
+
+On the physical watch, verify the supported stock Gadgetbridge Bangle profile against an explicit
+matrix: notifications/reply, calls, media, find phone/watch, battery/status, alarms, weather,
+calendar, navigation, phone GPS, realtime HR/steps, recorded activity and tracks as implemented.
+For every migrated service, also prove a normal external Wear APK can discover/use the corresponding
+Diesel resource. Record exact CI SHA/run IDs and physical evidence before M8 is closed.
+
+### Deferred after M8 — standalone Espruino/Bangle.js runtime
+
+Only after the watch service layer is complete should an independent Espruino APK be resumed. At that
+point it becomes another public Diesel client/provider rather than driving service-layer design.
+Runtime-specific `Storage`, graphics/widgets, JavaScript modules, App Loader/files and HTTP remain
+separate work and must not acquire private DieselBridge or BLE ownership.
 
 ## M9 — health/history expansion
 
