@@ -1977,7 +1977,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.3 | external observation/event delivery over the existing core | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.5 | generic bounded transport endpoint API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Planned** |
+| M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **M7.6a process-local public facade implemented on M7 branch; Binder client pending** |
 | M7.7 | reference external consumer/provider APK + failure/physical closure | **Planned** |
 | M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
 | M9 | health/history expansion | **Planned** |
@@ -2602,8 +2602,35 @@ changing this public contract.
 
 ### M7.6 — public phone client
 
-Expose the already-proven `PhoneDieselGateway` through a stable phone client API so phone apps and
-automation use logical Diesel operations without knowing Gadgetbridge framing/correlation details.
+#### M7.6a — stable process-local phone facade
+
+`PhoneDieselPublicApi` now sits above the already-proven `PhoneDieselGateway`. It does not own a
+request map, timeout engine, Gadgetbridge transport or inbound response router. Calls still flow
+through the existing M6 `PhoneDieselGateway` and `PhoneDieselResponseRouter`, so request correlation,
+the eight-pending global limit, timeout cleanup and stock-Gadgetbridge submission remain single-owner
+behavior.
+
+The public request model is transport-neutral: command, optional logical target, structured
+`PhoneDieselValue` arguments and a bounded timeout. Diesel v1 value limits are validated with the
+existing `PhoneDieselValueCodec`; Gadgetbridge `GB(...)` framing and internal request IDs never cross
+the public facade. Gateway submission exceptions are normalized so Java implementation details are
+not part of the public contract.
+
+The first public access policy is deliberately narrow: `commands`, `debug.build.info` and
+`companion.alarm.next.get`. In particular, the companion's internal
+`companion.alarm.next.sync` mutation route is not made public merely because it already exists on the
+wire. The generic API can admit additional commands later without redesigning clients.
+
+The phone public API has its own version line, starting at 1.0, independent of the Wear Binder API
+version.
+
+#### M7.6b — external phone Binder client
+
+Pending: expose the M7.6a facade through an exported, permission-gated, caller-bound Binder session.
+Each external session will own bounded asynchronous invocations and a client-death token; cancellation
+must flow into the existing gateway so `PhoneDieselResponseRouter` removes that pending request.
+Stock Gadgetbridge remains the sole phone BLE central and no Bluetooth permission or BLE object is
+added to the public service.
 
 ### M7.7 — reference external client/provider closure
 

@@ -35,8 +35,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge.phone"
         minSdk = 28
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.0-dev.4"
+        versionCode = 5
+        versionName = "0.1.0-dev.5"
 
         buildConfigField(
             "String",

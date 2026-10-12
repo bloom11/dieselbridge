@@ -16,6 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.aaustralian.dieselbridge.phone.alarm.AlarmSyncCoordinator
 import org.aaustralian.dieselbridge.phone.alarm.AndroidNextAlarmProvider
 import org.aaustralian.dieselbridge.phone.alarm.CompanionAlarmProtocol
+import org.aaustralian.dieselbridge.phone.api.PhoneDieselPublicApi
 import org.aaustralian.dieselbridge.phone.gateway.GadgetbridgeIntentTransport
 import org.aaustralian.dieselbridge.phone.gateway.PhoneDieselGateway
 import org.aaustralian.dieselbridge.phone.gateway.PhoneDieselInboundReceiver
@@ -37,6 +38,11 @@ class PhoneCompanionRuntime(
             transport =
                 GadgetbridgeIntentTransport(application),
             responses = responseRouter,
+        )
+
+    val publicApi =
+        PhoneDieselPublicApi(
+            executor = gateway,
         )
 
     val nextAlarmProvider =
