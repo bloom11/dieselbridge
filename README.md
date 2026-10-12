@@ -1978,7 +1978,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.5 | generic bounded transport endpoint API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.7 | reference external consumer/provider APK + failure/physical closure | **M7.7a external consumer APK implemented on M7 branch; provider/death proof pending** |
+| M7.7 | reference external consumer/provider APK + failure/physical closure | **M7.7b provider/death harness implemented on M7 branch; physical closure pending** |
 | M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
 | M9 | health/history expansion | **Planned** |
 | M10A | vendor/private capability providers | **Planned** |
@@ -2671,10 +2671,29 @@ CI now compiles/tests the independent reference module, signs its debug APK with
 Bloom development certificate used for physical proof, verifies that certificate and uploads the
 stable `dieselbridge-m7-reference-bloom-debug` artifact.
 
-M7.7a is a consumer proof only. M7.7b adds caller-owned synthetic state/action/event/observation
-providers plus explicit provider/session death modes. M7.7c installs the exact CI artifacts on a
-physical watch, deliberately kills the external processes and records cleanup/reconnect evidence
-before M7 is declared closed.
+#### M7.7b — synthetic provider and death harness
+
+The independent reference APK can now register four caller-owned resources through the public Binder
+provider API: a state, action, event and observation. The normal provider proof publishes and reads
+the state, services a public action request through `IDieselProviderCallback`, publishes an event
+that is consumed through the public event subscription path, and supplies a synthetic three-value
+sensor reading through the public observation-provider callback. The proof consumes the resources
+through `IDieselSession`; it never reaches into Diesel core managers directly.
+
+The observation resource deliberately uses the exact 64-character caller-owned identifier
+`sensor.observe.plugin.io.github.bloom11.dieselbridge.reference.x`; JVM coverage guards both the
+Diesel identifier limit and caller namespace shape.
+
+`ReferenceDeathService` runs in the APK's separate `:death` process. In `session_death` mode it opens
+a real accelerometer observation and then kills its own process without closing the session. In
+`provider_death` mode it registers all four synthetic resources, publishes state and then kills its
+own process without unregistering anything. The death is intentionally abrupt: the only cleanup
+signal available to DieselBridge is Binder death of the client token/provider callbacks.
+
+M7.7c is the remaining closure. It will install the exact CI-signed watch/reference APKs on the
+physical watch, run consumer/provider proofs, repeat both deliberate death modes enough times to
+detect leaked session/provider ownership, confirm provider resources disappear after death, and
+record the exact commands/log markers before M7 is declared closed.
 
 ## M8 — external Espruino/Bangle.js runtime
 

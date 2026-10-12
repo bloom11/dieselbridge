@@ -33,5 +33,14 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Deliberately separate process used only by the M7 death harness.
+          Its Binder token/provider callbacks die with this process.
+        -->
+        <service
+            android:name=".ReferenceDeathService"
+            android:exported="false"
+            android:process=":death" />
+
     </application>
 </manifest>

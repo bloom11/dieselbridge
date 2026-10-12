@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge.reference"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-dev.1"
+        versionCode = 2
+        versionName = "0.1.0-dev.2"
     }
 
     signingConfigs {
