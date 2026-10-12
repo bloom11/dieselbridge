@@ -27,3 +27,4 @@ rootProject.name = "DieselBridge"
 // the only phone-side BLE owner; the companion must not acquire its own watch BLE link.
 include(":watch")
 include(":phone")
+include(":reference")

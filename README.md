@@ -1978,7 +1978,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.5 | generic bounded transport endpoint API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.7 | reference external consumer/provider APK + failure/physical closure | **Planned** |
+| M7.7 | reference external consumer/provider APK + failure/physical closure | **M7.7a external consumer APK implemented on M7 branch; provider/death proof pending** |
 | M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
 | M9 | health/history expansion | **Planned** |
 | M10A | vendor/private capability providers | **Planned** |
@@ -2653,9 +2653,28 @@ process-death physical closure.
 
 ### M7.7 — reference external client/provider closure
 
-Build a small reference Wear APK that reads state, invokes an action, subscribes to real observations,
-registers synthetic provider resources and survives deliberate client/provider process death. This
-is the physical proof that external apps are peers of existing internal consumers/providers.
+#### M7.7a — independent external consumer APK
+
+The repository now contains a third application module, `:reference`, with application ID
+`io.github.bloom11.dieselbridge.reference`. It does not depend on `:watch` and carries its own copy of
+the stable public AIDL contract, exactly as a third-party Wear APK would. Its manifest requests only
+the normal public Diesel API permission; it has no BLE, sensor, vibration, health or foreground
+service permissions.
+
+The reference activity binds explicitly to the exported `DieselPublicApiService`, negotiates public
+API major version 1 and opens a client-token-owned session. Its consumer proof verifies the public
+catalog, reads `companion.alarm.next`, invokes the bounded `watch.vibration.buzz` action and receives
+a real `sensor.observe.accelerometer` sample through the public observation callback. It never uses
+`DieselPlatform`, `SensorManager`, Health Services or private DieselBridge classes.
+
+CI now compiles/tests the independent reference module, signs its debug APK with the same persistent
+Bloom development certificate used for physical proof, verifies that certificate and uploads the
+stable `dieselbridge-m7-reference-bloom-debug` artifact.
+
+M7.7a is a consumer proof only. M7.7b adds caller-owned synthetic state/action/event/observation
+providers plus explicit provider/session death modes. M7.7c installs the exact CI artifacts on a
+physical watch, deliberately kills the external processes and records cleanup/reconnect evidence
+before M7 is declared closed.
 
 ## M8 — external Espruino/Bangle.js runtime
 

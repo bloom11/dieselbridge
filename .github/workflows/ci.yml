@@ -72,10 +72,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Unit tests
-        run: ./gradlew :watch:testDebugUnitTest :phone:testDebugUnitTest
+        run: ./gradlew :watch:testDebugUnitTest :phone:testDebugUnitTest :reference:testDebugUnitTest
 
       - name: Build debug APKs
-        run: ./gradlew :watch:assembleDebug :phone:assembleDebug --stacktrace
+        run: ./gradlew :watch:assembleDebug :phone:assembleDebug :reference:assembleDebug --stacktrace
 
       - name: Verify debug APK signing certificates
         run: |
@@ -88,7 +88,7 @@ jobs:
             exit 1
           fi
 
-          for APK in watch/build/outputs/apk/debug/watch-debug.apk phone/build/outputs/apk/debug/phone-debug.apk
+          for APK in watch/build/outputs/apk/debug/watch-debug.apk phone/build/outputs/apk/debug/phone-debug.apk reference/build/outputs/apk/debug/reference-debug.apk
           do
             ACTUAL_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]')"
 
@@ -113,4 +113,11 @@ jobs:
         with:
           name: dieselbridge-phone-bloom-debug
           path: phone/build/outputs/apk/debug/phone-debug.apk
+          retention-days: 14
+
+      - name: Upload M7 reference debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dieselbridge-m7-reference-bloom-debug
+          path: reference/build/outputs/apk/debug/reference-debug.apk
           retention-days: 14
