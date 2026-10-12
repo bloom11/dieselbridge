@@ -5,6 +5,8 @@ import org.aaustralian.dieselbridge.ipc.IDieselActionCallback;
 import org.aaustralian.dieselbridge.ipc.IDieselEventCallback;
 import org.aaustralian.dieselbridge.ipc.IDieselObservationCallback;
 import org.aaustralian.dieselbridge.ipc.IDieselProviderCallback;
+import org.aaustralian.dieselbridge.ipc.IDieselTransportCallback;
+import org.aaustralian.dieselbridge.ipc.IDieselTransportSendCallback;
 
 interface IDieselSession {
     Bundle getCatalog();
@@ -66,6 +68,19 @@ interface IDieselSession {
         String availability,
         String reason
     );
+
+    void openTransport(
+        String resourceId,
+        IDieselTransportCallback callback
+    );
+
+    void sendTransport(
+        long leaseId,
+        in byte[] frame,
+        IDieselTransportSendCallback callback
+    );
+
+    boolean closeTransport(long leaseId);
 
     void close();
 }

@@ -189,6 +189,28 @@ class DieselPublicApi(
     ): DieselDynamicResourceRegistration =
         dynamicCatalog.retain(descriptor)
 
+    internal fun retainTransportDescriptor(
+        descriptor: DieselResourceDescriptor,
+    ): DieselDynamicResourceRegistration {
+        require(descriptor.kind == DieselResourceKind.TRANSPORT)
+        require(
+            descriptor.operations ==
+                setOf(
+                    DieselResourceOperation.OPEN,
+                ),
+        )
+        return retainProviderDescriptor(
+            descriptor,
+        )
+    }
+
+    fun hasTransport(
+        resourceId: String,
+    ): Boolean =
+        descriptor(resourceId)
+            ?.kind ==
+            DieselResourceKind.TRANSPORT
+
     internal fun retainProviderDescriptor(
         descriptor: DieselResourceDescriptor,
     ): DieselDynamicResourceRegistration {

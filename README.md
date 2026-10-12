@@ -1976,7 +1976,7 @@ clients. Espruino is intentionally deferred until that boundary is proven.
 | M7.2 | external Wear consumer Binder/session API | **Implemented + hardened on M7 branch; exact-SHA CI is authoritative** |
 | M7.3 | external observation/event delivery over the existing core | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.4 | external state/action/event/observation provider proxies | **Implemented on M7 branch; exact-SHA CI is authoritative** |
-| M7.5 | generic bounded transport endpoint API | **M7.5a process-local transport foundation implemented on M7 branch; Binder delivery pending** |
+| M7.5 | generic bounded transport endpoint API | **Implemented on M7 branch; exact-SHA CI is authoritative** |
 | M7.6 | public phone companion client API above the proven Gadgetbridge gateway | **Planned** |
 | M7.7 | reference external consumer/provider APK + failure/physical closure | **Planned** |
 | M8 | external real Espruino/Bangle.js runtime using the public Diesel API | **Deferred until M7 is stable** |
@@ -2580,9 +2580,25 @@ truncated or silently dropped. No Android BLE/GATT object is exposed through thi
 
 #### M7.5b — Binder transport sessions
 
-Pending: expose session-owned transport clients and leases through Binder with bounded incoming-frame
-queues, asynchronous send results, and Binder-death cleanup. The Binder layer must consume this
-manager rather than create a second transport runtime.
+The public session now lazily owns one `DieselTransportClient` from the M7.5a manager. `openTransport`
+and `sendTransport` are asynchronous Binder operations, so provider open/send deadlines never block a
+Binder thread. A successful open returns the lease id and effective maximum frame size through a
+one-way `IDieselTransportCallback`; the same callback owns incoming frames and terminal notification.
+
+Each public session permits at most four active-or-opening transport leases and four outstanding send
+operations. The underlying process-local manager independently enforces its global/client lease and
+send limits, so the IPC boundary cannot weaken the core limits.
+
+Incoming Binder delivery uses a 32-frame lossless FIFO. Unlike sensor/event telemetry, it never drops
+old frames: if the client cannot drain that queue, the lease closes with `ipc_backpressure`. Provider
+oversize/protocol failure also closes the lease. Explicit close, transport callback death, whole
+client-token death and runtime teardown all close the same M7.5a core lease.
+
+Transport resources remain explicit discovery metadata: an internal provider retains a
+`TRANSPORT/OPEN` descriptor in `DieselPublicApi` and registers its `DieselTransportCapability` in the
+existing `CapabilityRegistry`. No fake production `gadgetbridge.bangle.console` endpoint is created
+here, and no Android BLE/GATT object crosses Binder. A concrete provider can be added later without
+changing this public contract.
 
 ### M7.6 — public phone client
 

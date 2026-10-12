@@ -33,6 +33,8 @@ import org.aaustralian.dieselbridge.api.DieselPublicStateResult
 import org.aaustralian.dieselbridge.api.DieselResourceKind
 import org.aaustralian.dieselbridge.api.DieselResourceOperation
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorObservationClient
+import org.aaustralian.dieselbridge.platform.transport.DieselTransportClient
+import org.aaustralian.dieselbridge.platform.transport.DieselTransportOpenResult
 
 /**
  * Exported Binder adapter for the one DieselBridgeService-owned runtime.
@@ -395,6 +397,19 @@ class DieselPublicApiService :
                 identity,
                 runtime,
             )
+
+        private var transportClient:
+            DieselTransportClient? =
+            null
+
+        private val transportLeases =
+            linkedMapOf<Long, DieselRemoteTransportLease>()
+
+        private var pendingTransportOpens =
+            0
+
+        private var pendingTransportSends =
+            0
 
         fun linkClientDeath() {
             clientToken.linkToDeath(
@@ -834,12 +849,399 @@ class DieselPublicApiService :
             )
         }
 
+        override fun openTransport(
+            resourceId: String,
+            callback: IDieselTransportCallback?,
+        ) {
+            enforceCaller()
+
+            val resultCallback =
+                callback
+                    ?: return
+
+            val descriptor =
+                runtime.api.descriptor(
+                    resourceId,
+                )
+
+            if (
+                descriptor == null ||
+                descriptor.kind != DieselResourceKind.TRANSPORT ||
+                !runtime.api.hasTransport(resourceId) ||
+                !accessPolicy.canAccess(
+                    identity,
+                    descriptor,
+                    DieselResourceOperation.OPEN,
+                )
+            ) {
+                deliverTransportOpen(
+                    resultCallback,
+                    DieselIpcTransportCodec.notFound(
+                        resourceId,
+                    ),
+                )
+                return
+            }
+
+            if (!reserveTransportOpen()) {
+                deliverTransportOpen(
+                    resultCallback,
+                    DieselIpcTransportCodec.rejected(
+                        "session_transport_limit",
+                    ),
+                )
+                return
+            }
+
+            val client =
+                getOrCreateTransportClient()
+
+            if (client == null) {
+                releaseTransportOpen()
+                deliverTransportOpen(
+                    resultCallback,
+                    DieselIpcTransportCodec.rejected(
+                        "transport_client_limit",
+                    ),
+                )
+                return
+            }
+
+            scope.launch {
+                try {
+                    val opened =
+                        client.open(
+                            resourceId,
+                        )
+
+                    if (
+                        opened !is
+                        DieselTransportOpenResult.Opened
+                    ) {
+                        deliverTransportOpen(
+                            resultCallback,
+                            DieselIpcTransportCodec.encodeOpen(
+                                opened,
+                            ),
+                        )
+                        return@launch
+                    }
+
+                    val remote =
+                        try {
+                            DieselRemoteTransportLease(
+                                lease =
+                                    opened.lease,
+                                callback =
+                                    resultCallback,
+                                parentScope =
+                                    scope,
+                                onCallbackDead =
+                                    ::forgetTransportLease,
+                                onTerminal =
+                                    ::forgetTransportLease,
+                            )
+                        } catch (_: RemoteException) {
+                            opened.lease.close()
+                            return@launch
+                        }
+
+                    val accepted =
+                        synchronized(resourceLock) {
+                            if (
+                                closed.get() ||
+                                remote.isClosed ||
+                                transportLeases.size >=
+                                MAX_TRANSPORT_LEASES
+                            ) {
+                                false
+                            } else {
+                                transportLeases[
+                                    remote.id
+                                ] =
+                                    remote
+                                true
+                            }
+                        }
+
+                    if (!accepted) {
+                        remote.close(
+                            "session_closed_or_limit",
+                            notify = false,
+                        )
+
+                        if (!closed.get()) {
+                            deliverTransportOpen(
+                                resultCallback,
+                                DieselIpcTransportCodec.rejected(
+                                    "session_transport_limit",
+                                ),
+                            )
+                        }
+                        return@launch
+                    }
+
+                    if (
+                        !deliverTransportOpen(
+                            resultCallback,
+                            DieselIpcTransportCodec.encodeOpen(
+                                opened,
+                            ),
+                        )
+                    ) {
+                        removeTransportLease(
+                            remote.id,
+                            "callback_dead",
+                            notify = false,
+                        )
+                        return@launch
+                    }
+
+                    remote.start()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    if (!closed.get()) {
+                        deliverTransportOpen(
+                            resultCallback,
+                            DieselIpcTransportCodec.failed(
+                                "transport_open_failed",
+                            ),
+                        )
+                    }
+                } finally {
+                    releaseTransportOpen()
+                }
+            }
+        }
+
+        override fun sendTransport(
+            leaseId: Long,
+            frame: ByteArray,
+            callback: IDieselTransportSendCallback?,
+        ) {
+            enforceCaller()
+
+            val resultCallback =
+                callback
+                    ?: return
+
+            val remote =
+                synchronized(resourceLock) {
+                    transportLeases[
+                        leaseId
+                    ]
+                }
+
+            if (remote == null) {
+                deliverTransportSend(
+                    resultCallback,
+                    leaseId,
+                    DieselIpcTransportCodec.sendNotFound(
+                        leaseId,
+                    ),
+                )
+                return
+            }
+
+            if (
+                frame.size >
+                remote.maxFrameBytes
+            ) {
+                deliverTransportSend(
+                    resultCallback,
+                    leaseId,
+                    DieselIpcTransportCodec.rejected(
+                        "frame_too_large",
+                    ),
+                )
+                return
+            }
+
+            if (!reserveTransportSend()) {
+                deliverTransportSend(
+                    resultCallback,
+                    leaseId,
+                    DieselIpcTransportCodec.rejected(
+                        "session_transport_send_limit",
+                    ),
+                )
+                return
+            }
+
+            val payload =
+                frame.copyOf()
+
+            scope.launch {
+                try {
+                    val result =
+                        remote.send(
+                            payload,
+                        )
+
+                    deliverTransportSend(
+                        resultCallback,
+                        leaseId,
+                        DieselIpcTransportCodec.encodeSend(
+                            leaseId,
+                            result,
+                        ),
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } finally {
+                    releaseTransportSend()
+                }
+            }
+        }
+
+        override fun closeTransport(
+            leaseId: Long,
+        ): Boolean {
+            enforceCaller()
+            return removeTransportLease(
+                leaseId,
+                "client_closed",
+                notify = true,
+            )
+        }
+
         override fun close() {
             enforceCaller()
 
             closeInternal(
                 "client_closed",
             )
+        }
+
+        private fun getOrCreateTransportClient():
+            DieselTransportClient? =
+            synchronized(resourceLock) {
+                transportClient?.let {
+                    return@synchronized it
+                }
+
+                if (closed.get()) {
+                    return@synchronized null
+                }
+
+                try {
+                    runtime.transports
+                        .openClient(
+                            "ipc.transport:$sessionId:${identity.uid}",
+                        )
+                        .also {
+                            transportClient =
+                                it
+                        }
+                } catch (_: IllegalStateException) {
+                    null
+                }
+            }
+
+        private fun reserveTransportOpen():
+            Boolean =
+            synchronized(resourceLock) {
+                if (
+                    closed.get() ||
+                    transportLeases.size +
+                    pendingTransportOpens >=
+                    MAX_TRANSPORT_LEASES
+                ) {
+                    false
+                } else {
+                    pendingTransportOpens++
+                    true
+                }
+            }
+
+        private fun releaseTransportOpen() {
+            synchronized(resourceLock) {
+                if (pendingTransportOpens > 0) {
+                    pendingTransportOpens--
+                }
+            }
+        }
+
+        private fun reserveTransportSend():
+            Boolean =
+            synchronized(resourceLock) {
+                if (
+                    closed.get() ||
+                    pendingTransportSends >=
+                    MAX_TRANSPORT_SENDS
+                ) {
+                    false
+                } else {
+                    pendingTransportSends++
+                    true
+                }
+            }
+
+        private fun releaseTransportSend() {
+            synchronized(resourceLock) {
+                if (pendingTransportSends > 0) {
+                    pendingTransportSends--
+                }
+            }
+        }
+
+        private fun forgetTransportLease(
+            leaseId: Long,
+        ) {
+            synchronized(resourceLock) {
+                transportLeases.remove(
+                    leaseId,
+                )
+            }
+        }
+
+        private fun removeTransportLease(
+            leaseId: Long,
+            reason: String,
+            notify: Boolean,
+        ): Boolean {
+            val remote =
+                synchronized(resourceLock) {
+                    transportLeases.remove(
+                        leaseId,
+                    )
+                }
+                    ?: return false
+
+            remote.close(
+                reason,
+                notify,
+            )
+            return true
+        }
+
+        private fun deliverTransportOpen(
+            callback: IDieselTransportCallback,
+            result: Bundle,
+        ): Boolean =
+            try {
+                callback.onOpened(
+                    result,
+                )
+                true
+            } catch (_: RemoteException) {
+                false
+            }
+
+        private fun deliverTransportSend(
+            callback: IDieselTransportSendCallback,
+            leaseId: Long,
+            result: Bundle,
+        ) {
+            try {
+                callback.onResult(
+                    leaseId,
+                    result,
+                )
+            } catch (_: RemoteException) {
+                // Lease lifetime belongs to the transport callback/session.
+            }
         }
 
         private fun deliverAction(
@@ -913,22 +1315,34 @@ class DieselPublicApiService :
 
             val observationsToClose: List<DieselRemoteObservation>
             val eventsToClose: List<DieselRemoteEventSubscription>
+            val transportsToClose: List<DieselRemoteTransportLease>
             val clientToClose: SensorObservationClient?
+            val transportClientToClose: DieselTransportClient?
 
             synchronized(resourceLock) {
                 observationsToClose = observations.values.toList()
                 observations.clear()
                 eventsToClose = eventSubscriptions.values.toList()
                 eventSubscriptions.clear()
+                transportsToClose = transportLeases.values.toList()
+                transportLeases.clear()
                 clientToClose = observationClient
                 observationClient = null
+                transportClientToClose = transportClient
+                transportClient = null
+                pendingTransportOpens = 0
+                pendingTransportSends = 0
             }
 
             observationsToClose.forEach {
                 it.close(reason = reason, notify = false)
             }
             eventsToClose.forEach { it.close() }
+            transportsToClose.forEach {
+                it.close(reason = reason, notify = false)
+            }
             clientToClose?.close()
+            transportClientToClose?.close()
             providerHost.close()
 
             sessionJob.cancel()
@@ -950,6 +1364,12 @@ class DieselPublicApiService :
                 4
 
             const val MAX_EVENT_TOPICS =
+                4
+
+            const val MAX_TRANSPORT_LEASES =
+                4
+
+            const val MAX_TRANSPORT_SENDS =
                 4
         }
     }
