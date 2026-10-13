@@ -28,7 +28,7 @@ class PhoneNotificationServiceTest {
     @Test
     fun inboundMutationsPublishCurrentSummary() =
         runTest {
-            val platform = DieselPlatform(scope = this)
+            val platform = DieselPlatform(scope = backgroundScope)
             val service =
                 PhoneNotificationService(
                     platform = platform,
@@ -71,7 +71,7 @@ class PhoneNotificationServiceTest {
     fun dismissAndReplyShareOneBoundedActionOwner() =
         runTest {
             val sent = mutableListOf<Triple<Long, String, String?>>()
-            val platform = DieselPlatform(scope = this)
+            val platform = DieselPlatform(scope = backgroundScope)
             val service =
                 PhoneNotificationService(
                     platform = platform,
@@ -131,7 +131,7 @@ class PhoneNotificationServiceTest {
     @Test
     fun replyRejectsNonReplyableAndOversizedText() =
         runTest {
-            val platform = DieselPlatform(scope = this)
+            val platform = DieselPlatform(scope = backgroundScope)
             val service =
                 PhoneNotificationService(
                     platform = platform,

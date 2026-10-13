@@ -31,7 +31,7 @@ class PhoneNotificationPublicApiTest {
     fun defaultCatalogExposesNotificationStateActionsAndEvents() =
         runTest {
             val sent = mutableListOf<Triple<Long, String, String?>>()
-            val platform = DieselPlatform(scope = this)
+            val platform = DieselPlatform(scope = backgroundScope)
             val service =
                 PhoneNotificationService(
                     platform = platform,
