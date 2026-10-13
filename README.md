@@ -2829,8 +2829,9 @@ normal resource-policy admission. M8.1a uses the existing M7 public-service perm
 M8.6 remains responsible for stronger per-service authorization for notification content and other
 sensitive resources.
 
-With the six notification descriptors added, the static public catalog grows from the M7 baseline of
-10 resources to 16 before any dynamic plugin resources are registered.
+M8.1a adds exactly these six descriptors to the existing static public catalog. Aggregate catalog
+size is deliberately not part of the feature contract: later backward-compatible API-minor releases
+may add more descriptors, while clients discover capabilities by stable resource ID and kind.
 
 #### M8.1b — canned replies + call service contract
 
@@ -2863,8 +2864,10 @@ explicit: accept/reject/ignore require `ringing`, end requires `active`, and a t
 not optimistically mutate Diesel call state. `CallController` remains a UI projection, not a second
 call-state owner.
 
-With M8.1a + M8.1b, the static public catalog contains 23 resources before dynamic plugin resources.
-M8.1c will migrate music state/control and find-phone/find-watch paths using the same ownership rule.
+M8.1b adds seven descriptors on top of M8.1a. Tests assert the stable IDs and behavior introduced by
+each slice rather than freezing an aggregate catalog count, so later additive API-minor releases do
+not invalidate earlier feature tests. M8.1c will migrate music state/control and find-phone/find-watch
+paths using the same ownership rule.
 
 ### M8.2 — complete native watch/device services
 

@@ -94,18 +94,8 @@ class PhoneInteractivePublicApiTest {
                     )
 
                 assertEquals(
-                    DieselApiVersion(
-                        major =
-                            1,
-                        minor =
-                            8,
-                    ),
+                    DieselApiVersion.CURRENT,
                     api.catalog().apiVersion,
-                )
-
-                assertEquals(
-                    23,
-                    api.catalog().resources.size,
                 )
 
                 val ids =

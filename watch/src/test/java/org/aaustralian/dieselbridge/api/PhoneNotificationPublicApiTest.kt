@@ -58,10 +58,7 @@ class PhoneNotificationPublicApiTest {
                 val api = DieselDefaultPublicApi.create(platform)
 
                 assertEquals(
-                    DieselApiVersion(
-                        major = 1,
-                        minor = 7,
-                    ),
+                    DieselApiVersion.CURRENT,
                     api.catalog().apiVersion,
                 )
 
