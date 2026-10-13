@@ -2832,6 +2832,40 @@ sensitive resources.
 With the six notification descriptors added, the static public catalog grows from the M7 baseline of
 10 resources to 16 before any dynamic plugin resources are registered.
 
+#### M8.1b — canned replies + call service contract
+
+M8.1b migrates the remaining reply-choice and telephony control paths needed before media/find work.
+It adds seven stable resources and raises the backward-compatible Wear API minor from 1.7 to 1.8:
+
+```text
+phone.notification.canned_replies   STATE / READ
+
+phone.call.current                   STATE / READ
+phone.call.changed                   EVENT / SUBSCRIBE
+phone.call.accept                    ACTION / INVOKE
+phone.call.reject                    ACTION / INVOKE
+phone.call.ignore                    ACTION / INVOKE
+phone.call.end                       ACTION / INVOKE
+```
+
+Canned replies remain a bounded current-state value rather than a collection: at most 32 entries,
+with each entry capped to 256 characters before it reaches either the public state or the existing
+Compose projection. Durable notification/history querying still waits for M8.4.
+
+`PhoneCallService` is the canonical call-state/action owner. The stable call state has explicit
+`idle`, `ringing` and `active` phases plus `incoming`, `outgoing`, `unknown` or `none` direction.
+Inbound Gadgetbridge `call` messages update this Diesel state and emit `phone.call.changed`, then
+project into the existing `CallController` ringtone/notification UI.
+
+Native Answer/Reject/Ignore/End taps and external Binder clients use the same four Diesel action
+registrations and the same existing Gadgetbridge/Bangle `sendCall` transport. Phase validation is
+explicit: accept/reject/ignore require `ringing`, end requires `active`, and a transport failure does
+not optimistically mutate Diesel call state. `CallController` remains a UI projection, not a second
+call-state owner.
+
+With M8.1a + M8.1b, the static public catalog contains 23 resources before dynamic plugin resources.
+M8.1c will migrate music state/control and find-phone/find-watch paths using the same ownership rule.
+
 ### M8.2 — complete native watch/device services
 
 Expose canonical battery/charging, device/build information, time-related state, bounded alarm

@@ -86,6 +86,27 @@ object DieselDefaultPublicApi {
         "An active phone notification was removed",
     )
 
+    val PHONE_CANNED_REPLIES =
+        PhoneCannedRepliesPublicApi.STATE
+
+    val PHONE_CALL_CURRENT =
+        PhoneCallPublicApi.CURRENT
+
+    val PHONE_CALL_ACCEPT =
+        PhoneCallPublicApi.ACCEPT
+
+    val PHONE_CALL_REJECT =
+        PhoneCallPublicApi.REJECT
+
+    val PHONE_CALL_IGNORE =
+        PhoneCallPublicApi.IGNORE
+
+    val PHONE_CALL_END =
+        PhoneCallPublicApi.END
+
+    val PHONE_CALL_CHANGED =
+        PhoneCallPublicApi.CHANGED
+
     val SENSOR_SAMPLE_EVENT = DieselResourceDescriptor(
         SensorObservationSampleEvent.TYPE,
         DieselResourceKind.EVENT,
@@ -120,12 +141,25 @@ object DieselDefaultPublicApi {
             PHONE_NOTIFICATION_REMOVED.id,
         )
 
+    val CANNED_REPLY_STATE_IDS =
+        PhoneCannedRepliesPublicApi.STATE_IDS
+
+    val CALL_STATE_IDS =
+        PhoneCallPublicApi.STATE_IDS
+
+    val CALL_ACTION_IDS =
+        PhoneCallPublicApi.ACTION_IDS
+
+    val CALL_EVENT_IDS =
+        PhoneCallPublicApi.EVENT_IDS
+
     val EVENT_IDS: Set<String> =
         setOf(
             SENSOR_SAMPLE_EVENT.id,
             SENSOR_STATE_EVENT.id,
         ) +
-            NOTIFICATION_EVENT_IDS
+            NOTIFICATION_EVENT_IDS +
+            CALL_EVENT_IDS
 
     val OBSERVATIONS: List<DieselPublicObservationBinding> =
         SensorCapabilityCatalog.standardLogicalIds.map { logicalId ->
@@ -161,8 +195,15 @@ object DieselDefaultPublicApi {
                 PhoneNotificationService.SUMMARY_KEY,
                 ::encodeNotificationSummary,
             ),
+            PhoneCannedRepliesPublicApi.stateBinding(
+                platform.states,
+            ),
+            PhoneCallPublicApi.stateBinding(
+                platform.states,
+            ),
         ),
-        actionBindings = listOf(
+        actionBindings =
+            listOf(
             DieselPublicActionBinding.fromActionDispatcher(
                 platform.actions,
                 WATCH_VIBRATION,
@@ -191,7 +232,10 @@ object DieselDefaultPublicApi {
                 ::decodeNotificationDismissAll,
                 ::encodeNotificationActionResult,
             ),
-        ),
+        ) +
+            PhoneCallPublicApi.actionBindings(
+                platform.actions,
+            ),
         observationBindings = OBSERVATIONS,
         dynamicStates = platform.states,
         dynamicActions = platform.actions,
@@ -224,6 +268,7 @@ object DieselDefaultPublicApi {
                     )
                 },
             ),
+            PhoneCallPublicApi.eventBinding(),
         ),
     )
 

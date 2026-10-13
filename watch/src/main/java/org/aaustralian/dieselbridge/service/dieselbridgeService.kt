@@ -37,6 +37,7 @@ import org.aaustralian.dieselbridge.ble.BlePeripheralController
 import org.aaustralian.dieselbridge.data.MusicStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
+import org.aaustralian.dieselbridge.notify.CallController
 import org.aaustralian.dieselbridge.debug.DeveloperRemoteAccessPolicy
 import org.aaustralian.dieselbridge.debug.DeveloperSensorProbeCommandModule
 import org.aaustralian.dieselbridge.debug.DeveloperSensorScanCommandModule
@@ -62,7 +63,9 @@ import org.aaustralian.dieselbridge.platform.sensor.AndroidHealthServicesSource
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesObservationRecoveryController
 import org.aaustralian.dieselbridge.platform.sensor.HealthServicesProvider
 import org.aaustralian.dieselbridge.platform.sensor.healthServicesObservationCapabilities
+import org.aaustralian.dieselbridge.platform.call.PhoneCallService
 import org.aaustralian.dieselbridge.platform.provider.ProviderAvailability
+import org.aaustralian.dieselbridge.platform.notification.PhoneCannedRepliesService
 import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationService
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerRouteCatalog
 import org.aaustralian.dieselbridge.platform.sensor.SensorManagerLogicalRouteSelector
@@ -103,6 +106,12 @@ class DieselBridgeService : Service() {
 
     private var phoneNotificationService:
         PhoneNotificationService? = null
+
+    private var phoneCannedRepliesService:
+        PhoneCannedRepliesService? = null
+
+    private var phoneCallService:
+        PhoneCallService? = null
 
     private var vibrationActionRegistration: DieselActionRegistration? = null
     private var publicRuntimeContext: DieselPublicRuntimeContext? = null
@@ -536,6 +545,56 @@ class DieselBridgeService : Service() {
         phoneNotificationService =
             notificationOwner
 
+        val cannedRepliesOwner =
+            PhoneCannedRepliesService(
+                platform =
+                    platform,
+            )
+
+        phoneCannedRepliesService =
+            cannedRepliesOwner
+
+        val callOwner =
+            PhoneCallService(
+                platform =
+                    platform,
+                sendAction =
+                    {
+                            action,
+                        ->
+                        controller
+                            ?.sendCall(
+                                action,
+                            )
+                            ?: false
+                    },
+                onInboundProjection =
+                    {
+                            cmd,
+                            name,
+                            number,
+                        ->
+                        CallController.onCall(
+                            applicationContext,
+                            cmd,
+                            name,
+                            number,
+                        )
+                    },
+                onLocalProjection =
+                    {
+                            action,
+                        ->
+                        CallController.applyLocalAction(
+                            applicationContext,
+                            action,
+                        )
+                    },
+            )
+
+        phoneCallService =
+            callOwner
+
         DeveloperRuntimeAccess.attachSensorMatrixExperiment(
             SensorMatrixExperiment(platform.capabilities),
         )
@@ -605,6 +664,10 @@ class DieselBridgeService : Service() {
                     notificationOwner::receive,
                 onNotificationRemove =
                     notificationOwner::removeFromPhone,
+                onCall =
+                    callOwner::receiveInbound,
+                onCannedResponses =
+                    cannedRepliesOwner::update,
                 additionalCommandModules = listOf(
                     DeveloperSensorProbeCommandModule(
                         authorization = developerRemoteAccessPolicy,
@@ -682,8 +745,16 @@ class DieselBridgeService : Service() {
             }
         // Route find-phone taps to the controller so the watch can buzz the phone over BLE.
         NotificationActions.findPhoneHandler = { active -> controller?.sendFindPhone(active) }
-        // Route call action taps (accept / reject / ignore / end) over the BLE back-channel.
-        NotificationActions.callHandler = { action -> controller?.sendCall(action) }
+        // Route native call UI through the same Diesel call-action owner used by public clients.
+        NotificationActions.callHandler =
+            {
+                    action,
+                ->
+                callOwner.performLegacyAction(
+                    action,
+                )
+                Unit
+            }
         // Route music transport taps (play / pause / next / …) over the BLE back-channel.
         NotificationActions.musicHandler = { cmd -> controller?.sendMusic(cmd) }
         // Debounce a coarse status signature and ask the tiles to redraw when it changes.
@@ -734,6 +805,18 @@ class DieselBridgeService : Service() {
          */
         controller?.shutdown()
         controller = null
+
+        phoneCallService
+            ?.close()
+
+        phoneCallService =
+            null
+
+        phoneCannedRepliesService
+            ?.close()
+
+        phoneCannedRepliesService =
+            null
 
         phoneNotificationService
             ?.close()

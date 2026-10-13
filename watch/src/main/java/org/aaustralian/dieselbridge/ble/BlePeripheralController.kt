@@ -10,6 +10,7 @@ import java.util.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import org.aaustralian.dieselbridge.BuildConfig
+import org.aaustralian.dieselbridge.data.CannedResponsesStore
 import org.aaustralian.dieselbridge.data.NotificationActions
 import org.aaustralian.dieselbridge.data.NotificationStore
 import org.aaustralian.dieselbridge.data.WatchNotification
@@ -21,6 +22,7 @@ import org.aaustralian.dieselbridge.debug.DeveloperRuntimeAccess
 import org.aaustralian.dieselbridge.debug.WatchDeveloperCommandRuntime
 import org.aaustralian.dieselbridge.integration.gadgetbridge.BangleLineTransport
 import org.aaustralian.dieselbridge.integration.gadgetbridge.GadgetbridgeActivitySessionController
+import org.aaustralian.dieselbridge.notify.CallController
 import org.aaustralian.dieselbridge.notify.NotificationRouter
 import org.aaustralian.dieselbridge.notify.WatchNotifier
 import org.aaustralian.dieselbridge.platform.capability.BatteryState
@@ -88,6 +90,27 @@ class BlePeripheralController(
                 it,
             )
         },
+    private val onCall:
+        (
+            cmd: String,
+            name: String?,
+            number: String?,
+        ) -> Unit =
+        {
+                cmd,
+                name,
+                number,
+            ->
+            CallController.onCall(
+                context,
+                cmd,
+                name,
+                number,
+            )
+        },
+    private val onCannedResponses:
+        (List<String>) -> Unit =
+        CannedResponsesStore::set,
     additionalCommandModules: List<DieselCommandModule> = emptyList(),
 ) {
     private var advertiser: NusAdvertiser? = null
@@ -255,6 +278,10 @@ class BlePeripheralController(
                 onNotificationUpsert,
             onNotificationRemove =
                 onNotificationRemove,
+            onCall =
+                onCall,
+            onCannedResponses =
+                onCannedResponses,
         )
 
     // Last battery snapshot pushed to the phone; used to suppress duplicate `status` lines.

@@ -37,6 +37,34 @@ class DieselPublicAccessPolicyTest {
                 DieselResourceOperation.SUBSCRIBE,
             ),
         )
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_CANNED_REPLIES,
+                DieselResourceOperation.READ,
+            ),
+        )
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_CALL_CURRENT,
+                DieselResourceOperation.READ,
+            ),
+        )
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_CALL_ACCEPT,
+                DieselResourceOperation.INVOKE,
+            ),
+        )
+        assertTrue(
+            policy.canAccess(
+                app,
+                DieselDefaultPublicApi.PHONE_CALL_CHANGED,
+                DieselResourceOperation.SUBSCRIBE,
+            ),
+        )
     }
 
     @Test fun sensitiveObservationUsesCallerPermission() {

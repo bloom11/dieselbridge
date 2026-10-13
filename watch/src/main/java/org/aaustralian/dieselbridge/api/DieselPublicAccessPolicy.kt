@@ -42,6 +42,16 @@ internal class DieselPublicAccessPolicy(
                 descriptor.kind == DieselResourceKind.ACTION &&
                     operation == DieselResourceOperation.INVOKE
 
+            in DieselDefaultPublicApi.CANNED_REPLY_STATE_IDS,
+            in DieselDefaultPublicApi.CALL_STATE_IDS,
+            ->
+                descriptor.kind == DieselResourceKind.STATE &&
+                    operation == DieselResourceOperation.READ
+
+            in DieselDefaultPublicApi.CALL_ACTION_IDS ->
+                descriptor.kind == DieselResourceKind.ACTION &&
+                    operation == DieselResourceOperation.INVOKE
+
             in DieselDefaultPublicApi.OBSERVATION_IDS ->
                 canObserve(identity, descriptor, operation)
 

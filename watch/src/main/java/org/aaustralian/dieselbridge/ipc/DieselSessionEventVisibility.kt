@@ -3,6 +3,7 @@ package org.aaustralian.dieselbridge.ipc
 
 import org.aaustralian.dieselbridge.api.DieselPublicIngressEvent
 import org.aaustralian.dieselbridge.platform.event.DieselEvent
+import org.aaustralian.dieselbridge.platform.call.PhoneCallEvent
 import org.aaustralian.dieselbridge.platform.event.SensorObservationEvent
 import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationEvent
 
@@ -18,6 +19,9 @@ internal object DieselSessionEventVisibility {
                 )
 
             is PhoneNotificationEvent ->
+                true
+
+            is PhoneCallEvent ->
                 true
 
             is DieselPublicIngressEvent ->

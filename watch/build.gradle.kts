@@ -38,8 +38,8 @@ android {
         applicationId = "io.github.bloom11.dieselbridge"
         minSdk = 28          // Android 9 API floor for legacy Wear OS compatibility
         targetSdk = 28       // Intentional legacy target behavior; compileSdk remains 36
-        versionCode = 37
-        versionName = "1.0.0-dev.32"
+        versionCode = 38
+        versionName = "1.0.0-dev.33"
 
         buildConfigField(
             "String",

@@ -42,6 +42,27 @@ class NotificationRouter(
                 it,
             )
         },
+    private val onCall:
+        (
+            cmd: String,
+            name: String?,
+            number: String?,
+        ) -> Unit =
+        {
+                cmd,
+                name,
+                number,
+            ->
+            CallController.onCall(
+                context,
+                cmd,
+                name,
+                number,
+            )
+        },
+    private val onCannedResponses:
+        (List<String>) -> Unit =
+        CannedResponsesStore::set,
 ) {
 
     fun handle(line: String): GbMessage? {
@@ -75,10 +96,18 @@ class NotificationRouter(
                     FindAlertController.buzzOnce(context)
                 }
             }
-            is GbMessage.Call -> CallController.onCall(context, msg.cmd, msg.name, msg.number)
+            is GbMessage.Call ->
+                onCall(
+                    msg.cmd,
+                    msg.name,
+                    msg.number,
+                )
             is GbMessage.MusicInfo -> MusicStore.onInfo(msg.artist, msg.album, msg.track, msg.durMs)
             is GbMessage.MusicState -> MusicStore.onState(msg.state, msg.position)
-            is GbMessage.CannedResponses -> CannedResponsesStore.set(msg.list)
+            is GbMessage.CannedResponses ->
+                onCannedResponses(
+                    msg.list,
+                )
             is GbMessage.ActivityControl -> onActivityControl(msg)
             is GbMessage.DieselRequestMessage ->
                 onDieselRequest(

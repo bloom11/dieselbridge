@@ -3,6 +3,10 @@ package org.aaustralian.dieselbridge.ipc
 
 import org.aaustralian.dieselbridge.api.DieselPublicIngressEvent
 import org.aaustralian.dieselbridge.data.WatchNotification
+import org.aaustralian.dieselbridge.platform.call.PhoneCallChangedEvent
+import org.aaustralian.dieselbridge.platform.call.PhoneCallDirection
+import org.aaustralian.dieselbridge.platform.call.PhoneCallPhase
+import org.aaustralian.dieselbridge.platform.call.PhoneCallState
 import org.aaustralian.dieselbridge.platform.event.SensorObservationStateEvent
 import org.aaustralian.dieselbridge.platform.notification.PhoneNotificationReceivedEvent
 import org.aaustralian.dieselbridge.platform.sensor.observation.SensorSubscriptionPhase
@@ -61,6 +65,36 @@ class DieselSessionEventVisibilityTest {
                     receivedAt = 1_500L,
                     replyable = true,
                 ),
+            )
+
+        assertTrue(
+            DieselSessionEventVisibility.isVisible(
+                event,
+            ) {
+                false
+            },
+        )
+    }
+
+    @Test
+    fun builtInCallEventIsVisibleWithoutSensorOwnership() {
+        val event =
+            PhoneCallChangedEvent(
+                state =
+                    PhoneCallState(
+                        phase =
+                            PhoneCallPhase.RINGING,
+                        direction =
+                            PhoneCallDirection.INCOMING,
+                        name =
+                            "Alice",
+                        number =
+                            "123",
+                        updatedAtMs =
+                            1_750L,
+                    ),
+                reason =
+                    "phone_incoming",
             )
 
         assertTrue(

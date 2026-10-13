@@ -98,32 +98,93 @@ object CallController {
         }
     }
 
-    /** Local "Accept" tap: go in-call and tell the phone. Does NOT clear — the call continues. */
-    fun answer(context: Context) {
-        val ctx = context.applicationContext
-        stopRing(ctx)
-        cancelAutoStop()
-        _state.value = (_state.value ?: CallInfo(null, null, active = true)).copy(active = true)
-        postNotification(ctx)
-        NotificationActions.call(NotificationActions.ACTION_ACCEPT)
+    /**
+     * Native UI actions delegate to the service-installed Diesel call owner.
+     * If the service is unavailable, retain a local-only projection fallback
+     * so a stale call screen can still be dismissed safely.
+     */
+    fun answer(context: Context) =
+        requestAction(
+            context,
+            NotificationActions.ACTION_ACCEPT,
+        )
+
+    fun reject(context: Context) =
+        requestAction(
+            context,
+            NotificationActions.ACTION_REJECT,
+        )
+
+    fun ignore(context: Context) =
+        requestAction(
+            context,
+            NotificationActions.ACTION_IGNORE,
+        )
+
+    fun end(context: Context) =
+        requestAction(
+            context,
+            NotificationActions.ACTION_END,
+        )
+
+    fun applyLocalAction(
+        context: Context,
+        action: String,
+    ) {
+        val ctx =
+            context.applicationContext
+
+        when (action) {
+            NotificationActions.ACTION_ACCEPT -> {
+                stopRing(
+                    ctx,
+                )
+                cancelAutoStop()
+                _state.value =
+                    (
+                        _state.value
+                            ?: CallInfo(
+                                null,
+                                null,
+                                active =
+                                    true,
+                            )
+                    ).copy(
+                        active =
+                            true,
+                    )
+                postNotification(
+                    ctx,
+                )
+            }
+
+            NotificationActions.ACTION_REJECT,
+            NotificationActions.ACTION_IGNORE,
+            NotificationActions.ACTION_END,
+            ->
+                clear(
+                    ctx,
+                )
+        }
     }
 
-    /** Local "Reject" tap: tear down locally, then tell the phone. */
-    fun reject(context: Context) {
-        clear(context)
-        NotificationActions.call(NotificationActions.ACTION_REJECT)
-    }
-
-    /** Local "Ignore" tap: tear down locally, then tell the phone. */
-    fun ignore(context: Context) {
-        clear(context)
-        NotificationActions.call(NotificationActions.ACTION_IGNORE)
-    }
-
-    /** Local "End" tap: tear down locally, then tell the phone. */
-    fun end(context: Context) {
-        clear(context)
-        NotificationActions.call(NotificationActions.ACTION_END)
+    private fun requestAction(
+        context: Context,
+        action: String,
+    ) {
+        if (
+            NotificationActions.callHandler !=
+            null
+        ) {
+            NotificationActions.call(
+                action,
+            )
+        } else {
+            applyLocalAction(
+                context,
+                action,
+            )
+        }
     }
 
     /** Stop ring, cancel notification + timeout, drop state. Sends nothing (inbound teardown path). */
